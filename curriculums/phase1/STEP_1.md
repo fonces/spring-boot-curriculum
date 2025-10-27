@@ -326,22 +326,25 @@ public Map<String, String> info() {
 
 ---
 
-## 🔄 Gitへのコミット（推奨）
+## 🔄 Gitへのコミットとレビュー依頼
 
-進捗を記録するためにGitにコミットしましょう：
+進捗を記録してレビューを受けましょう：
 
 ```bash
 # プロジェクトディレクトリで
 git init
 git add .
 git commit -m "Step 1: Hello World REST API完了"
+git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-[Step 2: パスパラメータとクエリパラメータ](STEP_2.md)へ進みましょう！
+レビューが完了したら、[Step 2: パスパラメータとクエリパラメータ](STEP_2.md)へ進みましょう！
 
 パスパラメータ (`/greet/{name}`) やクエリパラメータ (`?language=ja`) の扱い方を学びます。
 

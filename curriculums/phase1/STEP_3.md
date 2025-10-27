@@ -601,18 +601,23 @@ UserResponse {
 
 ---
 
-## 🔄 Gitへのコミット（推奨）
+## 🔄 Gitへのコミットとレビュー依頼
+
+進捗を記録してレビューを受けましょう：
 
 ```bash
 git add .
 git commit -m "Step 3: POSTリクエストとDTO実装完了"
+git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-[Step 4: application.ymlで設定管理](STEP_4.md)へ進みましょう！
+レビューが完了したら、[Step 4: application.ymlで設定管理](STEP_4.md)へ進みましょう！
 
 次のステップでは、アプリケーションの設定を外部ファイル（application.yml）で管理する方法を学びます。
 ポート番号の変更や、カスタムプロパティの定義方法を習得します。

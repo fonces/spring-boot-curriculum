@@ -555,18 +555,23 @@ application-prod.yml     # 本番環境
 
 ---
 
-## 🔄 Gitへのコミット（推奨）
+## 🔄 Gitへのコミットとレビュー依頼
+
+進捗を記録してレビューを受けましょう：
 
 ```bash
 git add .
 git commit -m "Step 4: application.ymlで設定管理実装完了"
+git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-[Step 5: Lombokで簡潔なコード](STEP_5.md)へ進みましょう！
+レビューが完了したら、[Step 5: Lombokで簡潔なコード](STEP_5.md)へ進みましょう！
 
 次のステップでは、Lombokを使ってDTOクラスのGetter/Setterを自動生成し、
 冗長なコードを劇的に削減する方法を学びます。Step 3で大量に書いたコードが数行になりますよ！

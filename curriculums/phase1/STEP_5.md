@@ -631,18 +631,25 @@ public class UserDto {
 
 ---
 
-## 🔄 Gitへのコミット（推奨）
+## 🔄 Gitへのコミットとレビュー依頼
+
+進捗を記録してレビューを受けましょう：
 
 ```bash
 git add .
 git commit -m "Step 5: LombokでDTOをリファクタリング完了"
+git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## 🎉 Phase 1 完了おめでとうございます！
 
 Phase 1の5つのステップをすべて完了しました！
+
+レビューが完了したら、Phase 2へ進みましょう！
 
 ### Phase 1で学んだこと
 
