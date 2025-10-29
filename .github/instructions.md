@@ -12,35 +12,56 @@
 spring-boot-curriculum/
 ├── README.md                          # カリキュラム全体の概要
 ├── curriculums/
-│   ├── phase1/                        # Phase 1: Spring Boot基礎
-│   │   ├── STEP_1.md
-│   │   ├── STEP_2.md
-│   │   ├── STEP_3.md
-│   │   ├── STEP_4.md
-│   │   └── STEP_5.md
-│   ├── phase2/                        # Phase 2: データベース連携
-│   │   ├── STEP_6.md
-│   │   ├── STEP_7.md
-│   │   └── ...
-│   ├── phase3/                        # Phase 3: アーキテクチャとベストプラクティス
-│   │   ├── STEP_12.md
-│   │   └── ...
-│   ├── phase4/                        # Phase 4: セキュリティとテスト
-│   │   ├── STEP_17.md
-│   │   └── ...
-│   ├── phase5/                        # Phase 5: 実践的な機能
-│   │   ├── STEP_22.md
-│   │   └── ...
-│   └── phase6/                        # Phase 6: 総合演習
-│       ├── STEP_26.md
-│       └── ...
-├── examples/                          # サンプルコード（オプション）
-│   ├── phase1/
-│   │   ├── step-1-hello-world/
-│   │   ├── step-2-parameters/
-│   │   └── ...
-│   └── phase2/
-│       └── ...
+│   ├── phase1/                        # Phase 1: Spring Boot基礎 (5ステップ)
+│   │   ├── PREPARE.md                 # 事前準備ガイド
+│   │   ├── STEP_1.md                  # Hello World REST API
+│   │   ├── STEP_2.md                  # パスパラメータとクエリパラメータ
+│   │   ├── STEP_3.md                  # POSTリクエストとリクエストボディ
+│   │   ├── STEP_4.md                  # application.ymlで設定管理
+│   │   └── STEP_5.md                  # Lombokで簡潔なコード
+│   ├── phase2/                        # Phase 2: データベース連携の基礎 (6ステップ)
+│   │   ├── PREPARE.md                 # MySQL環境構築準備
+│   │   ├── STEP_6.md                  # MySQL環境構築
+│   │   ├── STEP_7.md                  # Spring Data JPAでCRUDの基本
+│   │   ├── STEP_8.md                  # CRUD操作の完成
+│   │   ├── STEP_9.md                  # @Transactionalでトランザクション管理
+│   │   ├── STEP_10.md                 # カスタムクエリ
+│   │   └── STEP_11.md                 # リレーションシップ（1対多）
+│   ├── phase3/                        # Phase 3: MyBatisによるSQL制御 (3ステップ)
+│   │   ├── STEP_12.md                 # MyBatisの基礎
+│   │   ├── STEP_13.md                 # MyBatisで複雑なクエリ
+│   │   └── STEP_14.md                 # JPAとMyBatisの使い分け
+│   ├── phase4/                        # Phase 4: アーキテクチャとベストプラクティス (6ステップ)
+│   │   ├── STEP_15.md                 # レイヤー化アーキテクチャ
+│   │   ├── STEP_16.md                 # DI/IoCコンテナの深掘り
+│   │   ├── STEP_17.md                 # 例外ハンドリング
+│   │   ├── STEP_18.md                 # バリデーション
+│   │   ├── STEP_19.md                 # DTOとEntityの分離
+│   │   └── STEP_20.md                 # ロギング
+│   ├── phase5/                        # Phase 5: Thymeleafでサーバーサイドレンダリング (4ステップ)
+│   │   ├── STEP_21.md                 # Thymeleafの基礎
+│   │   ├── STEP_22.md                 # フォーム送信とバリデーション
+│   │   ├── STEP_23.md                 # レイアウトとフラグメント
+│   │   └── STEP_24.md                 # Thymeleaf + REST API連携
+│   ├── phase6/                        # Phase 6: セキュリティとテスト (5ステップ)
+│   │   ├── STEP_25.md                 # Spring Securityの基礎
+│   │   ├── STEP_26.md                 # JWTトークン認証
+│   │   ├── STEP_27.md                 # ユニットテスト
+│   │   ├── STEP_28.md                 # 統合テスト
+│   │   └── STEP_29.md                 # テストカバレッジ
+│   ├── phase7/                        # Phase 7: 実践的な機能 (4ステップ)
+│   │   ├── STEP_30.md                 # ファイルアップロード
+│   │   ├── STEP_31.md                 # ページネーション
+│   │   ├── STEP_32.md                 # キャッシュ
+│   │   └── STEP_33.md                 # 非同期処理
+│   └── phase8/                        # Phase 8: 総合演習（最終プロジェクト） (5ステップ)
+│       ├── STEP_34.md                 # プロジェクト概要と環境構築
+│       ├── STEP_35.md                 # 認証・認可機能の実装
+│       ├── STEP_36.md                 # 記事とコメント機能の実装
+│       ├── STEP_37.md                 # 画像アップロードと検索機能
+│       └── STEP_38.md                 # テストとデプロイ準備
+├── examples/                          # サンプルコード（将来追加予定）
+│   └── (未作成)
 └── .github/
     └── instructions.md                # このファイル
 ```
