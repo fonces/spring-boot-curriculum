@@ -2,467 +2,55 @@
 
 ## 🎯 このステップの目標
 
-- Phase 4で学んだことを振り返る
-- 実践的な演習を通じて知識を定着させる
-- アーキテクチャとベストプラクティスを統合する
+- ログレベル（TRACE、DEBUG、INFO、WARN、ERROR）を理解する
+- `@Slf4j`を使ってログ出力を実装できる
+- `application.yml`でログ設定をカスタマイズできる
+- `logback-spring.xml`で詳細なログ設定ができる
+- 環境別（開発/本番）のログ設定を分けられる
 
-**所要時間**: 約2時間
-
----
-
-## 📋 Phase 4の振り返り
-
-### Step 15: レイヤードアーキテクチャとDTOパターン
-
-**学んだこと**:
-- ✅ Presentation / Business Logic / Data Access レイヤー
-- ✅ DTOパターンでエンティティとAPIを分離
-- ✅ Request DTO / Response DTO
-- ✅ MapperクラスとMapStruct
-
-**重要ポイント**:
-```java
-Controller (UserResponse) → Service (Entity) → Repository (Entity) → DB
-         ←                 ←                  ←                    ←
-```
-
-### Step 16: DI/IoCコンテナの深掘り
-
-**学んだこと**:
-- ✅ 依存性注入（DI）とは何か、なぜ必要か
-- ✅ `@Component`, `@Service`, `@Repository`の違いと使い分け
-- ✅ コンストラクタインジェクション vs フィールドインジェクション
-- ✅ Bean のスコープ（Singleton, Prototype, Request等）
-
-### Step 17: 例外ハンドリング
-
-**学んだこと**:
-- ✅ カスタム例外（BusinessException, ResourceNotFoundException）
-- ✅ GlobalExceptionHandler
-- ✅ HTTPステータスコードの使い分け
-- ✅ ユーザーフレンドリーなエラーレスポンス
-
-**重要ポイント**:
-```java
-public UserResponse getUserById(Long id) {
-    return userRepository.findById(id)
-            .map(userMapper::toResponse)
-            .orElseThrow(() -> new UserNotFoundException(id));  // 404
-}
-```
-
-### Step 18: バリデーション
-
-**学んだこと**:
-- ✅ Bean Validation (`@Valid`, `@NotBlank`, `@Email`)
-- ✅ カスタムバリデーション
-- ✅ グループバリデーション
-- ✅ `@RestControllerAdvice`での例外ハンドリング
-
-**重要ポイント**:
-```java
-@PostMapping
-public ResponseEntity<UserResponse> createUser(
-        @Valid @RequestBody UserCreateRequest request) {  // @Validで自動検証
-    // ...
-}
-```
-
-### Step 19: DTOとEntityの分離
-
-**学んだこと**:
-- ✅ SOLID原則
-- ✅ コンストラクタインジェクション
-- ✅ トランザクション管理
-- ✅ N+1問題の回避
-- ✅ コーディング規約
+**所要時間**: 約1時間
 
 ---
 
-## 🚀 総合演習: ブログシステムの実装
+## 📋 事前準備
 
-### 演習の概要
+このステップを始める前に、以下を確認してください：
 
-Phase 4で学んだすべての要素を統合して、簡単なブログシステムを実装します。
-
-### 要件
-
-#### 機能要件
-1. **記事（Article）管理**
-   - 記事の作成・更新・削除・一覧取得・詳細取得
-   - タイトル、本文、カテゴリ、公開状態、著者
-
-2. **カテゴリ（Category）管理**
-   - カテゴリの作成・一覧取得
-   - 1つの記事は1つのカテゴリに属する
-
-3. **コメント（Comment）管理**
-   - 記事へのコメント作成・削除
-   - 1つの記事に複数のコメント
-
-#### 非機能要件
-- ✅ レイヤードアーキテクチャ
-- ✅ DTOパターン
-- ✅ バリデーション
-- ✅ カスタム例外
-- ✅ ロギング
-- ✅ ベストプラクティス準拠
+- Step 19（DTOとEntityの分離）が完了していること
+- Lombokを使った開発経験があること
+- アプリケーションの監視やデバッグの必要性を理解していること
 
 ---
 
-## 🚀 演習1: エンティティ設計
+## 📝 概要
+ログは、アプリケーションの動作を追跡し、問題を診断するための重要な手段です。Spring Bootでは、デフォルトで**SLF4J + Logback**が使われます。
 
-### 1-1. Articleエンティティ
+## 📚 ログレベルの理解
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Article.java`
+| レベル | 用途 | 例 |
+|---|---|---|
+| **TRACE** | 最も詳細な情報（通常は使わない） | メソッドの入出力、ループの各反復 |
+| **DEBUG** | デバッグ情報 | SQLクエリ、内部状態の確認 |
+| **INFO** | 重要な処理の記録 | アプリ起動、リクエスト処理、重要な処理の開始/完了 |
+| **WARN** | 警告（異常ではないが注意が必要） | 非推奨APIの使用、リトライ処理 |
+| **ERROR** | エラー（処理は続行可能） | 例外のキャッチ、想定外の入力 |
+| **FATAL** | 致命的エラー（Logbackでは使わない） | - |
 
-```java
-package com.example.hellospringboot.entity;
+## 🔧 基本的な使い方
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
-@Entity
-@Table(name = "articles")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Article {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 200)
-    private String title;
-
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
-
-    @Column(nullable = false)
-    private Boolean published;
-
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
-    @Column
-    private LocalDateTime updatedAt;
-
-    // 多対1: 記事 → ユーザー（著者）
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "author_id", nullable = false)
-    private User author;
-
-    // 多対1: 記事 → カテゴリ
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
-    private Category category;
-
-    // 1対多: 記事 → コメント
-    @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Comment> comments = new ArrayList<>();
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
-}
-```
-
-### 1-2. Categoryエンティティ
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Category.java`
+### 1. Lombokの`@Slf4j`を使う（推奨）
 
 ```java
-package com.example.hellospringboot.entity;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.ArrayList;
-import java.util.List;
-
-@Entity
-@Table(name = "categories")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Category {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true, length = 100)
-    private String name;
-
-    @Column(length = 500)
-    private String description;
-
-    // 1対多: カテゴリ → 記事
-    @OneToMany(mappedBy = "category")
-    @Builder.Default
-    private List<Article> articles = new ArrayList<>();
-}
-```
-
-### 1-3. Commentエンティティ
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Comment.java`
-
-```java
-package com.example.hellospringboot.entity;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "comments")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Comment {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
-
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
-    // 多対1: コメント → 記事
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "article_id", nullable = false)
-    private Article article;
-
-    // 多対1: コメント → ユーザー
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
-}
-```
-
----
-
-## 🚀 演習2: DTO作成
-
-### 2-1. ArticleCreateRequest
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/ArticleCreateRequest.java`
-
-```java
-package com.example.hellospringboot.dto.request;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class ArticleCreateRequest {
-
-    @NotBlank(message = "タイトルは必須です")
-    @Size(max = 200, message = "タイトルは200文字以内で入力してください")
-    private String title;
-
-    @NotBlank(message = "本文は必須です")
-    private String content;
-
-    @NotNull(message = "カテゴリIDは必須です")
-    private Long categoryId;
-
-    @NotNull(message = "公開状態は必須です")
-    private Boolean published;
-}
-```
-
-### 2-2. ArticleResponse
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/ArticleResponse.java`
-
-```java
-package com.example.hellospringboot.dto.response;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class ArticleResponse {
-
-    private Long id;
-    private String title;
-    private String content;
-    private Boolean published;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private AuthorSummary author;
-    private CategorySummary category;
-    private Integer commentCount;
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class AuthorSummary {
-        private Long id;
-        private String name;
-        private String email;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class CategorySummary {
-        private Long id;
-        private String name;
-    }
-}
-```
-
----
-
-## 🚀 演習3: Repository作成
-
-### 3-1. ArticleRepository
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/ArticleRepository.java`
-
-```java
-package com.example.hellospringboot.repository;
-
-import com.example.hellospringboot.entity.Article;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface ArticleRepository extends JpaRepository<Article, Long> {
-
-    // 公開済み記事を取得（ページネーション対応）
-    Page<Article> findByPublishedTrue(Pageable pageable);
-
-    // カテゴリIDで記事を検索
-    List<Article> findByCategoryId(Long categoryId);
-
-    // 著者IDで記事を検索
-    List<Article> findByAuthorId(Long authorId);
-
-    // タイトルで部分一致検索
-    List<Article> findByTitleContaining(String keyword);
-
-    // N+1問題を避けるためJOIN FETCH
-    @Query("SELECT a FROM Article a " +
-           "JOIN FETCH a.author " +
-           "JOIN FETCH a.category " +
-           "WHERE a.id = :id")
-    Article findByIdWithDetails(@Param("id") Long id);
-
-    @Query("SELECT a FROM Article a " +
-           "JOIN FETCH a.author " +
-           "JOIN FETCH a.category " +
-           "WHERE a.published = true")
-    List<Article> findAllPublishedWithDetails();
-}
-```
-
-### 3-2. CategoryRepository
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/CategoryRepository.java`
-
-```java
-package com.example.hellospringboot.repository;
-
-import com.example.hellospringboot.entity.Category;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-
-@Repository
-public interface CategoryRepository extends JpaRepository<Category, Long> {
-
-    Optional<Category> findByName(String name);
-
-    boolean existsByName(String name);
-}
-```
-
----
-
-## 🚀 演習4: Service作成
-
-### 4-1. ArticleService
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/ArticleService.java`
-
-```java
-package com.example.hellospringboot.service;
-
-import com.example.hellospringboot.dto.request.ArticleCreateRequest;
-import com.example.hellospringboot.dto.response.ArticleResponse;
-import com.example.hellospringboot.entity.Article;
-import com.example.hellospringboot.entity.Category;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.exception.ResourceNotFoundException;
-import com.example.hellospringboot.mapper.ArticleMapper;
-import com.example.hellospringboot.repository.ArticleRepository;
-import com.example.hellospringboot.repository.CategoryRepository;
-import com.example.hellospringboot.repository.UserRepository;
+package com.example.demo.service;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.entity.User;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.mapper.UserMapper;
+import com.example.demo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -470,280 +58,547 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j  // ⭐ ログ機能を追加
 @Transactional(readOnly = true)
-@Slf4j
-public class ArticleService {
-
-    private final ArticleRepository articleRepository;
-    private final CategoryRepository categoryRepository;
+public class UserService {
+    
     private final UserRepository userRepository;
-    private final ArticleMapper articleMapper;
-
-    /**
-     * 記事を作成
-     */
+    private final UserMapper userMapper;
+    
+    public List<UserResponse> findAll() {
+        log.info("全ユーザー取得を開始");
+        List<User> users = userRepository.findAll();
+        log.info("{}件のユーザーを取得しました", users.size());
+        
+        return users.stream()
+            .map(userMapper::toResponse)
+            .toList();
+    }
+    
+    public UserResponse findById(Long id) {
+        log.debug("ユーザー取得: id={}", id);
+        
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> {
+                log.warn("ユーザーが見つかりません: id={}", id);
+                return new ResourceNotFoundException("User", "id", id);
+            });
+        
+        log.debug("ユーザーを取得しました: {}", user.getName());
+        return userMapper.toResponse(user);
+    }
+    
     @Transactional
-    public ArticleResponse createArticle(Long authorId, ArticleCreateRequest request) {
-        log.info("Creating article by user {}: {}", authorId, request.getTitle());
-
-        User author = userRepository.findById(authorId)
-                .orElseThrow(() -> new ResourceNotFoundException("ユーザー", authorId));
-
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("カテゴリ", request.getCategoryId()));
-
-        Article article = Article.builder()
-                .title(request.getTitle())
-                .content(request.getContent())
-                .published(request.getPublished())
-                .author(author)
-                .category(category)
-                .build();
-
-        Article savedArticle = articleRepository.save(article);
-        log.info("Article created successfully with ID: {}", savedArticle.getId());
-
-        return articleMapper.toResponse(savedArticle);
-    }
-
-    /**
-     * 公開済み記事を取得（ページネーション）
-     */
-    public Page<ArticleResponse> getPublishedArticles(Pageable pageable) {
-        log.debug("Fetching published articles - page: {}, size: {}", 
-                 pageable.getPageNumber(), pageable.getPageSize());
+    public UserResponse create(UserCreateRequest request) {
+        log.info("ユーザー作成を開始: email={}", request.getEmail());
         
-        Page<Article> articles = articleRepository.findByPublishedTrue(pageable);
-        return articles.map(articleMapper::toResponse);
-    }
-
-    /**
-     * 記事詳細を取得
-     */
-    public ArticleResponse getArticleById(Long id) {
-        log.debug("Fetching article with ID: {}", id);
-        
-        Article article = articleRepository.findByIdWithDetails(id);
-        if (article == null) {
-            throw new ResourceNotFoundException("記事", id);
+        try {
+            User user = userMapper.toEntity(request);
+            User saved = userRepository.save(user);
+            
+            log.info("ユーザーを作成しました: id={}, name={}", saved.getId(), saved.getName());
+            return userMapper.toResponse(saved);
+            
+        } catch (Exception e) {
+            log.error("ユーザー作成に失敗しました: email={}", request.getEmail(), e);
+            throw e;
         }
+    }
+    
+    @Transactional
+    public void delete(Long id) {
+        log.info("ユーザー削除を開始: id={}", id);
         
-        return articleMapper.toResponse(article);
-    }
-
-    /**
-     * 記事を更新
-     */
-    @Transactional
-    public ArticleResponse updateArticle(Long id, ArticleCreateRequest request) {
-        log.info("Updating article with ID: {}", id);
-
-        Article article = articleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("記事", id));
-
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("カテゴリ", request.getCategoryId()));
-
-        article.setTitle(request.getTitle());
-        article.setContent(request.getContent());
-        article.setPublished(request.getPublished());
-        article.setCategory(category);
-
-        Article updatedArticle = articleRepository.save(article);
-        log.info("Article updated successfully with ID: {}", updatedArticle.getId());
-
-        return articleMapper.toResponse(updatedArticle);
-    }
-
-    /**
-     * 記事を削除
-     */
-    @Transactional
-    public void deleteArticle(Long id) {
-        log.info("Deleting article with ID: {}", id);
-
-        if (!articleRepository.existsById(id)) {
-            throw new ResourceNotFoundException("記事", id);
-        }
-
-        articleRepository.deleteById(id);
-        log.info("Article deleted successfully with ID: {}", id);
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        
+        userRepository.delete(user);
+        log.info("ユーザーを削除しました: id={}, name={}", id, user.getName());
     }
 }
 ```
 
----
-
-## 🚀 演習5: Controller作成
-
-### 5-1. ArticleController
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/ArticleController.java`
+### 2. SLF4Jを直接使う
 
 ```java
-package com.example.hellospringboot.controller;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.example.hellospringboot.dto.request.ArticleCreateRequest;
-import com.example.hellospringboot.dto.response.ArticleResponse;
-import com.example.hellospringboot.service.ArticleService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-@RestController
-@RequestMapping("/api/articles")
-@RequiredArgsConstructor
-public class ArticleController {
-
-    private final ArticleService articleService;
-
-    /**
-     * 記事作成
-     * POST /api/articles
-     */
-    @PostMapping
-    public ResponseEntity<ArticleResponse> createArticle(
-            @RequestParam Long authorId,
-            @Valid @RequestBody ArticleCreateRequest request) {
-        ArticleResponse response = articleService.createArticle(authorId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    /**
-     * 公開済み記事一覧取得
-     * GET /api/articles
-     */
-    @GetMapping
-    public ResponseEntity<Page<ArticleResponse>> getPublishedArticles(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "createdAt,desc") String[] sort) {
-        
-        Pageable pageable = PageRequest.of(page, size, 
-            Sort.by(Sort.Direction.fromString(sort[1]), sort[0]));
-        
-        Page<ArticleResponse> articles = articleService.getPublishedArticles(pageable);
-        return ResponseEntity.ok(articles);
-    }
-
-    /**
-     * 記事詳細取得
-     * GET /api/articles/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<ArticleResponse> getArticleById(@PathVariable Long id) {
-        ArticleResponse response = articleService.getArticleById(id);
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 記事更新
-     * PUT /api/articles/{id}
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<ArticleResponse> updateArticle(
-            @PathVariable Long id,
-            @Valid @RequestBody ArticleCreateRequest request) {
-        ArticleResponse response = articleService.updateArticle(id, request);
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 記事削除
-     * DELETE /api/articles/{id}
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteArticle(@PathVariable Long id) {
-        articleService.deleteArticle(id);
-        return ResponseEntity.noContent().build();
+@Service
+public class UserService {
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
+    
+    public void someMethod() {
+        log.info("処理を開始します");
     }
 }
 ```
 
----
+## 🎨 ログ出力のベストプラクティス
+
+### 1. プレースホルダーを使う（パフォーマンス向上）
+
+```java
+// ❌ 非効率（文字列連結が毎回実行される）
+log.debug("User: " + user.getName() + ", Age: " + user.getAge());
+
+// ✅ 推奨（DEBUGレベルが無効なら文字列連結されない）
+log.debug("User: {}, Age: {}", user.getName(), user.getAge());
+```
+
+### 2. 例外のログ出力
+
+```java
+try {
+    userRepository.save(user);
+} catch (Exception e) {
+    // ✅ スタックトレースを含める
+    log.error("ユーザー保存に失敗しました: userId={}", user.getId(), e);
+    throw e;
+}
+```
+
+### 3. 個人情報の保護
+
+```java
+// ❌ パスワードをログに出力
+log.info("User created: {}", user);  // user.toString()にパスワード含む
+
+// ✅ 必要な情報のみ
+log.info("User created: id={}, email={}", user.getId(), user.getEmail());
+```
+
+### 4. 条件付きログ
+
+```java
+// ❌ 重い処理が毎回実行される
+log.debug("Result: " + expensiveOperation());
+
+// ✅ DEBUGレベルが有効な場合のみ実行
+if (log.isDebugEnabled()) {
+    log.debug("Result: {}", expensiveOperation());
+}
+```
+
+## ⚙️ application.yml でのログ設定
+
+### 基本設定
+
+```yaml
+# application.yml
+logging:
+  level:
+    root: INFO                                    # デフォルト
+    com.example.demo: DEBUG                       # 自分のパッケージはDEBUG
+    com.example.demo.controller: INFO             # Controller層はINFO
+    com.example.demo.repository: DEBUG            # Repository層はDEBUG
+    org.springframework.web: DEBUG                # Spring WebのDEBUG情報
+    org.hibernate.SQL: DEBUG                      # SQL出力
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # バインド変数の値
+
+  # ログファイル出力
+  file:
+    name: logs/application.log                    # ログファイル名
+    max-size: 10MB                                # ファイルサイズ上限
+    max-history: 30                               # 保持日数
+
+  # コンソール出力のパターン
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+```
+
+### 環境別設定
+
+```yaml
+# application-dev.yml（開発環境）
+logging:
+  level:
+    com.example.demo: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# application-prod.yml（本番環境）
+logging:
+  level:
+    com.example.demo: INFO
+    org.hibernate.SQL: WARN
+  file:
+    name: /var/log/myapp/application.log
+```
+
+## 📄 logback-spring.xml でのカスタマイズ
+
+より詳細な設定が必要な場合は、`src/main/resources/logback-spring.xml`を作成します。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- コンソール出力 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ファイル出力（全レベル） -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/application.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 日次でローテーション -->
+            <fileNamePattern>logs/application-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 30日間保持 -->
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <!-- エラーログのみ別ファイル -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/error-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 開発環境のみ適用 -->
+    <springProfile name="dev">
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- 本番環境 -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- パッケージ別のログレベル -->
+    <logger name="com.example.demo" level="DEBUG"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+</configuration>
+```
+
+## 🔍 実践例: リクエスト/レスポンスのロギング
+
+### 1. Interceptorでリクエストログ
+
+```java
+package com.example.demo.interceptor;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+@Component
+@Slf4j
+public class LoggingInterceptor implements HandlerInterceptor {
+    
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        log.info("==> {} {}", request.getMethod(), request.getRequestURI());
+        log.debug("Query String: {}", request.getQueryString());
+        return true;
+    }
+    
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        log.info("<== {} {} - Status: {}", 
+            request.getMethod(), 
+            request.getRequestURI(), 
+            response.getStatus());
+        
+        if (ex != null) {
+            log.error("リクエスト処理中にエラーが発生しました", ex);
+        }
+    }
+}
+```
+
+### 2. Interceptorの登録
+
+```java
+package com.example.demo.config;
+
+import com.example.demo.interceptor.LoggingInterceptor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+@RequiredArgsConstructor
+public class WebConfig implements WebMvcConfigurer {
+    
+    private final LoggingInterceptor loggingInterceptor;
+    
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(loggingInterceptor)
+            .addPathPatterns("/api/**");  // /api/配下のみ
+    }
+}
+```
+
+### 3. 実行時間の計測
+
+```java
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    
+    public List<UserResponse> findAll() {
+        long startTime = System.currentTimeMillis();
+        
+        List<User> users = userRepository.findAll();
+        List<UserResponse> responses = users.stream()
+            .map(userMapper::toResponse)
+            .toList();
+        
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        log.info("全ユーザー取得完了: {}件, 処理時間: {}ms", responses.size(), elapsedTime);
+        
+        return responses;
+    }
+}
+```
+
+### 4. AOPでメソッド実行ログ
+
+```java
+package com.example.demo.aspect;
+
+import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+@Slf4j
+public class LoggingAspect {
+    
+    @Around("execution(* com.example.demo.service.*.*(..))")
+    public Object logExecutionTime(ProceedingJoinPoint joinPoint) throws Throwable {
+        long start = System.currentTimeMillis();
+        String methodName = joinPoint.getSignature().toShortString();
+        
+        log.debug(">>> {}", methodName);
+        
+        try {
+            Object result = joinPoint.proceed();
+            long elapsedTime = System.currentTimeMillis() - start;
+            log.debug("<<< {} - {}ms", methodName, elapsedTime);
+            return result;
+        } catch (Exception e) {
+            log.error("!!! {} - エラー発生", methodName, e);
+            throw e;
+        }
+    }
+}
+```
+
+**依存関係**:
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+```
+
+## 📊 ログ出力例
+
+### コンソール出力
+
+```
+2024-01-15 10:30:00.123 [http-nio-8080-exec-1] INFO  c.e.d.controller.UserController - ==> GET /api/users
+2024-01-15 10:30:00.125 [http-nio-8080-exec-1] DEBUG c.e.d.service.UserService - >>> UserService.findAll()
+2024-01-15 10:30:00.150 [http-nio-8080-exec-1] DEBUG o.h.SQL - select user0_.id as id1_0_, user0_.name as name2_0_ from users user0_
+2024-01-15 10:30:00.180 [http-nio-8080-exec-1] INFO  c.e.d.service.UserService - 全ユーザー取得完了: 10件, 処理時間: 55ms
+2024-01-15 10:30:00.181 [http-nio-8080-exec-1] DEBUG c.e.d.service.UserService - <<< UserService.findAll() - 56ms
+2024-01-15 10:30:00.185 [http-nio-8080-exec-1] INFO  c.e.d.controller.UserController - <== GET /api/users - Status: 200
+```
 
 ## ✅ 動作確認
 
-### カテゴリ作成
+### 1. アプリケーション起動
+
 ```bash
-curl -X POST http://localhost:8080/api/categories \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Technology", "description": "Tech articles"}'
+./mvnw spring-boot:run
 ```
 
-### ユーザー作成
+### 2. APIリクエスト
+
 ```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{"name": "John Doe", "email": "john@example.com", "age": 30}'
+curl http://localhost:8080/api/users
 ```
 
-### 記事作成
+### 3. ログファイルの確認
+
 ```bash
-curl -X POST "http://localhost:8080/api/articles?authorId=1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Introduction to Spring Boot",
-    "content": "Spring Boot makes it easy...",
-    "categoryId": 1,
-    "published": true
-  }'
+# 全ログ
+tail -f logs/application.log
+
+# エラーログのみ
+tail -f logs/error.log
+
+# 特定の文字列を含むログ
+grep "UserService" logs/application.log
 ```
 
-### 記事一覧取得
-```bash
-curl "http://localhost:8080/api/articles?page=0&size=10"
+## 🚀 発展課題
+
+### 課題1: 構造化ログ（JSON形式）
+
+ログ解析ツール（ELK Stack、Splunkなど）で処理しやすいJSON形式のログ。
+
+```xml
+<dependency>
+    <groupId>ch.qos.logback.contrib</groupId>
+    <artifactId>logback-json-classic</artifactId>
+    <version>0.1.5</version>
+</dependency>
+<dependency>
+    <groupId>ch.qos.logback.contrib</groupId>
+    <artifactId>logback-jackson</artifactId>
+    <version>0.1.5</version>
+</dependency>
+```
+
+```xml
+<!-- logback-spring.xml -->
+<appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/application.json</file>
+    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+        <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+            <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSS</timestampFormat>
+        </layout>
+    </encoder>
+</appender>
+```
+
+### 課題2: MDC（Mapped Diagnostic Context）でリクエストIDを追加
+
+```java
+@Component
+@Slf4j
+public class LoggingInterceptor implements HandlerInterceptor {
+    
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put("requestId", requestId);
+        log.info("Request started");
+        return true;
+    }
+    
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        log.info("Request completed");
+        MDC.clear();
+    }
+}
+```
+
+```xml
+<!-- logback-spring.xml -->
+<pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n</pattern>
+```
+
+### 課題3: Slack通知
+
+エラー発生時にSlackに通知。
+
+```java
+@RestControllerAdvice
+@RequiredArgsConstructor
+@Slf4j
+public class GlobalExceptionHandler {
+    
+    private final SlackNotifier slackNotifier;
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleException(Exception ex) {
+        log.error("予期しないエラーが発生しました", ex);
+        
+        // Slackに通知
+        slackNotifier.sendError(
+            "予期しないエラー",
+            ex.getMessage(),
+            ExceptionUtils.getStackTrace(ex)
+        );
+        
+        return ResponseEntity.status(500).body(new ErrorResponse("Internal Server Error"));
+    }
+}
 ```
 
 ---
 
-## 📚 Phase 3で学んだことの統合
+## 📚 このステップで学んだこと
 
-この演習では以下をすべて使いました：
+- ✅ ログレベル（TRACE、DEBUG、INFO、WARN、ERROR）の使い分け
+- ✅ `@Slf4j`を使った簡潔なログ実装
+- ✅ プレースホルダー`{}`によるパフォーマンス向上
+- ✅ 例外のスタックトレースの記録方法
+- ✅ `application.yml`でのログ設定（レベル、ファイル出力）
+- ✅ `logback-spring.xml`での詳細なカスタマイズ
+- ✅ 環境別のログ設定（開発/本番）
+- ✅ Interceptorを使ったリクエスト/レスポンスログ
+- ✅ AOPによるメソッド実行時間の計測
+- ✅ MDC（Mapped Diagnostic Context）でリクエストIDの追加
 
-- ✅ **レイヤードアーキテクチャ**: Controller / Service / Repository
-- ✅ **DTOパターン**: Request/Response DTO
-- ✅ **バリデーション**: `@Valid`, `@NotBlank`
-- ✅ **例外ハンドリング**: ResourceNotFoundException
-- ✅ **ロギング**: `@Slf4j`, log.info/debug
-- ✅ **ベストプラクティス**: コンストラクタインジェクション、トランザクション
-- ✅ **パフォーマンス**: JOIN FETCH、ページネーション
+**ロギングのベストプラクティス**:
+- 個人情報（パスワード等）をログに出力しない
+- プレースホルダーを使って効率的にログ出力
+- 環境に応じてログレベルを調整
+- ファイルローテーションで容量を管理
+- 本番環境では構造化ログ（JSON）を検討
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Gitへのコミットとレビュー依頼
 
-Phase 4完了です！
+Phase 4の学習が完了しました！進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
+
+# コミット
 git commit -m "Step 20: ロギング完了 - Phase 4完了"
+
+# リモートにプッシュ
 git push origin main
 ```
 
----
-
-## ➡️ 次のPhase
-
-Phase 4お疲れさまでした！次は**Phase 5: Thymeleafでサーバーサイドレンダリング**に進みます。
-
-[Step 21: Thymeleafの基礎](../phase5/STEP_21.md)で、サーバーサイドレンダリングの基本を学びます。
-
-Phase 5では以下を学びます：
-- Thymeleafテンプレートエンジンの基礎
-- フォーム送信とバリデーション
-- レイアウトとフラグメント
-- Thymeleaf + REST API連携
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
-お疲れさまでした！ 🎉
+## ➡️ 次のステップ
 
-Phase 4では、実務で必須のアーキテクチャとベストプラクティスを学びました。
-これらの知識は、どんなプロジェクトでも活用できる基礎となります！
+おめでとうございます！🎉 **Phase 4: アーキテクチャとベストプラクティス**が完了しました！
+
+レビューが完了したら、**[Phase 5: Thymeleafでサーバーサイドレンダリング](../phase5/STEP_21.md)** へ進みましょう！
+
+Thymeleafテンプレートエンジンを使って、サーバーサイドでHTMLをレンダリングする方法を学びます。

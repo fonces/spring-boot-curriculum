@@ -1,11 +1,12 @@
-# Step 19: ベストプラクティスとコーディング規約
+# Step 19: DTOとEntityの分離
 
 ## 🎯 このステップの目標
 
-- Spring Bootのベストプラクティスを理解する
-- クリーンコードの原則を学ぶ
-- コーディング規約を適用する
-- リファクタリング手法を実践する
+- DTO（Data Transfer Object）の役割を理解する
+- リクエストDTOとレスポンスDTOを分離できる
+- MapperクラスでEntity⇔DTO変換を実装できる
+- MapStructを使った自動マッピングができる
+- セキュアなAPI設計を実践できる
 
 **所要時間**: 約1時間30分
 
@@ -13,572 +14,727 @@
 
 ## 📋 事前準備
 
-- Phase 4のStep 15-18が完了していること
-- 基本的なSpring Bootアプリケーションが動作していること
+このステップを始める前に、以下を確認してください：
+
+- Step 18（バリデーション）が完了していること
+- Entityクラスを理解していること
+- パスワードハッシュ化などセキュリティの基本を理解していること
 
 ---
 
-## 💡 クリーンコードの原則
+## 📝 概要
+これまでのステップでは、Entityを直接Controllerで受け取ったり返したりしていました。しかし実務では、**DTO（Data Transfer Object）**を使ってレイヤー間でデータを受け渡すことが推奨されます。
 
-### SOLID原則
+## ❌ DTOを使わない問題点
 
-| 原則 | 説明 | Spring Bootでの適用 |
-|------|------|-------------------|
-| **S**ingle Responsibility | 単一責任の原則 | 1クラス1責任 |
-| **O**pen/Closed | 開放/閉鎖の原則 | インターフェースで拡張 |
-| **L**iskov Substitution | リスコフの置換原則 | 継承の適切な使用 |
-| **I**nterface Segregation | インターフェース分離の原則 | 小さなインターフェース |
-| **D**ependency Inversion | 依存性逆転の原則 | DIコンテナの活用 |
+### 1. セキュリティリスク
 
----
-
-## 🚀 ステップ1: レイヤー分離のベストプラクティス
-
-### 1-1. Controller層の責務
-
-**✅ 良い例**:
 ```java
+@Entity
+@Table(name = "users")
+@Data
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private String email;
+    private String password;  // ⚠️ パスワードがレスポンスに含まれる！
+    private String role;      // ⚠️ 内部的な役割情報も漏洩
+    private LocalDateTime createdAt;
+}
+```
+
+```java
+@GetMapping("/{id}")
+public User getUser(@PathVariable Long id) {
+    return userService.findById(id);  // ❌ パスワードなど全て返ってしまう
+}
+```
+
+**レスポンス**:
+```json
+{
+  "id": 1,
+  "name": "山田太郎",
+  "email": "yamada@example.com",
+  "password": "$2a$10$xyz...",  // ⚠️ ハッシュ化されていても返すべきでない
+  "role": "ADMIN",
+  "createdAt": "2024-01-01T10:00:00"
+}
+```
+
+### 2. 柔軟性の欠如
+
+- クライアントが必要な情報だけを返せない
+- 複数テーブルの情報を組み合わせたレスポンスが難しい
+- APIバージョン管理が困難
+
+## ✅ DTO を使った設計
+
+### プロジェクト構造
+
+```
+src/main/java/com/example/demo/
+├── controller/
+│   └── UserController.java
+├── dto/
+│   ├── request/
+│   │   ├── UserCreateRequest.java
+│   │   └── UserUpdateRequest.java
+│   └── response/
+│       ├── UserResponse.java
+│       └── UserDetailResponse.java
+├── entity/
+│   └── User.java
+├── mapper/
+│   └── UserMapper.java
+├── service/
+│   └── UserService.java
+└── repository/
+    └── UserRepository.java
+```
+
+## 📦 実装例
+
+### 1. Entity（内部データ）
+
+```java
+package com.example.demo.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
+@Data
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, unique = true)
+    private String email;
+    
+    @Column(nullable = false)
+    private String password;  // ハッシュ化されたパスワード
+    
+    @Column(nullable = false, length = 20)
+    private String role;  // "USER", "ADMIN"
+    
+    private Integer age;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+```
+
+### 2. リクエストDTO
+
+```java
+package com.example.demo.dto.request;
+
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+/**
+ * ユーザー作成リクエスト
+ */
+@Data
+public class UserCreateRequest {
+    @NotBlank(message = "名前は必須です")
+    @Size(min = 2, max = 100, message = "名前は2文字以上100文字以下で入力してください")
+    private String name;
+    
+    @NotBlank(message = "メールアドレスは必須です")
+    @Email(message = "有効なメールアドレスを入力してください")
+    private String email;
+    
+    @NotBlank(message = "パスワードは必須です")
+    @Size(min = 8, message = "パスワードは8文字以上で入力してください")
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$", 
+             message = "パスワードは大文字、小文字、数字を含む必要があります")
+    private String password;
+    
+    @NotNull(message = "年齢は必須です")
+    @Min(value = 18, message = "18歳以上である必要があります")
+    @Max(value = 120, message = "年齢は120歳以下で入力してください")
+    private Integer age;
+}
+```
+
+```java
+package com.example.demo.dto.request;
+
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+/**
+ * ユーザー更新リクエスト
+ */
+@Data
+public class UserUpdateRequest {
+    @NotBlank(message = "名前は必須です")
+    @Size(min = 2, max = 100)
+    private String name;
+    
+    @NotBlank(message = "メールアドレスは必須です")
+    @Email(message = "有効なメールアドレスを入力してください")
+    private String email;
+    
+    @Min(value = 18, message = "18歳以上である必要があります")
+    @Max(value = 120, message = "年齢は120歳以下で入力してください")
+    private Integer age;
+}
+```
+
+### 3. レスポンスDTO
+
+```java
+package com.example.demo.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * ユーザー基本情報レスポンス（一覧用）
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserResponse {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+    // パスワード、役割、タイムスタンプは含まない
+}
+```
+
+```java
+package com.example.demo.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import java.time.LocalDateTime;
+
+/**
+ * ユーザー詳細レスポンス（個別取得用）
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserDetailResponse {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+    private String role;  // 詳細情報には含める
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    // パスワードは含まない
+}
+```
+
+### 4. Mapper（変換ロジック）
+
+#### 手動マッピング
+
+```java
+package com.example.demo.mapper;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.request.UserUpdateRequest;
+import com.example.demo.dto.response.UserDetailResponse;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.entity.User;
+import org.springframework.stereotype.Component;
+
+@Component
+public class UserMapper {
+    
+    /**
+     * Entity → 基本レスポンスDTO
+     */
+    public UserResponse toResponse(User user) {
+        return UserResponse.builder()
+            .id(user.getId())
+            .name(user.getName())
+            .email(user.getEmail())
+            .age(user.getAge())
+            .build();
+    }
+    
+    /**
+     * Entity → 詳細レスポンスDTO
+     */
+    public UserDetailResponse toDetailResponse(User user) {
+        return UserDetailResponse.builder()
+            .id(user.getId())
+            .name(user.getName())
+            .email(user.getEmail())
+            .age(user.getAge())
+            .role(user.getRole())
+            .createdAt(user.getCreatedAt())
+            .updatedAt(user.getUpdatedAt())
+            .build();
+    }
+    
+    /**
+     * 作成リクエストDTO → Entity
+     */
+    public User toEntity(UserCreateRequest request) {
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPassword(request.getPassword());  // Serviceでハッシュ化される
+        user.setAge(request.getAge());
+        user.setRole("USER");  // デフォルトは一般ユーザー
+        return user;
+    }
+    
+    /**
+     * 更新リクエストDTO → 既存Entityに反映
+     */
+    public void updateEntity(User user, UserUpdateRequest request) {
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setAge(request.getAge());
+    }
+}
+```
+
+#### MapStruct（自動マッピング）
+
+**依存関係追加**:
+```xml
+<dependency>
+    <groupId>org.mapstruct</groupId>
+    <artifactId>mapstruct</artifactId>
+    <version>1.5.5.Final</version>
+</dependency>
+<dependency>
+    <groupId>org.mapstruct</groupId>
+    <artifactId>mapstruct-processor</artifactId>
+    <version>1.5.5.Final</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+```java
+package com.example.demo.mapper;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.entity.User;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+
+@Mapper(componentModel = "spring")
+public interface UserMapperMapStruct {
+    
+    UserResponse toResponse(User user);
+    
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "role", constant = "USER")
+    User toEntity(UserCreateRequest request);
+}
+```
+
+### 5. Service層（DTO/Entity変換含む）
+
+```java
+package com.example.demo.service;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.request.UserUpdateRequest;
+import com.example.demo.dto.response.UserDetailResponse;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.entity.User;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.mapper.UserMapper;
+import com.example.demo.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class UserService {
+    
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;  // 後のステップで実装
+    
+    /**
+     * 全ユーザー取得（基本情報のみ）
+     */
+    public List<UserResponse> findAll() {
+        return userRepository.findAll().stream()
+            .map(userMapper::toResponse)
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * ID指定でユーザー取得（詳細情報）
+     */
+    public UserDetailResponse findById(Long id) {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        return userMapper.toDetailResponse(user);
+    }
+    
+    /**
+     * ユーザー作成
+     */
+    @Transactional
+    public UserResponse create(UserCreateRequest request) {
+        // DTOをEntityに変換
+        User user = userMapper.toEntity(request);
+        
+        // パスワードのハッシュ化
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        
+        // 保存
+        User saved = userRepository.save(user);
+        
+        // EntityをDTOに変換して返す
+        return userMapper.toResponse(saved);
+    }
+    
+    /**
+     * ユーザー更新
+     */
+    @Transactional
+    public UserResponse update(Long id, UserUpdateRequest request) {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        
+        // 更新内容を既存Entityに反映
+        userMapper.updateEntity(user, request);
+        
+        User updated = userRepository.save(user);
+        return userMapper.toResponse(updated);
+    }
+    
+    /**
+     * ユーザー削除
+     */
+    @Transactional
+    public void delete(Long id) {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        userRepository.delete(user);
+    }
+}
+```
+
+### 6. Controller（すっきり）
+
+```java
+package com.example.demo.controller;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.request.UserUpdateRequest;
+import com.example.demo.dto.response.UserDetailResponse;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.service.UserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
-
+    
     private final UserService userService;
-
+    
+    /**
+     * 全ユーザー取得
+     */
+    @GetMapping
+    public List<UserResponse> getAll() {
+        return userService.findAll();
+    }
+    
+    /**
+     * ID指定でユーザー取得
+     */
+    @GetMapping("/{id}")
+    public UserDetailResponse getById(@PathVariable Long id) {
+        return userService.findById(id);
+    }
+    
+    /**
+     * ユーザー作成
+     */
     @PostMapping
-    public ResponseEntity<UserResponse> createUser(
-            @Valid @RequestBody UserCreateRequest request) {
-        // Controller: HTTPリクエスト/レスポンスのみ
-        UserResponse response = userService.createUser(request);
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request) {
+        UserResponse response = userService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
-}
-```
-
-**❌ 悪い例**:
-```java
-@RestController
-public class UserController {
-
-    @Autowired  // ❌ @Autowiredではなく@RequiredArgsConstructor推奨
-    private UserRepository userRepository;
-
-    @PostMapping("/users")  // ❌ @RequestMappingがない
-    public User createUser(@RequestBody User user) {  // ❌ DTOを使うべき
-        // ❌ Controllerでビジネスロジック
-        if (userRepository.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Duplicate email");
-        }
-        return userRepository.save(user);  // ❌ エンティティを直接返す
-    }
-}
-```
-
-### 1-2. Service層の責務
-
-**✅ 良い例**:
-```java
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-@Slf4j
-public class UserService {
-
-    private final UserRepository userRepository;
-    private final UserMapper userMapper;
-
-    @Transactional
-    public UserResponse createUser(UserCreateRequest request) {
-        log.info("Creating user: {}", request.getEmail());
-        
-        // ビジネスロジック
-        validateUniqueEmail(request.getEmail());
-        
-        User user = userMapper.toEntity(request);
-        User savedUser = userRepository.save(user);
-        
-        return userMapper.toResponse(savedUser);
-    }
-
-    private void validateUniqueEmail(String email) {
-        if (userRepository.existsByEmail(email)) {
-            throw new DuplicateResourceException("ユーザー", "メールアドレス", email);
-        }
-    }
-}
-```
-
-**❌ 悪い例**:
-```java
-@Service
-public class UserService {
-
-    @Autowired  // ❌ フィールドインジェクション
-    private UserRepository userRepository;
-
-    // ❌ @Transactionalがない
-    public User createUser(User user) {  // ❌ DTOを使うべき
-        // ❌ バリデーションなし
-        // ❌ ログなし
-        return userRepository.save(user);
-    }
-}
-```
-
----
-
-## 🚀 ステップ2: 依存性注入のベストプラクティス
-
-### 2-1. コンストラクタインジェクション（推奨）
-
-**✅ 良い例**:
-```java
-@Service
-@RequiredArgsConstructor  // Lombokで自動生成
-public class UserService {
-
-    private final UserRepository userRepository;  // finalで不変
-    private final UserMapper userMapper;
-
-    // コンストラクタは@RequiredArgsConstructorが生成
-}
-```
-
-**または明示的なコンストラクタ**:
-```java
-@Service
-public class UserService {
-
-    private final UserRepository userRepository;
-    private final UserMapper userMapper;
-
-    public UserService(UserRepository userRepository, UserMapper userMapper) {
-        this.userRepository = userRepository;
-        this.userMapper = userMapper;
-    }
-}
-```
-
-### 2-2. フィールドインジェクション（非推奨）
-
-**❌ 避けるべき**:
-```java
-@Service
-public class UserService {
-
-    @Autowired  // ❌ テストしにくい、循環参照に気づきにくい
-    private UserRepository userRepository;
-
-    @Autowired
-    private UserMapper userMapper;
-}
-```
-
-### 2-3. セッターインジェクション（特殊な場合のみ）
-
-```java
-@Service
-public class UserService {
-
-    private UserRepository userRepository;
-
-    @Autowired  // オプショナルな依存性の場合のみ使用
-    public void setUserRepository(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-}
-```
-
----
-
-## 🚀 ステップ3: 例外処理のベストプラクティス
-
-### 3-1. カスタム例外の使用
-
-**✅ 良い例**:
-```java
-public class UserService {
-
-    public UserResponse getUserById(Long id) {
-        return userRepository.findById(id)
-                .map(userMapper::toResponse)
-                .orElseThrow(() -> new UserNotFoundException(id));
-    }
-}
-```
-
-**❌ 悪い例**:
-```java
-public class UserService {
-
-    public User getUserById(Long id) {
-        Optional<User> user = userRepository.findById(id);
-        if (!user.isPresent()) {
-            throw new RuntimeException("User not found");  // ❌ 汎用例外
-        }
-        return user.get();  // ❌ Optionalの.get()は避ける
-    }
-}
-```
-
-### 3-2. 適切なログ出力
-
-**✅ 良い例**:
-```java
-try {
-    processPayment(order);
-} catch (PaymentException ex) {
-    log.error("Payment failed for order {}: {}", order.getId(), ex.getMessage(), ex);
-    throw new OrderProcessingException("決済処理に失敗しました", ex);
-}
-```
-
-**❌ 悪い例**:
-```java
-try {
-    processPayment(order);
-} catch (Exception ex) {  // ❌ 汎用例外をキャッチ
-    ex.printStackTrace();  // ❌ printStackTraceは使わない
-    // ❌ 例外を握りつぶす（再スローしない）
-}
-```
-
----
-
-## 🚀 ステップ4: トランザクション管理のベストプラクティス
-
-### 4-1. @Transactionalの適切な使用
-
-**✅ 良い例**:
-```java
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)  // デフォルトは読み取り専用
-public class OrderService {
-
-    @Transactional  // 書き込み時のみ上書き
-    public OrderResponse createOrder(OrderCreateRequest request) {
-        // トランザクション内で複数の操作
-        Order order = orderMapper.toEntity(request);
-        Order savedOrder = orderRepository.save(order);
-        
-        // 在庫を減らす
-        inventoryService.decreaseStock(request.getProductId(), request.getQuantity());
-        
-        // 通知を送信（別トランザクション）
-        notificationService.sendOrderConfirmation(savedOrder.getId());
-        
-        return orderMapper.toResponse(savedOrder);
-    }
-
-    // 読み取り専用（クラスレベルの設定を使用）
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAll().stream()
-                .map(orderMapper::toResponse)
-                .collect(Collectors.toList());
-    }
-}
-```
-
-### 4-2. トランザクション境界
-
-**❌ 悪い例**:
-```java
-@Service
-public class OrderService {
-
-    @Transactional
-    public void processOrder(Long orderId) {
-        Order order = orderRepository.findById(orderId).orElseThrow();
-        
-        // ❌ 外部API呼び出しをトランザクション内で
-        externalPaymentService.charge(order.getAmount());  // 遅い！
-        
-        order.setStatus("PAID");
-        orderRepository.save(order);
-    }
-}
-```
-
-**✅ 良い例**:
-```java
-@Service
-public class OrderService {
-
-    public void processOrder(Long orderId) {
-        Order order = orderRepository.findById(orderId).orElseThrow();
-        
-        // 外部API呼び出しはトランザクション外で
-        PaymentResult result = externalPaymentService.charge(order.getAmount());
-        
-        // トランザクションは最小限に
-        updateOrderStatus(orderId, result);
-    }
-
-    @Transactional
-    private void updateOrderStatus(Long orderId, PaymentResult result) {
-        Order order = orderRepository.findById(orderId).orElseThrow();
-        order.setStatus(result.isSuccess() ? "PAID" : "FAILED");
-        orderRepository.save(order);
-    }
-}
-```
-
----
-
-## 🚀 ステップ5: DTOとエンティティの使い分け
-
-### 5-1. レイヤー間のデータフロー
-
-```
-Client → Controller → Service → Repository → Database
-  DTO  →    DTO     →  Entity →   Entity   →  Table
-  DTO  ←    DTO     ←  Entity ←   Entity   ←  Table
-```
-
-**✅ 良い例**:
-```java
-@RestController
-public class UserController {
-
-    @PostMapping("/users")
-    public ResponseEntity<UserResponse> createUser(
-            @Valid @RequestBody UserCreateRequest request) {  // DTO
-        UserResponse response = userService.createUser(request);  // DTO
-        return ResponseEntity.ok(response);  // DTO
-    }
-}
-
-@Service
-public class UserService {
-
-    public UserResponse createUser(UserCreateRequest request) {  // DTO
-        User entity = userMapper.toEntity(request);  // DTO → Entity
-        User savedEntity = userRepository.save(entity);  // Entity
-        return userMapper.toResponse(savedEntity);  // Entity → DTO
-    }
-}
-```
-
----
-
-## 🚀 ステップ6: パフォーマンス最適化
-
-### 6-1. N+1問題の回避
-
-**❌ 悪い例**:
-```java
-// 1 + N クエリが発生
-public List<PostResponse> getAllPosts() {
-    List<Post> posts = postRepository.findAll();  // 1クエリ
-    return posts.stream()
-            .map(post -> {
-                post.getUser().getName();  // Nクエリ（投稿ごと）
-                return postMapper.toResponse(post);
-            })
-            .collect(Collectors.toList());
-}
-```
-
-**✅ 良い例**:
-```java
-// 1クエリで取得
-@Repository
-public interface PostRepository extends JpaRepository<Post, Long> {
     
-    @Query("SELECT p FROM Post p JOIN FETCH p.user")
-    List<Post> findAllWithUser();
-}
-
-public List<PostResponse> getAllPosts() {
-    List<Post> posts = postRepository.findAllWithUser();  // 1クエリ
-    return postMapper.toResponseList(posts);
-}
-```
-
-### 6-2. ページネーション
-
-**✅ 良い例**:
-```java
-@Service
-public class UserService {
-
-    public Page<UserResponse> getUsers(Pageable pageable) {
-        Page<User> users = userRepository.findAll(pageable);
-        return users.map(userMapper::toResponse);
+    /**
+     * ユーザー更新
+     */
+    @PutMapping("/{id}")
+    public UserResponse update(
+            @PathVariable Long id,
+            @Valid @RequestBody UserUpdateRequest request) {
+        return userService.update(id, request);
     }
-}
-
-@RestController
-public class UserController {
-
-    @GetMapping("/users")
-    public ResponseEntity<Page<UserResponse>> getUsers(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "id,desc") String[] sort) {
-        
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Order.by(sort[0]).with(Direction.fromString(sort[1]))));
-        Page<UserResponse> users = userService.getUsers(pageable);
-        return ResponseEntity.ok(users);
+    
+    /**
+     * ユーザー削除
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        userService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }
 ```
 
----
+### 7. PasswordEncoderの設定（仮実装）
 
-## 🚀 ステップ7: コーディング規約
-
-### 7-1. 命名規則
-
-| 要素 | 規則 | 例 |
-|------|------|-----|
-| クラス | PascalCase | `UserService`, `OrderRepository` |
-| メソッド | camelCase | `createUser()`, `findById()` |
-| 変数 | camelCase | `userId`, `userName` |
-| 定数 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT`, `DEFAULT_PAGE_SIZE` |
-| パッケージ | lowercase | `com.example.hellospringboot` |
-
-### 7-2. メソッドの長さ
-
-**✅ 良い例**:
 ```java
-public UserResponse createUser(UserCreateRequest request) {
-    validateUniqueEmail(request.getEmail());
-    User user = buildUser(request);
-    User savedUser = saveUser(user);
-    return mapToResponse(savedUser);
-}
+package com.example.demo.config;
 
-private void validateUniqueEmail(String email) {
-    if (userRepository.existsByEmail(email)) {
-        throw new DuplicateResourceException("ユーザー", "メールアドレス", email);
-    }
-}
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
-private User buildUser(UserCreateRequest request) {
-    return userMapper.toEntity(request);
-}
-
-private User saveUser(User user) {
-    return userRepository.save(user);
-}
-
-private UserResponse mapToResponse(User user) {
-    return userMapper.toResponse(user);
-}
-```
-
-### 7-3. コメント
-
-**✅ 良い例**:
-```java
-/**
- * ユーザーを作成します。
- * 
- * @param request ユーザー作成リクエスト
- * @return 作成されたユーザー
- * @throws DuplicateResourceException メールアドレスが既に存在する場合
- */
-public UserResponse createUser(UserCreateRequest request) {
-    // ...
-}
-```
-
-**❌ 悪い例**:
-```java
-// ユーザーを作成する  ← コードと同じ内容
-public UserResponse createUser(UserCreateRequest request) {
-    // iを1から10まで繰り返す  ← 自明なコメント
-    for (int i = 1; i <= 10; i++) {
-        // ...
+@Configuration
+public class SecurityConfig {
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }
 ```
 
----
+**依存関係**:
+```xml
+<dependency>
+    <groupId>org.springframework.security</groupId>
+    <artifactId>spring-security-crypto</artifactId>
+</dependency>
+```
 
-## 🎨 チャレンジ課題
+## 🎯 DTOのメリット
 
-### チャレンジ 1: リファクタリング
+| メリット | 説明 |
+|---|---|
+| **セキュリティ** | パスワードや内部情報をレスポンスから除外 |
+| **柔軟性** | クライアントが必要な情報だけを返せる |
+| **バージョン管理** | APIのバージョンごとに異なるDTOを使える |
+| **バリデーション分離** | Entityとバリデーションルールを分離 |
+| **ドキュメント性** | APIの入出力が明確になる |
+| **テスト容易性** | レイヤー間の依存が減る |
 
-以下のコードをリファクタリングしてください：
+## ✅ 動作確認
+
+### 1. ユーザー作成
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "山田太郎",
+    "email": "yamada@example.com",
+    "password": "SecurePass123",
+    "age": 25
+  }'
+```
+
+**レスポンス（パスワードなし）**:
+```json
+{
+  "id": 1,
+  "name": "山田太郎",
+  "email": "yamada@example.com",
+  "age": 25
+}
+```
+
+### 2. ユーザー一覧
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+**レスポンス（基本情報のみ）**:
+```json
+[
+  {
+    "id": 1,
+    "name": "山田太郎",
+    "email": "yamada@example.com",
+    "age": 25
+  }
+]
+```
+
+### 3. ユーザー詳細
+
+```bash
+curl http://localhost:8080/api/users/1
+```
+
+**レスポンス（詳細情報だがパスワードなし）**:
+```json
+{
+  "id": 1,
+  "name": "山田太郎",
+  "email": "yamada@example.com",
+  "age": 25,
+  "role": "USER",
+  "createdAt": "2024-01-15T10:00:00",
+  "updatedAt": "2024-01-15T10:00:00"
+}
+```
+
+## 🚀 発展課題
+
+### 課題1: 複数テーブルの結合レスポンス
+
+ユーザーと投稿を結合したレスポンス。
 
 ```java
-@RestController
-public class UserController {
+@Data
+@Builder
+public class UserWithPostsResponse {
+    private Long id;
+    private String name;
+    private String email;
+    private List<PostSummary> posts;
+    
+    @Data
+    @Builder
+    public static class PostSummary {
+        private Long id;
+        private String title;
+        private LocalDateTime createdAt;
+    }
+}
+```
 
-    @Autowired
-    private UserRepository userRepository;
+### 課題2: ページネーション対応のレスポンス
 
-    @PostMapping("/user")
-    public User create(@RequestBody User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            throw new RuntimeException("Email exists");
+```java
+@Data
+@AllArgsConstructor
+public class PageResponse<T> {
+    private List<T> content;
+    private int page;
+    private int size;
+    private long totalElements;
+    private int totalPages;
+    private boolean last;
+}
+```
+
+### 課題3: HATEOAS対応
+
+```java
+@Data
+public class UserResponseWithLinks extends UserResponse {
+    private Map<String, String> links;
+    
+    public void addLink(String rel, String href) {
+        if (links == null) {
+            links = new HashMap<>();
         }
-        return userRepository.save(user);
+        links.put(rel, href);
     }
 }
+
+// 使用例
+UserResponseWithLinks response = new UserResponseWithLinks();
+response.addLink("self", "/api/users/1");
+response.addLink("posts", "/api/users/1/posts");
 ```
-
-### チャレンジ 2: パフォーマンス改善
-
-N+1問題が発生しているコードを見つけて修正してください。
-
-### チャレンジ 3: テストコード
-
-ユニットテストとintegrationテストを追加してください。
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ SOLID原則
-- ✅ レイヤー分離
-- ✅ 依存性注入のベストプラクティス
-- ✅ 例外処理のパターン
-- ✅ トランザクション管理
-- ✅ パフォーマンス最適化
-- ✅ コーディング規約
+- ✅ DTO（Data Transfer Object）の役割と重要性
+- ✅ リクエストDTO、レスポンスDTO、Entityの分離
+- ✅ セキュリティリスクの軽減（パスワード漏洩防止）
+- ✅ Mapperクラスによる手動マッピング
+- ✅ MapStructによる自動マッピング
+- ✅ 用途別のレスポンスDTO（基本情報/詳細情報）
+- ✅ PasswordEncoderの設定と使用
+- ✅ レイヤー間のデータ変換パターン
+
+**DTOを使うメリット**:
+- セキュリティ向上（不要な情報を返さない）
+- 柔軟なAPI設計（必要な情報だけ返せる）
+- バージョン管理の容易さ
+- バリデーションルールの分離
 
 ---
 
-## 💡 補足: チェックリスト
+## 🔄 Gitへのコミットとレビュー依頼
 
-### コードレビュー時のチェックリスト
-
-- [ ] コンストラクタインジェクションを使用している
-- [ ] DTOとエンティティを分離している
-- [ ] カスタム例外を使用している
-- [ ] @Transactionalを適切に使用している
-- [ ] ログを適切に出力している
-- [ ] N+1問題が発生していない
-- [ ] メソッドは単一責任を持っている
-- [ ] マジックナンバーを使用していない
-- [ ] テストコードがある
-
----
-
-## 🔄 Gitへのコミット
+進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
+
+# コミット
 git commit -m "Step 19: DTOとEntityの分離完了"
+
+# リモートにプッシュ
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 20: ロギング](STEP_20.md)へ進みましょう！
+レビューが完了したら、[Step 20: ロギング](STEP_20.md)へ進みましょう！
 
-効果的なログ出力と監視の基礎を学びます。
-
----
-
-お疲れさまでした！ 🎉
-
-DTOとEntityの分離は、保守性・拡張性の高い
-コードを書けるようになります。最初は大変ですが、
-習慣化すれば自然と良いコードが書けるようになります！
+適切なログ出力を実装し、トラブルシューティングとアプリケーションの監視を可能にします。

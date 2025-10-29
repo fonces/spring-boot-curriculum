@@ -1,412 +1,313 @@
-# Step 17: 例外ハンドリングとカスタム例外
+# Step 17: 例外ハンドリング
 
 ## 🎯 このステップの目標
 
-- カスタム例外を作成する
-- 例外の階層構造を理解する
-- `@RestControllerAdvice`で統一的な例外ハンドリングを実装する
-- HTTPステータスコードを適切に使い分ける
+- カスタム例外クラスを作成できる
+- `@RestControllerAdvice`でグローバルエラーハンドリングを実装できる
+- 適切なHTTPステータスコードを使い分けられる
+- 統一されたエラーレスポンス形式を返せる
+- 環境別のエラーメッセージ出し分けができる
 
-**所要時間**: 約1時間30分
+**所要時間**: 約1時間
 
 ---
 
 ## 📋 事前準備
 
-- Step 14のバリデーションが理解できていること
-- GlobalExceptionHandlerが実装されていること
+このステップを始める前に、以下を確認してください：
 
-**Step 14をまだ完了していない場合**: [Step 14: バリデーション](STEP_14.md)を先に進めてください。
+- Step 16（DI/IoCコンテナ）が完了していること
+- Service層でビジネスロジックを実装していること
+- HTTPステータスコードの基本を理解していること
 
 ---
 
-## 💡 例外ハンドリングとは？
+## 📝 概要
+アプリケーション開発において、エラーハンドリングは避けて通れません。Spring Bootでは`@ControllerAdvice`を使って、アプリケーション全体で統一されたエラー処理を実装できます。
 
-### 例外ハンドリングの必要性
+## ❌ 良くない例
 
-**例外ハンドリングなしの場合**:
 ```java
-@GetMapping("/{id}")
-public ResponseEntity<User> getUser(@PathVariable Long id) {
-    User user = userRepository.findById(id).get();  // NoSuchElementException!
-    return ResponseEntity.ok(user);
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getUser(@PathVariable Long id) {
+        try {
+            User user = userService.findById(id);
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            // ❌ 各エンドポイントで個別にエラー処理
+            return ResponseEntity.status(500)
+                .body("Error: " + e.getMessage());
+        }
+    }
+    
+    @PostMapping
+    public ResponseEntity<?> createUser(@RequestBody User user) {
+        try {
+            User created = userService.create(user);
+            return ResponseEntity.ok(created);
+        } catch (Exception e) {
+            // ❌ 同じようなコードが繰り返される
+            return ResponseEntity.status(500)
+                .body("Error: " + e.getMessage());
+        }
+    }
 }
 ```
 
 **問題点**:
-- ❌ 500 Internal Server Errorが返る
-- ❌ スタックトレースが露出（セキュリティリスク）
-- ❌ ユーザーに何が悪いのかわからない
+- エラー処理が重複
+- エラーレスポンスの形式が統一されていない
+- HTTPステータスコードが適切でない
 
-### 適切な例外ハンドリング
+## ✅ 正しいアプローチ
 
-```java
-@GetMapping("/{id}")
-public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
-    return userService.getUserById(id)
-        .map(ResponseEntity::ok)
-        .orElseThrow(() -> new UserNotFoundException(id));
-}
-```
-
-**メリット**:
-- ✅ 404 Not Foundを返す
-- ✅ わかりやすいエラーメッセージ
-- ✅ ログに適切な情報を記録
-
----
-
-## 🚀 ステップ1: カスタム例外の作成
-
-### 1-1. 基底例外クラス
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/BusinessException.java`
+### 1. カスタム例外クラスの作成
 
 ```java
-package com.example.hellospringboot.exception;
-
-import lombok.Getter;
-import org.springframework.http.HttpStatus;
-
-/**
- * ビジネス例外の基底クラス
- */
-@Getter
-public class BusinessException extends RuntimeException {
-
-    private final HttpStatus httpStatus;
-    private final String errorCode;
-
-    public BusinessException(String message, HttpStatus httpStatus, String errorCode) {
-        super(message);
-        this.httpStatus = httpStatus;
-        this.errorCode = errorCode;
-    }
-
-    public BusinessException(String message, HttpStatus httpStatus) {
-        this(message, httpStatus, null);
-    }
-}
-```
-
-### 1-2. ResourceNotFoundException
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/ResourceNotFoundException.java`
-
-```java
-package com.example.hellospringboot.exception;
-
-import org.springframework.http.HttpStatus;
+package com.example.demo.exception;
 
 /**
  * リソースが見つからない場合の例外
  */
-public class ResourceNotFoundException extends BusinessException {
-
-    public ResourceNotFoundException(String resourceName, Long id) {
-        super(
-            String.format("%s（ID: %d）が見つかりません", resourceName, id),
-            HttpStatus.NOT_FOUND,
-            "RESOURCE_NOT_FOUND"
-        );
+public class ResourceNotFoundException extends RuntimeException {
+    private final String resourceName;
+    private final String fieldName;
+    private final Object fieldValue;
+    
+    public ResourceNotFoundException(String resourceName, String fieldName, Object fieldValue) {
+        super(String.format("%s not found with %s : '%s'", resourceName, fieldName, fieldValue));
+        this.resourceName = resourceName;
+        this.fieldName = fieldName;
+        this.fieldValue = fieldValue;
     }
-
-    public ResourceNotFoundException(String message) {
-        super(message, HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND");
-    }
+    
+    // Getters
+    public String getResourceName() { return resourceName; }
+    public String getFieldName() { return fieldName; }
+    public Object getFieldValue() { return fieldValue; }
 }
 ```
 
-### 1-3. UserNotFoundException
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/UserNotFoundException.java`
-
 ```java
-package com.example.hellospringboot.exception;
+package com.example.demo.exception;
 
 /**
- * ユーザーが見つからない場合の例外
+ * ビジネスルール違反の例外
  */
-public class UserNotFoundException extends ResourceNotFoundException {
-
-    public UserNotFoundException(Long id) {
-        super("ユーザー", id);
+public class BusinessException extends RuntimeException {
+    private final String errorCode;
+    
+    public BusinessException(String message) {
+        super(message);
+        this.errorCode = "BUSINESS_ERROR";
     }
-
-    public UserNotFoundException(String email) {
-        super(String.format("ユーザー（メール: %s）が見つかりません", email));
+    
+    public BusinessException(String errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+    
+    public String getErrorCode() {
+        return errorCode;
     }
 }
 ```
 
-### 1-4. DuplicateResourceException
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/DuplicateResourceException.java`
-
 ```java
-package com.example.hellospringboot.exception;
-
-import org.springframework.http.HttpStatus;
+package com.example.demo.exception;
 
 /**
- * リソースが既に存在する場合の例外
+ * バリデーションエラーの例外
  */
-public class DuplicateResourceException extends BusinessException {
-
-    public DuplicateResourceException(String resourceName, String fieldName, String value) {
-        super(
-            String.format("%sの%s「%s」は既に登録されています", resourceName, fieldName, value),
-            HttpStatus.CONFLICT,
-            "DUPLICATE_RESOURCE"
-        );
+public class ValidationException extends RuntimeException {
+    private final Map<String, String> errors;
+    
+    public ValidationException(String message, Map<String, String> errors) {
+        super(message);
+        this.errors = errors;
     }
-
-    public DuplicateResourceException(String message) {
-        super(message, HttpStatus.CONFLICT, "DUPLICATE_RESOURCE");
+    
+    public Map<String, String> getErrors() {
+        return errors;
     }
 }
 ```
 
-### 1-5. InvalidOperationException
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/InvalidOperationException.java`
+### 2. エラーレスポンスDTO
 
 ```java
-package com.example.hellospringboot.exception;
+package com.example.demo.dto;
 
-import org.springframework.http.HttpStatus;
-
-/**
- * 不正な操作を行った場合の例外
- */
-public class InvalidOperationException extends BusinessException {
-
-    public InvalidOperationException(String message) {
-        super(message, HttpStatus.BAD_REQUEST, "INVALID_OPERATION");
-    }
-}
-```
-
----
-
-## 🚀 ステップ2: GlobalExceptionHandlerの拡張
-
-### 2-1. 詳細なエラーレスポンスDTO
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/ErrorResponse.java`
-
-```java
-package com.example.hellospringboot.dto.response;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
-/**
- * エラーレスポンスDTO
- */
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-@Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@NoArgsConstructor
 public class ErrorResponse {
-
-    /**
-     * エラーメッセージ
-     */
-    private String message;
-
-    /**
-     * エラーコード
-     */
-    private String errorCode;
-
-    /**
-     * HTTPステータスコード
-     */
-    private int status;
-
-    /**
-     * エラー発生時刻
-     */
     private LocalDateTime timestamp;
-
-    /**
-     * リクエストパス
-     */
+    private int status;
+    private String error;
+    private String message;
     private String path;
-
-    /**
-     * フィールドごとのエラー詳細（バリデーションエラー用）
-     */
-    private Map<String, String> errors;
-
-    /**
-     * デバッグ情報（開発環境のみ）
-     */
-    private String debugMessage;
+    private Map<String, String> errors;  // バリデーションエラー用
+    
+    // 簡易コンストラクタ
+    public ErrorResponse(int status, String error, String message, String path) {
+        this.timestamp = LocalDateTime.now();
+        this.status = status;
+        this.error = error;
+        this.message = message;
+        this.path = path;
+    }
 }
 ```
 
-### 2-2. GlobalExceptionHandlerの完全版
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/GlobalExceptionHandler.java`
+### 3. グローバル例外ハンドラ
 
 ```java
-package com.example.hellospringboot.exception;
+package com.example.demo.exception;
 
-import com.example.hellospringboot.dto.response.ErrorResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.slf4j.Slf4j;
+import com.example.demo.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * グローバル例外ハンドラー
+ * アプリケーション全体の例外ハンドラ
  */
 @RestControllerAdvice
-@Slf4j
 public class GlobalExceptionHandler {
-
+    
     /**
-     * ビジネス例外のハンドリング
+     * リソースが見つからない場合
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFound(
+            ResourceNotFoundException ex,
+            WebRequest request) {
+        
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.NOT_FOUND.value(),
+            "Not Found",
+            ex.getMessage(),
+            request.getDescription(false).replace("uri=", "")
+        );
+        
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+    
+    /**
+     * ビジネスルール違反
      */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(
             BusinessException ex,
-            HttpServletRequest request) {
+            WebRequest request) {
         
-        log.warn("Business exception occurred: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message(ex.getMessage())
-                .errorCode(ex.getErrorCode())
-                .status(ex.getHttpStatus().value())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .build();
-
-        return ResponseEntity
-                .status(ex.getHttpStatus())
-                .body(errorResponse);
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getErrorCode(),
+            ex.getMessage(),
+            request.getDescription(false).replace("uri=", "")
+        );
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
-
+    
     /**
-     * バリデーションエラーのハンドリング
+     * バリデーションエラー（@Validアノテーション）
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(
             MethodArgumentNotValidException ex,
-            HttpServletRequest request) {
+            WebRequest request) {
         
-        log.warn("Validation error occurred: {}", ex.getMessage());
-
-        // フィールドごとのエラーメッセージを収集
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
-
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message("入力値が正しくありません")
-                .errorCode("VALIDATION_ERROR")
-                .status(HttpStatus.BAD_REQUEST.value())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .errors(errors)
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(errorResponse);
-    }
-
-    /**
-     * リソースが見つからない場合のハンドリング
-     */
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
-            ResourceNotFoundException ex,
-            HttpServletRequest request) {
         
-        log.warn("Resource not found: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message(ex.getMessage())
-                .errorCode(ex.getErrorCode())
-                .status(HttpStatus.NOT_FOUND.value())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(errorResponse);
+        ErrorResponse error = new ErrorResponse();
+        error.setTimestamp(java.time.LocalDateTime.now());
+        error.setStatus(HttpStatus.BAD_REQUEST.value());
+        error.setError("Validation Failed");
+        error.setMessage("入力値が不正です");
+        error.setPath(request.getDescription(false).replace("uri=", ""));
+        error.setErrors(errors);
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
-
+    
     /**
-     * その他の例外のハンドリング
+     * カスタムバリデーションエラー
+     */
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ErrorResponse> handleCustomValidationException(
+            ValidationException ex,
+            WebRequest request) {
+        
+        ErrorResponse error = new ErrorResponse();
+        error.setTimestamp(java.time.LocalDateTime.now());
+        error.setStatus(HttpStatus.BAD_REQUEST.value());
+        error.setError("Validation Error");
+        error.setMessage(ex.getMessage());
+        error.setPath(request.getDescription(false).replace("uri=", ""));
+        error.setErrors(ex.getErrors());
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+    
+    /**
+     * その他の予期しないエラー
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(
+    public ResponseEntity<ErrorResponse> handleGlobalException(
             Exception ex,
-            HttpServletRequest request) {
+            WebRequest request) {
         
-        log.error("Unexpected error occurred", ex);
-
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message("サーバーエラーが発生しました")
-                .errorCode("INTERNAL_SERVER_ERROR")
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .debugMessage(ex.getMessage())  // 開発環境のみ含める
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorResponse);
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            "Internal Server Error",
+            "予期しないエラーが発生しました",
+            request.getDescription(false).replace("uri=", "")
+        );
+        
+        // 本番環境では詳細なエラーメッセージを隠す
+        // error.setMessage(ex.getMessage());  // 開発環境のみ
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
 }
 ```
 
----
-
-## 🚀 ステップ3: Serviceレイヤーでの例外使用
-
-### 3-1. UserServiceの更新
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+### 4. Serviceでの例外の使用
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.demo.service;
 
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.exception.DuplicateResourceException;
-import com.example.hellospringboot.exception.UserNotFoundException;
-import com.example.hellospringboot.mapper.UserMapper;
-import com.example.hellospringboot.repository.UserRepository;
+import com.example.demo.entity.User;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -415,149 +316,91 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-@Slf4j
 public class UserService {
-
+    
     private final UserRepository userRepository;
-    private final UserMapper userMapper;
-
-    /**
-     * ユーザーを作成
-     */
+    
+    public User findById(Long id) {
+        return userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+    }
+    
+    public List<User> findAll() {
+        return userRepository.findAll();
+    }
+    
     @Transactional
-    public UserResponse createUser(UserCreateRequest request) {
-        log.info("Creating user with email: {}", request.getEmail());
-
-        // メールアドレスの重複チェック
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateResourceException("ユーザー", "メールアドレス", request.getEmail());
+    public User create(User user) {
+        // ビジネスルールチェック: メールアドレスの重複確認
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new BusinessException(
+                "DUPLICATE_EMAIL",
+                "このメールアドレスは既に使用されています: " + user.getEmail()
+            );
         }
-
-        User user = userMapper.toEntity(request);
-        User savedUser = userRepository.save(user);
         
-        log.info("User created successfully with ID: {}", savedUser.getId());
-        return userMapper.toResponse(savedUser);
+        // ビジネスルールチェック: 年齢制限
+        if (user.getAge() != null && user.getAge() < 18) {
+            throw new BusinessException(
+                "AGE_RESTRICTION",
+                "18歳未満のユーザーは登録できません"
+            );
+        }
+        
+        return userRepository.save(user);
     }
-
-    /**
-     * 全ユーザーを取得
-     */
-    public List<UserResponse> getAllUsers() {
-        log.info("Fetching all users");
-        List<User> users = userRepository.findAll();
-        return userMapper.toResponseList(users);
-    }
-
-    /**
-     * IDでユーザーを取得
-     */
-    public UserResponse getUserById(Long id) {
-        log.info("Fetching user with ID: {}", id);
-        
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new UserNotFoundException(id));
-        
-        return userMapper.toResponse(user);
-    }
-
-    /**
-     * メールアドレスでユーザーを取得
-     */
-    public UserResponse getUserByEmail(String email) {
-        log.info("Fetching user with email: {}", email);
-        
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UserNotFoundException(email));
-        
-        return userMapper.toResponse(user);
-    }
-
-    /**
-     * ユーザーを更新
-     */
+    
     @Transactional
-    public UserResponse updateUser(Long id, UserUpdateRequest request) {
-        log.info("Updating user with ID: {}", id);
-
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new UserNotFoundException(id));
-
-        // メールアドレスを変更する場合、重複チェック
-        if (!user.getEmail().equals(request.getEmail())) {
-            if (userRepository.existsByEmail(request.getEmail())) {
-                throw new DuplicateResourceException("ユーザー", "メールアドレス", request.getEmail());
+    public User update(Long id, User user) {
+        User existingUser = findById(id);  // 存在しなければResourceNotFoundException
+        
+        // メールアドレス変更時の重複チェック
+        if (!existingUser.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(user.getEmail())) {
+                throw new BusinessException(
+                    "DUPLICATE_EMAIL",
+                    "このメールアドレスは既に使用されています: " + user.getEmail()
+                );
             }
         }
-
-        userMapper.updateEntity(user, request);
-        User updatedUser = userRepository.save(user);
         
-        log.info("User updated successfully with ID: {}", updatedUser.getId());
-        return userMapper.toResponse(updatedUser);
+        existingUser.setName(user.getName());
+        existingUser.setEmail(user.getEmail());
+        existingUser.setAge(user.getAge());
+        
+        return userRepository.save(existingUser);
     }
-
-    /**
-     * ユーザーを削除
-     */
+    
     @Transactional
-    public void deleteUser(Long id) {
-        log.info("Deleting user with ID: {}", id);
-
-        if (!userRepository.existsById(id)) {
-            throw new UserNotFoundException(id);
-        }
-
-        userRepository.deleteById(id);
-        log.info("User deleted successfully with ID: {}", id);
+    public void delete(Long id) {
+        User user = findById(id);  // 存在確認
+        userRepository.delete(user);
     }
 }
 ```
 
-### 3-2. UserRepositoryの追加メソッド
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/UserRepository.java`
+### 5. Repositoryに追加メソッド
 
 ```java
-package com.example.hellospringboot.repository;
+package com.example.demo.repository;
 
-import com.example.hellospringboot.entity.User;
+import com.example.demo.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
-
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
-
-    /**
-     * メールアドレスでユーザーを検索
-     */
-    Optional<User> findByEmail(String email);
-
-    /**
-     * メールアドレスが存在するかチェック
-     */
     boolean existsByEmail(String email);
 }
 ```
 
----
-
-## 🚀 ステップ4: Controllerの更新
-
-### 4-1. UserControllerの更新
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
+### 6. Controller（シンプルに）
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.demo.controller;
 
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.service.UserService;
-import jakarta.validation.Valid;
+import com.example.demo.entity.User;
+import com.example.demo.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -569,249 +412,212 @@ import java.util.List;
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
-
+    
     private final UserService userService;
-
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserCreateRequest request) {
-        UserResponse response = userService.createUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    /**
-     * 全ユーザー取得
-     * GET /api/users
-     */
+    
     @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
+    public List<User> getAll() {
+        return userService.findAll();
     }
-
-    /**
-     * IDでユーザー取得
-     * GET /api/users/{id}
-     */
+    
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
-        UserResponse response = userService.getUserById(id);
-        return ResponseEntity.ok(response);
+    public User getById(@PathVariable Long id) {
+        // 例外はGlobalExceptionHandlerで処理される
+        return userService.findById(id);
     }
-
-    /**
-     * メールアドレスでユーザー取得
-     * GET /api/users/email/{email}
-     */
-    @GetMapping("/email/{email}")
-    public ResponseEntity<UserResponse> getUserByEmail(@PathVariable String email) {
-        UserResponse response = userService.getUserByEmail(email);
-        return ResponseEntity.ok(response);
+    
+    @PostMapping
+    public ResponseEntity<User> create(@RequestBody User user) {
+        User created = userService.create(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
-
-    /**
-     * ユーザー更新
-     * PUT /api/users/{id}
-     */
+    
     @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateUser(
-            @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
-        UserResponse response = userService.updateUser(id, request);
-        return ResponseEntity.ok(response);
+    public User update(@PathVariable Long id, @RequestBody User user) {
+        return userService.update(id, user);
     }
-
-    /**
-     * ユーザー削除
-     * DELETE /api/users/{id}
-     */
+    
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        userService.deleteUser(id);
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        userService.delete(id);
         return ResponseEntity.noContent().build();
     }
 }
 ```
 
----
+## 📊 HTTPステータスコードの使い分け
 
-## ✅ ステップ5: 動作確認
+| コード | 意味 | 使用例 |
+|---|---|---|
+| **200 OK** | 成功 | GET, PUT の成功 |
+| **201 Created** | リソース作成成功 | POST の成功 |
+| **204 No Content** | 成功（レスポンスボディなし） | DELETE の成功 |
+| **400 Bad Request** | クライアントの入力エラー | バリデーションエラー、ビジネスルール違反 |
+| **401 Unauthorized** | 認証が必要 | ログインしていない |
+| **403 Forbidden** | 権限がない | 他人のリソースにアクセス |
+| **404 Not Found** | リソースが見つからない | 存在しないIDを指定 |
+| **409 Conflict** | 競合 | 楽観的ロックの失敗 |
+| **500 Internal Server Error** | サーバー側のエラー | 予期しない例外 |
 
-### 5-1. リソースが見つからない場合
+## ✅ 動作確認
+
+### 1. 存在しないユーザーの取得
 
 ```bash
-curl http://localhost:8080/api/users/999
+curl -X GET http://localhost:8080/api/users/999
 ```
 
-**期待されるレスポンス**:
+**レスポンス**:
 ```json
 {
-  "message": "ユーザー（ID: 999）が見つかりません",
-  "errorCode": "RESOURCE_NOT_FOUND",
+  "timestamp": "2024-01-15T10:30:00",
   "status": 404,
-  "timestamp": "2025-10-27T10:30:00",
+  "error": "Not Found",
+  "message": "User not found with id : '999'",
   "path": "/api/users/999"
 }
 ```
 
-### 5-2. 重複リソースの場合
+### 2. 重複メールアドレスでの登録
 
 ```bash
-# 同じメールアドレスで2回作成
+# 1回目（成功）
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"name": "Taro", "email": "taro@example.com", "age": 30}'
+  -d '{"name":"太郎","email":"taro@example.com","age":25}'
 
+# 2回目（失敗）
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"name": "Jiro", "email": "taro@example.com", "age": 25}'
+  -d '{"name":"次郎","email":"taro@example.com","age":30}'
 ```
 
-**期待されるレスポンス（2回目）**:
+**レスポンス**:
 ```json
 {
-  "message": "ユーザーのメールアドレス「taro@example.com」は既に登録されています",
-  "errorCode": "DUPLICATE_RESOURCE",
-  "status": 409,
-  "timestamp": "2025-10-27T10:30:00",
+  "timestamp": "2024-01-15T10:35:00",
+  "status": 400,
+  "error": "DUPLICATE_EMAIL",
+  "message": "このメールアドレスは既に使用されています: taro@example.com",
   "path": "/api/users"
 }
 ```
 
----
+### 3. 年齢制限違反
 
-## 🚀 ステップ6: HTTPステータスコードの使い分け
-
-### 6-1. 主要なHTTPステータスコード
-
-| コード | 意味 | 使用場面 |
-|--------|------|----------|
-| **200 OK** | 成功 | GET、PUT成功時 |
-| **201 Created** | 作成成功 | POST成功時 |
-| **204 No Content** | 成功（内容なし） | DELETE成功時 |
-| **400 Bad Request** | 不正なリクエスト | バリデーションエラー |
-| **401 Unauthorized** | 認証が必要 | ログインが必要 |
-| **403 Forbidden** | 権限なし | アクセス権がない |
-| **404 Not Found** | リソースなし | 存在しないID |
-| **409 Conflict** | 競合 | 重複データ |
-| **500 Internal Server Error** | サーバーエラー | 予期しないエラー |
-
-### 6-2. 例外とステータスコードのマッピング
-
-```java
-// 404 Not Found
-throw new UserNotFoundException(id);
-
-// 409 Conflict
-throw new DuplicateResourceException("ユーザー", "email", email);
-
-// 400 Bad Request
-throw new InvalidOperationException("削除できないユーザーです");
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"未成年","email":"minor@example.com","age":15}'
 ```
 
----
+**レスポンス**:
+```json
+{
+  "timestamp": "2024-01-15T10:40:00",
+  "status": 400,
+  "error": "AGE_RESTRICTION",
+  "message": "18歳未満のユーザーは登録できません",
+  "path": "/api/users"
+}
+```
 
-## 🎨 チャレンジ課題
+## 🚀 発展課題
 
-### チャレンジ 1: UnauthorizedException
+### 課題1: 環境別のエラーメッセージ
 
-認証エラー用の例外を作成してください。
+開発環境では詳細なエラーメッセージ、本番環境では隠す実装を追加してください。
 
-**ヒント**:
 ```java
-public class UnauthorizedException extends BusinessException {
-    public UnauthorizedException(String message) {
-        super(message, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED");
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @Value("${app.show-error-details:false}")
+    private boolean showErrorDetails;
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGlobalException(
+            Exception ex,
+            WebRequest request) {
+        
+        String message = showErrorDetails 
+            ? ex.getMessage() 
+            : "予期しないエラーが発生しました";
+        
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            "Internal Server Error",
+            message,
+            request.getDescription(false).replace("uri=", "")
+        );
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
 }
 ```
 
-### チャレンジ 2: RateLimitExceededException
-
-APIレート制限用の例外を作成してください（HTTP 429 Too Many Requests）。
-
-### チャレンジ 3: 環境別のエラーレスポンス
-
-開発環境ではスタックトレースを含め、本番環境では除外するようにしてください。
-
-**ヒント**:
-```java
-@Value("${spring.profiles.active}")
-private String activeProfile;
-
-if ("dev".equals(activeProfile)) {
-    errorResponse.setDebugMessage(ex.getStackTrace());
-}
-```
-
----
-
-## 🐛 トラブルシューティング
-
-### 例外がハンドリングされない
-
-**症状**: カスタム例外を投げても500エラーになる
-
-**原因**: `@RestControllerAdvice`が認識されていない
-
-**解決策**: パッケージスキャンの確認
-```java
-@SpringBootApplication
-@ComponentScan(basePackages = "com.example.hellospringboot")
-public class Application {
-    // ...
-}
-```
-
-### ログが出力されない
-
-**解決策**: `application.yml`でログレベル設定
 ```yaml
-logging:
-  level:
-    com.example.hellospringboot: DEBUG
+# application-dev.yml
+app:
+  show-error-details: true
+
+# application-prod.yml
+app:
+  show-error-details: false
 ```
 
-### MyBatisで例外が発生する
+### 課題2: エラーログの記録
 
-**症状**: `PersistenceException`や`DataAccessException`
-
-**MyBatis特有の例外**:
 ```java
-// MyBatis Mapperでの例外
-@Mapper
-public interface UserMapper {
-    Optional<User> findById(Long id);  // Optionalで安全に
-}
-
-// Service層でのハンドリング
-public UserResponse getUserById(Long id) {
-    return userMapper.findById(id)
-        .map(dtoMapper::toResponse)
-        .orElseThrow(() -> new UserNotFoundException(id));
+@RestControllerAdvice
+@Slf4j  // Lombokのログ
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGlobalException(
+            Exception ex,
+            WebRequest request) {
+        
+        // エラーログを記録
+        log.error("Unexpected error occurred: {}", ex.getMessage(), ex);
+        
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            "Internal Server Error",
+            "予期しないエラーが発生しました",
+            request.getDescription(false).replace("uri=", "")
+        );
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+    }
 }
 ```
 
-**MyBatis例外のハンドリング**:
+### 課題3: エラー通知（Slack/メール）
+
+重大なエラーが発生した際に通知を送る仕組みを実装してください。
+
 ```java
-@ExceptionHandler(PersistenceException.class)
-public ResponseEntity<ErrorResponse> handlePersistenceException(
-        PersistenceException ex) {
+@RestControllerAdvice
+@RequiredArgsConstructor
+public class GlobalExceptionHandler {
     
-    log.error("データベースエラー", ex);
+    private final NotificationService notificationService;
     
-    ErrorResponse errorResponse = ErrorResponse.builder()
-        .message("データベースエラーが発生しました")
-        .errorCode("DATABASE_ERROR")
-        .timestamp(LocalDateTime.now())
-        .build();
-    
-    return ResponseEntity
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(errorResponse);
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGlobalException(
+            Exception ex,
+            WebRequest request) {
+        
+        // 重大なエラーを通知
+        notificationService.sendErrorNotification(
+            "予期しないエラーが発生しました",
+            ex.getMessage(),
+            request.getDescription(false)
+        );
+        
+        // ... レスポンス返却
+    }
 }
 ```
 
@@ -819,71 +625,44 @@ public ResponseEntity<ErrorResponse> handlePersistenceException(
 
 ## 📚 このステップで学んだこと
 
-- ✅ カスタム例外の作成
-- ✅ 例外の階層構造
-- ✅ `@RestControllerAdvice`による統一的な例外ハンドリング
-- ✅ HTTPステータスコードの使い分け
-- ✅ ログ出力
-- ✅ ユーザーフレンドリーなエラーレスポンス
+- ✅ カスタム例外クラスの作成（`ResourceNotFoundException`、`BusinessException`など）
+- ✅ `@RestControllerAdvice`でグローバルエラーハンドリング
+- ✅ `@ExceptionHandler`で例外ごとの処理を定義
+- ✅ 統一されたエラーレスポンスDTO
+- ✅ HTTPステータスコードの適切な使い分け（400、404、500など）
+- ✅ バリデーションエラー（`MethodArgumentNotValidException`）の処理
+- ✅ 環境別のエラーメッセージ出し分け
+- ✅ エラーログの記録とスタックトレースの保存
+
+**エラーハンドリングのメリット**:
+- Controller層がシンプルになる（try-catchが不要）
+- エラーレスポンス形式が統一される
+- クライアント側でのエラー処理が容易
+- デバッグとトラブルシューティングが効率化
 
 ---
 
-## 💡 補足: 例外処理のベストプラクティス
+## 🔄 Gitへのコミットとレビュー依頼
 
-### 例外の設計原則
-
-1. **具体的な例外**: `UserNotFoundException` > `ResourceNotFoundException` > `Exception`
-2. **ビジネス例外と技術例外を分離**: `BusinessException` vs `SQLException`
-3. **チェック例外よりも非チェック例外**: Spring Bootでは`RuntimeException`を推奨
-
-### ログレベルの使い分け
-
-```java
-log.error("致命的エラー", ex);       // システム障害
-log.warn("想定内の異常", ex);         // ビジネス例外
-log.info("通常の処理");              // 正常系ログ
-log.debug("デバッグ情報");           // 開発時のみ
-```
-
-### パフォーマンス考慮
-
-```java
-// ❌ 悪い例: 例外を制御フローに使う
-try {
-    User user = userRepository.findById(id).get();
-} catch (NoSuchElementException ex) {
-    // 例外は遅い
-}
-
-// ✅ 良い例: Optional を活用
-User user = userRepository.findById(id)
-    .orElseThrow(() -> new UserNotFoundException(id));
-```
-
----
-
-## 🔄 Gitへのコミット
-
-進捗を記録しましょう：
+進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
+
+# コミット
 git commit -m "Step 17: 例外ハンドリング完了"
+
+# リモートにプッシュ
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 18: バリデーション](STEP_18.md)へ進みましょう！
+レビューが完了したら、[Step 18: バリデーション](STEP_18.md)へ進みましょう！
 
-入力値検証を実装し、不正なデータを弾くAPIを作成します。
-
----
-
-お疲れさまでした！ 🎉
-
-例外ハンドリングは、ユーザー体験とデバッグ効率の両方を向上させる重要な要素です。
-適切なHTTPステータスコードとわかりやすいエラーメッセージで、
-より使いやすいAPIを提供できるようになりました！
+入力値検証を実装し、不正なデータの登録を防ぐ方法を学びます。

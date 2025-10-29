@@ -1,12 +1,12 @@
-# Step 18: ロギング
+# Step 18: バリデーション
 
 ## 🎯 このステップの目標
 
-- SLF4JとLogbackを使ったロギングを理解する
-- ログレベルを使い分ける
-- ログの出力形式をカスタマイズする
-- ログをファイルに出力する
-- 構造化ログ（JSON形式）を実装する
+- Bean Validation（Jakarta Bean Validation）の基本を理解する
+- `@Valid`と`@Validated`を使い分けられる
+- 標準バリデーションアノテーションを活用できる
+- カスタムバリデーションを作成できる
+- グループバリデーションを実装できる
 
 **所要時間**: 約1時間
 
@@ -14,599 +14,578 @@
 
 ## 📋 事前準備
 
-- Step 15までの例外ハンドリングが理解できていること
-- `@Slf4j`アノテーションの基本的な使い方を知っていること
+このステップを始める前に、以下を確認してください：
 
-**Step 15をまだ完了していない場合**: [Step 15: 例外ハンドリング](STEP_15.md)を先に進めてください。
-
----
-
-## 💡 ロギングとは？
-
-### ロギングの重要性
-
-**ログなしの場合**:
-- ❌ 本番環境で何が起きているかわからない
-- ❌ バグの原因特定に時間がかかる
-- ❌ パフォーマンス問題を検出できない
-
-**ログありの場合**:
-- ✅ 問題の早期発見
-- ✅ デバッグが容易
-- ✅ 監視・アラート設定が可能
-- ✅ 監査証跡
-
-### ログレベル
-
-| レベル | 用途 | 例 |
-|--------|------|-----|
-| **ERROR** | エラー・致命的問題 | データベース接続失敗 |
-| **WARN** | 警告・想定内の異常 | ユーザーが見つからない |
-| **INFO** | 重要な情報 | アプリ起動、ユーザー作成 |
-| **DEBUG** | デバッグ情報 | メソッドの引数・戻り値 |
-| **TRACE** | 詳細なトレース | SQL文の詳細 |
+- Step 17（例外ハンドリング）が完了していること
+- DTOクラスを作成した経験があること
+- `@RestControllerAdvice`でバリデーションエラーをハンドリングできること
 
 ---
 
-## 🚀 ステップ1: Lombokの@Slf4jを使ったログ出力
+## 📝 概要
+Webアプリケーションでは、ユーザーからの入力値を検証することが重要です。Spring Bootでは、Bean Validation（Jakarta Bean Validation）を使って宣言的にバリデーションを実装できます。
 
-### 1-1. 基本的なログ出力
+## 📦 依存関係の追加
 
-**既存のUserService**（Step 17で作成済み）:
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j  // ← これでloggerが使える
-public class UserService {
-
-    public UserResponse createUser(UserCreateRequest request) {
-        log.info("Creating user with email: {}", request.getEmail());
-        
-        // ... 処理 ...
-        
-        log.info("User created successfully with ID: {}", savedUser.getId());
-        return userMapper.toResponse(savedUser);
-    }
-}
-```
-
-### 1-2. ログレベルの使い分け
-
-```java
-@Service
-@Slf4j
-public class UserService {
-
-    public UserResponse createUser(UserCreateRequest request) {
-        // デバッグ情報（開発時のみ）
-        log.debug("createUser called with request: {}", request);
-        
-        // 重要な情報
-        log.info("Creating user with email: {}", request.getEmail());
-        
-        // 警告
-        if (userRepository.existsByEmail(request.getEmail())) {
-            log.warn("Duplicate email detected: {}", request.getEmail());
-            throw new DuplicateResourceException(...);
-        }
-        
-        try {
-            // ... 処理 ...
-        } catch (Exception ex) {
-            // エラー
-            log.error("Failed to create user: {}", request.getEmail(), ex);
-            throw ex;
-        }
-        
-        return response;
-    }
-}
-```
-
----
-
-## 🚀 ステップ2: application.ymlでログレベル設定
-
-### 2-1. ログレベルの設定
-
-**ファイルパス**: `src/main/resources/application.yml`
-
-```yaml
-spring:
-  application:
-    name: hello-spring-boot
-
-# ログ設定
-logging:
-  level:
-    # ルートロガー
-    root: INFO
-    
-    # 自分のパッケージ
-    com.example.hellospringboot: DEBUG
-    
-    # Hibernate SQL
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-    
-    # Spring Framework
-    org.springframework.web: DEBUG
-    
-  # ログパターン
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    
-  # ファイル出力
-  file:
-    name: logs/application.log
-    max-size: 10MB
-    max-history: 30
-```
-
-### 2-2. パターンの説明
-
-| パターン | 説明 | 例 |
-|----------|------|-----|
-| `%d{...}` | 日時 | `2025-10-27 10:30:00` |
-| `%thread` | スレッド名 | `http-nio-8080-exec-1` |
-| `%-5level` | ログレベル（5文字幅） | `INFO ` |
-| `%logger{36}` | ロガー名（最大36文字） | `c.e.h.service.UserService` |
-| `%msg` | ログメッセージ | `User created successfully` |
-| `%n` | 改行 | |
-| `%ex` | 例外スタックトレース | |
-
----
-
-## 🚀 ステップ3: Logbackの詳細設定
-
-### 3-1. logback-spring.xmlの作成
-
-**ファイルパス**: `src/main/resources/logback-spring.xml`
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-    <!-- プロパティ定義 -->
-    <property name="LOG_PATTERN" 
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
-    <property name="LOG_FILE" value="logs/application.log"/>
-
-    <!-- コンソール出力 -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-    </appender>
-
-    <!-- ファイル出力 -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE}</file>
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <!-- ローテーション設定 -->
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>logs/application-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>10MB</maxFileSize>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
-        </rollingPolicy>
-    </appender>
-
-    <!-- エラーログ専用ファイル -->
-    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/error.log</file>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>ERROR</level>
-        </filter>
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>logs/error-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>10MB</maxFileSize>
-            <maxHistory>90</maxHistory>
-        </rollingPolicy>
-    </appender>
-
-    <!-- パッケージ別のログレベル -->
-    <logger name="com.example.hellospringboot" level="DEBUG"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
-    <logger name="org.springframework.web" level="INFO"/>
-
-    <!-- ルートロガー -->
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="ERROR_FILE"/>
-    </root>
-
-    <!-- プロファイル別設定 -->
-    <springProfile name="dev">
-        <logger name="com.example.hellospringboot" level="DEBUG"/>
-    </springProfile>
-
-    <springProfile name="prod">
-        <logger name="com.example.hellospringboot" level="INFO"/>
-    </springProfile>
-</configuration>
-```
-
----
-
-## 🚀 ステップ4: リクエスト/レスポンスログ
-
-### 4-1. ログフィルターの作成
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/filter/RequestLoggingFilter.java`
-
-```java
-package com.example.hellospringboot.filter;
-
-import jakarta.servlet.*;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-import org.springframework.web.util.ContentCachingRequestWrapper;
-import org.springframework.web.util.ContentCachingResponseWrapper;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-
-/**
- * HTTPリクエスト/レスポンスをログ出力するフィルター
- */
-@Component
-@Slf4j
-public class RequestLoggingFilter implements Filter {
-
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        
-        HttpServletRequest httpRequest = (HttpServletRequest) request;
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
-
-        // リクエストの開始時刻
-        long startTime = System.currentTimeMillis();
-
-        // リクエストログ
-        log.info("Request: {} {} from {}",
-                httpRequest.getMethod(),
-                httpRequest.getRequestURI(),
-                httpRequest.getRemoteAddr());
-
-        try {
-            chain.doFilter(request, response);
-        } finally {
-            // レスポンスログ
-            long duration = System.currentTimeMillis() - startTime;
-            log.info("Response: {} {} - Status: {} - Duration: {}ms",
-                    httpRequest.getMethod(),
-                    httpRequest.getRequestURI(),
-                    httpResponse.getStatus(),
-                    duration);
-        }
-    }
-}
-```
-
-### 4-2. 詳細なリクエストログ
-
-```java
-@Component
-@Slf4j
-public class DetailedRequestLoggingFilter implements Filter {
-
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        
-        ContentCachingRequestWrapper requestWrapper = 
-            new ContentCachingRequestWrapper((HttpServletRequest) request);
-        ContentCachingResponseWrapper responseWrapper = 
-            new ContentCachingResponseWrapper((HttpServletResponse) response);
-
-        long startTime = System.currentTimeMillis();
-
-        try {
-            chain.doFilter(requestWrapper, responseWrapper);
-        } finally {
-            logRequestDetails(requestWrapper);
-            logResponseDetails(responseWrapper, System.currentTimeMillis() - startTime);
-            
-            // レスポンスボディをコピー
-            responseWrapper.copyBodyToResponse();
-        }
-    }
-
-    private void logRequestDetails(ContentCachingRequestWrapper request) {
-        String requestBody = new String(request.getContentAsByteArray(), StandardCharsets.UTF_8);
-        
-        log.debug("Request Details - Method: {}, URI: {}, Headers: {}, Body: {}",
-                request.getMethod(),
-                request.getRequestURI(),
-                getHeadersAsString(request),
-                requestBody);
-    }
-
-    private void logResponseDetails(ContentCachingResponseWrapper response, long duration) {
-        String responseBody = new String(response.getContentAsByteArray(), StandardCharsets.UTF_8);
-        
-        log.debug("Response Details - Status: {}, Duration: {}ms, Body: {}",
-                response.getStatus(),
-                duration,
-                responseBody);
-    }
-
-    private String getHeadersAsString(HttpServletRequest request) {
-        StringBuilder headers = new StringBuilder();
-        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-            headers.append(headerName).append(": ")
-                   .append(request.getHeader(headerName)).append(", ");
-        });
-        return headers.toString();
-    }
-}
-```
-
----
-
-## 🚀 ステップ5: 構造化ログ（JSON形式）
-
-### 5-1. Logstash Encoderの追加
-
-**ファイルパス**: `pom.xml`
+Spring Boot 2.3以降では、`spring-boot-starter-validation`を明示的に追加する必要があります。
 
 ```xml
 <dependency>
-    <groupId>net.logstash.logback</groupId>
-    <artifactId>logstash-logback-encoder</artifactId>
-    <version>7.4</version>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-validation</artifactId>
 </dependency>
 ```
 
-### 5-2. JSON形式のログ設定
+## 🔍 基本的なバリデーション
 
-**ファイルパス**: `src/main/resources/logback-spring.xml`
+### 1. DTOクラスにバリデーションアノテーション
 
-```xml
-<!-- JSON形式でのファイル出力 -->
-<appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>logs/application.json</file>
-    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-        <customFields>{"app":"hello-spring-boot"}</customFields>
-    </encoder>
-    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-        <fileNamePattern>logs/application-%d{yyyy-MM-dd}.%i.json</fileNamePattern>
-        <maxFileSize>10MB</maxFileSize>
-        <maxHistory>30</maxHistory>
-    </rollingPolicy>
-</appender>
+```java
+package com.example.demo.dto;
 
-<root level="INFO">
-    <appender-ref ref="CONSOLE"/>
-    <appender-ref ref="JSON_FILE"/>
-</root>
-```
+import jakarta.validation.constraints.*;
+import lombok.Data;
 
-### 5-3. JSON形式のログ例
-
-```json
-{
-  "@timestamp": "2025-10-27T10:30:00.123+09:00",
-  "level": "INFO",
-  "thread_name": "http-nio-8080-exec-1",
-  "logger_name": "c.e.h.service.UserService",
-  "message": "User created successfully with ID: 1",
-  "app": "hello-spring-boot",
-  "stack_trace": null
+@Data
+public class UserCreateRequest {
+    
+    @NotBlank(message = "名前は必須です")
+    @Size(min = 2, max = 50, message = "名前は2文字以上50文字以下で入力してください")
+    private String name;
+    
+    @NotBlank(message = "メールアドレスは必須です")
+    @Email(message = "有効なメールアドレスを入力してください")
+    private String email;
+    
+    @NotNull(message = "年齢は必須です")
+    @Min(value = 18, message = "18歳以上である必要があります")
+    @Max(value = 120, message = "年齢は120歳以下で入力してください")
+    private Integer age;
+    
+    @Pattern(regexp = "^\\d{3}-\\d{4}-\\d{4}$", message = "電話番号は xxx-xxxx-xxxx の形式で入力してください")
+    private String phoneNumber;
 }
 ```
 
----
+```java
+package com.example.demo.dto;
 
-## ✅ ステップ6: 動作確認
+import jakarta.validation.constraints.*;
+import lombok.Data;
 
-### 6-1. アプリケーション起動
-
-起動すると`logs/`ディレクトリが作成されます：
+@Data
+public class UserUpdateRequest {
+    
+    @NotBlank(message = "名前は必須です")
+    @Size(min = 2, max = 50, message = "名前は2文字以上50文字以下で入力してください")
+    private String name;
+    
+    @NotBlank(message = "メールアドレスは必須です")
+    @Email(message = "有効なメールアドレスを入力してください")
+    private String email;
+    
+    @Min(value = 18, message = "18歳以上である必要があります")
+    @Max(value = 120, message = "年齢は120歳以下で入力してください")
+    private Integer age;
+}
 ```
-logs/
-├── application.log
-├── application.json
-└── error.log
+
+### 2. 主要なバリデーションアノテーション
+
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@NotNull` | nullでないこと | `@NotNull private Integer age;` |
+| `@NotEmpty` | nullでなく、空でないこと（文字列、コレクション） | `@NotEmpty private String name;` |
+| `@NotBlank` | nullでなく、空白でないこと（文字列のみ） | `@NotBlank private String email;` |
+| `@Size` | サイズ制限 | `@Size(min=2, max=50)` |
+| `@Min` / `@Max` | 最小値 / 最大値 | `@Min(18) private Integer age;` |
+| `@Email` | メールアドレス形式 | `@Email private String email;` |
+| `@Pattern` | 正規表現パターン | `@Pattern(regexp="^\\d{3}-\\d{4}$")` |
+| `@Positive` | 正の数 | `@Positive private Integer price;` |
+| `@PositiveOrZero` | 0または正の数 | `@PositiveOrZero private Integer stock;` |
+| `@Past` | 過去の日付 | `@Past private LocalDate birthDate;` |
+| `@Future` | 未来の日付 | `@Future private LocalDate eventDate;` |
+
+### 3. Controllerで`@Valid`を使う
+
+```java
+package com.example.demo.controller;
+
+import com.example.demo.dto.UserCreateRequest;
+import com.example.demo.dto.UserUpdateRequest;
+import com.example.demo.entity.User;
+import com.example.demo.service.UserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    
+    private final UserService userService;
+    
+    @GetMapping
+    public List<User> getAll() {
+        return userService.findAll();
+    }
+    
+    @GetMapping("/{id}")
+    public User getById(@PathVariable Long id) {
+        return userService.findById(id);
+    }
+    
+    /**
+     * @Valid によりバリデーション実行
+     * バリデーションエラーがあれば MethodArgumentNotValidException がスローされる
+     */
+    @PostMapping
+    public ResponseEntity<User> create(@Valid @RequestBody UserCreateRequest request) {
+        User user = userService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+    }
+    
+    @PutMapping("/{id}")
+    public User update(
+            @PathVariable Long id,
+            @Valid @RequestBody UserUpdateRequest request) {
+        return userService.update(id, request);
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        userService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
 ```
 
-### 6-2. APIリクエスト
+### 4. パスパラメータとクエリパラメータのバリデーション
+
+```java
+@RestController
+@RequestMapping("/api/users")
+@Validated  // ⭐ クラスレベルに @Validated が必要
+@RequiredArgsConstructor
+public class UserController {
+    
+    private final UserService userService;
+    
+    /**
+     * パスパラメータのバリデーション
+     */
+    @GetMapping("/{id}")
+    public User getById(@PathVariable @Positive Long id) {
+        return userService.findById(id);
+    }
+    
+    /**
+     * クエリパラメータのバリデーション
+     */
+    @GetMapping("/search")
+    public List<User> search(
+            @RequestParam @NotBlank String name,
+            @RequestParam(required = false) @Min(0) Integer minAge) {
+        return userService.searchByNameAndAge(name, minAge);
+    }
+}
+```
+
+## 🎨 カスタムバリデーション
+
+### 1. カスタムアノテーションの作成
+
+```java
+package com.example.demo.validation;
+
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+import java.lang.annotation.*;
+
+@Documented
+@Constraint(validatedBy = AdultValidator.class)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Adult {
+    String message() default "18歳以上である必要があります";
+    Class<?>[] groups() default {};
+    Class<? extends Payload>[] payload() default {};
+}
+```
+
+### 2. バリデータの実装
+
+```java
+package com.example.demo.validation;
+
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+
+public class AdultValidator implements ConstraintValidator<Adult, Integer> {
+    
+    @Override
+    public boolean isValid(Integer age, ConstraintValidatorContext context) {
+        if (age == null) {
+            return true;  // @NotNull と組み合わせて使う
+        }
+        return age >= 18;
+    }
+}
+```
+
+### 3. カスタムアノテーションの使用
+
+```java
+@Data
+public class UserCreateRequest {
+    @NotBlank
+    private String name;
+    
+    @Email
+    private String email;
+    
+    @NotNull
+    @Adult  // カスタムバリデーション
+    private Integer age;
+}
+```
+
+### 4. より複雑な例: パスワード確認
+
+```java
+package com.example.demo.validation;
+
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+import java.lang.annotation.*;
+
+@Documented
+@Constraint(validatedBy = PasswordMatchValidator.class)
+@Target(ElementType.TYPE)  // クラスレベルに適用
+@Retention(RetentionPolicy.RUNTIME)
+public @interface PasswordMatch {
+    String message() default "パスワードが一致しません";
+    Class<?>[] groups() default {};
+    Class<? extends Payload>[] payload() default {};
+}
+```
+
+```java
+package com.example.demo.validation;
+
+import com.example.demo.dto.UserRegistrationRequest;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+
+public class PasswordMatchValidator implements ConstraintValidator<PasswordMatch, UserRegistrationRequest> {
+    
+    @Override
+    public boolean isValid(UserRegistrationRequest request, ConstraintValidatorContext context) {
+        if (request.getPassword() == null || request.getPasswordConfirm() == null) {
+            return true;
+        }
+        return request.getPassword().equals(request.getPasswordConfirm());
+    }
+}
+```
+
+```java
+@Data
+@PasswordMatch  // クラスレベルのバリデーション
+public class UserRegistrationRequest {
+    @NotBlank
+    private String name;
+    
+    @Email
+    private String email;
+    
+    @NotBlank
+    @Size(min = 8, message = "パスワードは8文字以上である必要があります")
+    private String password;
+    
+    @NotBlank
+    private String passwordConfirm;
+}
+```
+
+## 🔧 グループバリデーション
+
+### 1. バリデーショングループの定義
+
+```java
+package com.example.demo.validation;
+
+public interface ValidationGroups {
+    interface Create {}
+    interface Update {}
+}
+```
+
+### 2. グループごとのバリデーション
+
+```java
+@Data
+public class UserRequest {
+    
+    @Null(groups = Create.class, message = "作成時はIDを指定できません")
+    @NotNull(groups = Update.class, message = "更新時はIDが必須です")
+    private Long id;
+    
+    @NotBlank(groups = {Create.class, Update.class})
+    private String name;
+    
+    @Email(groups = {Create.class, Update.class})
+    private String email;
+    
+    @NotNull(groups = Create.class)
+    @Min(value = 18, groups = {Create.class, Update.class})
+    private Integer age;
+}
+```
+
+### 3. Controllerでの使用
+
+```java
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    
+    private final UserService userService;
+    
+    @PostMapping
+    public ResponseEntity<User> create(
+            @Validated(ValidationGroups.Create.class) @RequestBody UserRequest request) {
+        User user = userService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+    }
+    
+    @PutMapping("/{id}")
+    public User update(
+            @PathVariable Long id,
+            @Validated(ValidationGroups.Update.class) @RequestBody UserRequest request) {
+        return userService.update(id, request);
+    }
+}
+```
+
+## 📊 バリデーションエラーのレスポンス
+
+Step 17で作成したGlobalExceptionHandlerが以下のように処理します：
+
+```java
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public ResponseEntity<ErrorResponse> handleValidationException(
+        MethodArgumentNotValidException ex,
+        WebRequest request) {
+    
+    Map<String, String> errors = new HashMap<>();
+    ex.getBindingResult().getAllErrors().forEach(error -> {
+        String fieldName = ((FieldError) error).getField();
+        String errorMessage = error.getDefaultMessage();
+        errors.put(fieldName, errorMessage);
+    });
+    
+    ErrorResponse error = new ErrorResponse();
+    error.setTimestamp(LocalDateTime.now());
+    error.setStatus(HttpStatus.BAD_REQUEST.value());
+    error.setError("Validation Failed");
+    error.setMessage("入力値が不正です");
+    error.setPath(request.getDescription(false).replace("uri=", ""));
+    error.setErrors(errors);
+    
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+}
+```
+
+## ✅ 動作確認
+
+### 1. バリデーションエラー（複数項目）
 
 ```bash
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Taro Yamada",
-    "email": "taro@example.com",
-    "age": 30
+    "name": "A",
+    "email": "invalid-email",
+    "age": 15
   }'
 ```
 
-### 6-3. ログ確認
-
-**コンソール**:
-```
-2025-10-27 10:30:00 [http-nio-8080-exec-1] INFO  c.e.h.filter.RequestLoggingFilter - Request: POST /api/users from 127.0.0.1
-2025-10-27 10:30:00 [http-nio-8080-exec-1] DEBUG c.e.h.service.UserService - Creating user with email: taro@example.com
-2025-10-27 10:30:00 [http-nio-8080-exec-1] INFO  c.e.h.service.UserService - User created successfully with ID: 1
-2025-10-27 10:30:00 [http-nio-8080-exec-1] INFO  c.e.h.filter.RequestLoggingFilter - Response: POST /api/users - Status: 201 - Duration: 123ms
-```
-
-**application.log**:
-```
-2025-10-27 10:30:00.123 [http-nio-8080-exec-1] INFO  c.e.h.service.UserService - User created successfully with ID: 1
-```
-
-**error.log** （エラー時のみ）:
-```
-2025-10-27 10:31:00.456 [http-nio-8080-exec-2] ERROR c.e.h.service.UserService - Failed to create user: duplicate@example.com
-java.lang.RuntimeException: Duplicate email
-    at com.example.hellospringboot.service.UserService.createUser(UserService.java:45)
-    ...
-```
-
----
-
-## 🎨 チャレンジ課題
-
-### チャレンジ 1: MDC（Mapped Diagnostic Context）
-
-リクエストごとにユニークIDを付けてログを追跡しやすくしてください。
-
-**ヒント**:
-```java
-import org.slf4j.MDC;
-
-@Component
-public class RequestIdFilter implements Filter {
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put("requestId", requestId);
-        try {
-            chain.doFilter(request, response);
-        } finally {
-            MDC.remove("requestId");
-        }
-    }
+**レスポンス**:
+```json
+{
+  "timestamp": "2024-01-15T11:00:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "入力値が不正です",
+  "path": "/api/users",
+  "errors": {
+    "name": "名前は2文字以上50文字以下で入力してください",
+    "email": "有効なメールアドレスを入力してください",
+    "age": "18歳以上である必要があります"
+  }
 }
 ```
 
-### チャレンジ 2: パフォーマンスログ
+### 2. 正常なリクエスト
 
-処理時間が一定時間を超えた場合に警告を出してください。
-
-### チャレンジ 3: メトリクス収集
-
-ログからメトリクス（リクエスト数、エラー率など）を収集できるようにしてください。
-
----
-
-## 🐛 トラブルシューティング
-
-### ログファイルが作成されない
-
-**原因**: ディレクトリの書き込み権限がない
-
-**解決策**: ディレクトリを手動で作成
 ```bash
-mkdir logs
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "山田太郎",
+    "email": "yamada@example.com",
+    "age": 25,
+    "phoneNumber": "090-1234-5678"
+  }'
 ```
 
-### 日本語が文字化けする
+### 3. パスパラメータのバリデーションエラー
 
-**解決策**: エンコーディングをUTF-8に設定
-```xml
-<encoder>
-    <pattern>${LOG_PATTERN}</pattern>
-    <charset>UTF-8</charset>
-</encoder>
+```bash
+curl -X GET http://localhost:8080/api/users/-1
 ```
 
-### ログが多すぎる
+**レスポンス**:
+```json
+{
+  "timestamp": "2024-01-15T11:05:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "getById.id: 0より大きい値を入力してください"
+}
+```
 
-**解決策**: ログレベルを上げる
-```yaml
-logging:
-  level:
-    com.example.hellospringboot: INFO  # DEBUGからINFOへ
+このエラーには別途ハンドラが必要です：
+
+```java
+@ExceptionHandler(ConstraintViolationException.class)
+public ResponseEntity<ErrorResponse> handleConstraintViolation(
+        ConstraintViolationException ex,
+        WebRequest request) {
+    
+    Map<String, String> errors = new HashMap<>();
+    ex.getConstraintViolations().forEach(violation -> {
+        String propertyPath = violation.getPropertyPath().toString();
+        String message = violation.getMessage();
+        errors.put(propertyPath, message);
+    });
+    
+    ErrorResponse error = new ErrorResponse();
+    error.setTimestamp(LocalDateTime.now());
+    error.setStatus(HttpStatus.BAD_REQUEST.value());
+    error.setError("Constraint Violation");
+    error.setMessage("パラメータが不正です");
+    error.setPath(request.getDescription(false).replace("uri=", ""));
+    error.setErrors(errors);
+    
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+}
+```
+
+## 🚀 発展課題
+
+### 課題1: 日付バリデーション
+
+誕生日が過去の日付であることを検証してください。
+
+```java
+@Data
+public class UserCreateRequest {
+    @NotBlank
+    private String name;
+    
+    @Past(message = "誕生日は過去の日付である必要があります")
+    private LocalDate birthDate;
+}
+```
+
+### 課題2: リスト内のバリデーション
+
+複数のユーザーを一括登録する際のバリデーション。
+
+```java
+@Data
+public class BulkUserCreateRequest {
+    
+    @NotNull(message = "ユーザーリストは必須です")
+    @Size(min = 1, max = 100, message = "一度に登録できるユーザーは100人までです")
+    @Valid  // ⭐ リスト内の各要素もバリデーション
+    private List<UserCreateRequest> users;
+}
+```
+
+### 課題3: 条件付きバリデーション
+
+年齢が18歳未満の場合は保護者の同意が必要、といった条件付きバリデーション。
+
+```java
+@Data
+public class UserCreateRequest {
+    @NotNull
+    @Min(0)
+    private Integer age;
+    
+    private Boolean parentalConsent;
+    
+    @AssertTrue(message = "18歳未満の場合は保護者の同意が必要です")
+    public boolean isParentalConsentValid() {
+        if (age == null || age >= 18) {
+            return true;
+        }
+        return Boolean.TRUE.equals(parentalConsent);
+    }
+}
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ SLF4JとLogbackの基本
-- ✅ ログレベルの使い分け
-- ✅ application.ymlでのログ設定
-- ✅ logback-spring.xmlでの詳細設定
-- ✅ ファイルローテーション
-- ✅ リクエスト/レスポンスログ
-- ✅ 構造化ログ（JSON形式）
+- ✅ Bean Validation（Jakarta Bean Validation）の基本
+- ✅ 標準バリデーションアノテーション（`@NotBlank`、`@Email`、`@Min`など）
+- ✅ `@Valid`でリクエストDTOのバリデーション実行
+- ✅ `@Validated`によるパスパラメータ・クエリパラメータのバリデーション
+- ✅ カスタムバリデーションアノテーションの作成
+- ✅ クラスレベルのバリデーション（パスワード確認など）
+- ✅ グループバリデーション（Create/Update別ルール）
+- ✅ `MethodArgumentNotValidException`と`ConstraintViolationException`の処理
+
+**バリデーションのメリット**:
+- データの整合性を保つ
+- セキュリティリスクの軽減
+- 不正なデータによるエラーを事前に防ぐ
+- クライアント側へ明確なエラーメッセージを返せる
 
 ---
 
-## 💡 補足: ロギングのベストプラクティス
+## 🔄 Gitへのコミットとレビュー依頼
 
-### ログレベルの使い分け
-
-```java
-// ✅ 良い例
-log.info("User {} logged in", username);  // 重要なイベント
-log.debug("Request parameters: {}", params);  // デバッグ情報
-log.error("Failed to connect to database", ex);  // エラー
-
-// ❌ 悪い例
-log.info("Method entered");  // 冗長
-log.error("User not found");  // WARNであるべき
-System.out.println("Debug: " + value);  // System.out使用NG
-```
-
-### パフォーマンス考慮
-
-```java
-// ❌ 悪い例: 文字列結合は常に実行される
-log.debug("User: " + user.toString());
-
-// ✅ 良い例: プレースホルダーを使用
-log.debug("User: {}", user);
-
-// ✅ 良い例: ログレベルチェック
-if (log.isDebugEnabled()) {
-    log.debug("Expensive operation result: {}", expensiveMethod());
-}
-```
-
-### 機密情報の除外
-
-```java
-// ❌ 悪い例
-log.info("User password: {}", password);
-
-// ✅ 良い例
-log.info("User logged in: {}", username);  // パスワードは記録しない
-
-// ✅ 良い例: マスキング
-log.info("Credit card: {}", maskCreditCard(cardNumber));
-```
-
----
-
-## 🔄 Gitへのコミット
-
-進捗を記録しましょう：
+進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
-git commit -m "Step 18: ロギング完了"
+
+# コミット
+git commit -m "Step 18: バリデーション完了"
+
+# リモートにプッシュ
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 19: DTOとEntityの分離](STEP_19.md)へ進みましょう！
+レビューが完了したら、[Step 19: DTOとEntityの分離](STEP_19.md)へ進みましょう！
 
-レイヤー間のデータ変換と、セキュアなデータ転送を実現します。
-
----
-
-お疲れさまでした！ 🎉
-
-適切なバリデーションは、堅牢なアプリケーションの第一歩です。
-ログレベルを使い分け、必要な情報を適切に記録することで、
-問題の早期発見と迅速な解決が可能になります！
+レイヤー間のデータ変換を理解し、セキュアで保守性の高いアプリケーション構造を構築します。

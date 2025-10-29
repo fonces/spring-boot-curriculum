@@ -1,11 +1,12 @@
-# Step 16: バリデーション（入力検証）
+# Step 16: DI/IoCコンテナの深掘り
 
 ## 🎯 このステップの目標
 
-- Bean Validationを使った入力検証を実装する
-- カスタムバリデーションを作成する
-- バリデーションエラーのハンドリングを理解する
-- グループバリデーションを使い分ける
+- DI（依存性注入）とIoC（制御の反転）の概念を理解する
+- Beanのライフサイクルと管理方法を理解する
+- コンストラクタインジェクションのメリットを理解する
+- `@Primary`と`@Qualifier`で複数Beanを使い分けできる
+- Beanのスコープ（singleton、prototypeなど）を理解する
 
 **所要時間**: 約1時間30分
 
@@ -13,737 +14,645 @@
 
 ## 📋 事前準備
 
-- Step 15のDTOパターンが理解できていること
-- UserCreateRequest、UserUpdateRequestが実装されていること
+このステップを始める前に、以下を確認してください：
 
-**Step 15をまだ完了していない場合**: [Step 15: レイヤードアーキテクチャとDTOパターン](STEP_15.md)を先に進めてください。
+- Step 15（レイヤー化アーキテクチャ）が完了していること
+- `@Service`、`@Repository`、`@Controller`の基本を理解していること
+- コンストラクタインジェクションを使った経験があること
 
 ---
 
-## 💡 バリデーションとは？
+## 📝 概要
+Spring Bootを使っていると`@Autowired`や`@Service`を何気なく使っていますが、その裏側で動いているDI/IoCコンテナの仕組みを理解することで、より適切な設計ができるようになります。
 
-### バリデーションの必要性
+## 🧩 依存性注入（DI）とは
 
-**バリデーションなしの場合**:
-```bash
-# 空のメールアドレス
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Taro", "email": "", "age": 30}'
+### DIがない世界
 
-# データベースエラーが発生！
-# SQLIntegrityConstraintViolationException
+```java
+public class UserController {
+    private UserService userService;
+    
+    public UserController() {
+        // コンストラクタ内でnewしている = 密結合
+        this.userService = new UserServiceImpl();
+    }
+}
 ```
 
 **問題点**:
-- ❌ 不正なデータがビジネスロジックに到達
-- ❌ データベースレベルでエラー（遅い、わかりにくい）
-- ❌ ユーザーフレンドリーなエラーメッセージがない
+- `UserController`が`UserServiceImpl`の具象クラスに依存
+- テスト時にモックに差し替えられない
+- 実装を変更する際にControllerも修正が必要
 
-### バリデーションのレイヤー
-
-```
-┌───────────────────────────┐
-│ Controller                │ ← バリデーション（@Valid）
-│ @Valid UserCreateRequest  │
-└───────────────────────────┘
-         ↓ 検証済みデータ
-┌───────────────────────────┐
-│ Service                   │ ← ビジネスロジック
-└───────────────────────────┘
-         ↓
-┌───────────────────────────┐
-│ Repository                │ ← データベース操作
-└───────────────────────────┘
-```
-
----
-
-## 🚀 ステップ1: Bean Validationアノテーション
-
-### 1-1. 依存関係の確認
-
-Spring Boot 3では`spring-boot-starter-web`に含まれています。
-
-**確認**: `pom.xml`に以下があればOK
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-web</artifactId>
-</dependency>
-
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-validation</artifactId>
-</dependency>
-```
-
-**ない場合**: 追加してMaven Reload
-
-### 1-2. UserCreateRequestにバリデーション追加
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/UserCreateRequest.java`
+### DIがある世界
 
 ```java
-package com.example.hellospringboot.dto.request;
-
-import jakarta.validation.constraints.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * ユーザー作成リクエストDTO
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserCreateRequest {
-
-    /**
-     * ユーザー名
-     */
-    @NotBlank(message = "ユーザー名は必須です")
-    @Size(min = 2, max = 100, message = "ユーザー名は2文字以上100文字以内で入力してください")
-    private String name;
-
-    /**
-     * メールアドレス
-     */
-    @NotBlank(message = "メールアドレスは必須です")
-    @Email(message = "メールアドレスの形式が正しくありません")
-    @Size(max = 100, message = "メールアドレスは100文字以内で入力してください")
-    private String email;
-
-    /**
-     * 年齢
-     */
-    @NotNull(message = "年齢は必須です")
-    @Min(value = 0, message = "年齢は0以上で入力してください")
-    @Max(value = 150, message = "年齢は150以下で入力してください")
-    private Integer age;
-}
-```
-
-### 1-3. 主要なバリデーションアノテーション
-
-| アノテーション | 説明 | 例 |
-|---------------|------|-----|
-| `@NotNull` | nullでないこと | `@NotNull Integer age` |
-| `@NotEmpty` | nullでも空文字でもないこと | `@NotEmpty String name` |
-| `@NotBlank` | nullでも空文字でも空白のみでもないこと | `@NotBlank String name` |
-| `@Size` | 長さの制約 | `@Size(min=2, max=100)` |
-| `@Min` / `@Max` | 数値の最小/最大 | `@Min(0) @Max(150)` |
-| `@Email` | メールアドレス形式 | `@Email String email` |
-| `@Pattern` | 正規表現 | `@Pattern(regexp="^[0-9]{3}-[0-9]{4}$")` |
-| `@Positive` | 正の数 | `@Positive Integer count` |
-| `@Past` | 過去の日付 | `@Past LocalDate birthDate` |
-| `@Future` | 未来の日付 | `@Future LocalDate appointmentDate` |
-
----
-
-## 🚀 ステップ2: Controllerでバリデーション実行
-
-### 2-1. UserControllerの更新
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.service.UserService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
 @RestController
-@RequestMapping("/api/users")
-@RequiredArgsConstructor
 public class UserController {
-
     private final UserService userService;
-
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserCreateRequest request) {
-        UserResponse response = userService.createUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    
+    // コンストラクタで外部から注入される
+    public UserController(UserService userService) {
+        this.userService = userService;
     }
-
-    /**
-     * ユーザー更新
-     * PUT /api/users/{id}
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateUser(
-            @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
-        return userService.updateUser(id, request)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    // ... 他のメソッドは省略
 }
 ```
 
-**ポイント**: `@Valid`アノテーションを追加
+**メリット**:
+- `UserController`は抽象（インターフェース）に依存
+- テスト時に別実装を注入可能
+- 疎結合で保守性が高い
 
----
+## 🏗️ IoCコンテナとは
 
-## 🚀 ステップ3: バリデーションエラーのハンドリング
+**IoC（Inversion of Control）= 制御の反転**
 
-### 3-1. エラーレスポンスDTOの作成
+従来: アプリケーションコードが依存オブジェクトを作成・管理
+↓
+IoC: コンテナ（Spring）がオブジェクトを作成・管理
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/ErrorResponse.java`
+### Springコンテナの役割
+
+```
+┌─────────────────────────────────┐
+│     Spring IoC Container        │
+│                                 │
+│    ┌─────────┐  ┌─────────┐     │
+│    │  Bean   │  │  Bean   │     │
+│    │ Service │  │  Repos  │     │
+│    └─────────┘  └─────────┘     │
+│         │          │            │
+│         └──────────┘            │
+│       自動的に依存関係を解決      │
+└─────────────────────────────────┘
+```
+
+## 📦 Beanとは
+
+**Bean** = Springコンテナによって管理されるオブジェクト
+
+### Beanの登録方法
+
+#### 1. アノテーションベース（推奨）
 
 ```java
-package com.example.hellospringboot.dto.response;
+// コンポーネントスキャンで自動検出される
+@Component  // 汎用的なBean
+public class SomeComponent { }
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+@Service    // ビジネスロジック層
+public class UserService { }
 
-import java.time.LocalDateTime;
-import java.util.Map;
+@Repository // データアクセス層
+public class UserRepository { }
 
-/**
- * エラーレスポンスDTO
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class ErrorResponse {
+@Controller // プレゼンテーション層（通常のWeb）
+public class UserController { }
 
-    /**
-     * エラーメッセージ
-     */
-    private String message;
+@RestController // RESTful API用Controller
+public class UserRestController { }
 
-    /**
-     * HTTPステータスコード
-     */
-    private int status;
+@Configuration // 設定クラス
+public class AppConfig { }
+```
 
-    /**
-     * エラー発生時刻
-     */
-    private LocalDateTime timestamp;
+#### 2. `@Bean`メソッドで手動登録
 
-    /**
-     * フィールドごとのエラー詳細
-     */
-    private Map<String, String> errors;
+```java
+@Configuration
+public class AppConfig {
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        // 外部ライブラリなどBeanとして登録
+        return new BCryptPasswordEncoder();
+    }
+    
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
 }
 ```
 
-### 3-2. GlobalExceptionHandlerの作成
+## 💉 依存性注入の3つの方法
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/GlobalExceptionHandler.java`
+### 1. コンストラクタインジェクション（推奨⭐⭐⭐）
 
 ```java
-package com.example.hellospringboot.exception;
+@Service
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+    
+    // コンストラクタが1つだけなら@Autowired省略可能
+    public UserService(UserRepository userRepository, EmailService emailService) {
+        this.userRepository = userRepository;
+        this.emailService = emailService;
+    }
+}
+```
 
-import com.example.hellospringboot.dto.response.ErrorResponse;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
+**Lombokを使うとさらに簡潔**:
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+```java
+@Service
+@RequiredArgsConstructor  // finalフィールドのコンストラクタ自動生成
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+}
+```
 
-/**
- * グローバル例外ハンドラー
- */
-@RestControllerAdvice
-public class GlobalExceptionHandler {
+**メリット**:
+- フィールドを`final`にできる（不変性）
+- 必須の依存が明確
+- テストでモックを渡しやすい
+- 循環依存があるとコンパイルエラー
 
-    /**
-     * バリデーションエラーのハンドリング
-     */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(
-            MethodArgumentNotValidException ex) {
+### 2. セッターインジェクション
+
+```java
+@Service
+public class UserService {
+    private UserRepository userRepository;
+    
+    @Autowired
+    public void setUserRepository(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+}
+```
+
+**使うケース**:
+- オプショナルな依存関係
+- 後から依存を変更したい場合
+
+### 3. フィールドインジェクション（非推奨）
+
+```java
+@Service
+public class UserService {
+    @Autowired
+    private UserRepository userRepository;  // ❌ 避けるべき
+}
+```
+
+**デメリット**:
+- `final`にできない
+- テストでモックを注入しにくい
+- 循環依存に気づきにくい
+
+## 🔍 複数のBeanがある場合の解決方法
+
+### 問題: 同じインターフェースの実装が複数ある
+
+```java
+public interface NotificationService {
+    void send(String message);
+}
+
+@Service
+public class EmailNotificationService implements NotificationService {
+    public void send(String message) {
+        System.out.println("Email: " + message);
+    }
+}
+
+@Service
+public class SmsNotificationService implements NotificationService {
+    public void send(String message) {
+        System.out.println("SMS: " + message);
+    }
+}
+```
+
+このとき、以下はエラーになります:
+
+```java
+@RestController
+public class NotificationController {
+    private final NotificationService notificationService;
+    
+    public NotificationController(NotificationService notificationService) {
+        // ❌ どっちを注入すればいいか分からない！
+        this.notificationService = notificationService;
+    }
+}
+```
+
+### 解決策1: `@Primary`で優先Beanを指定
+
+```java
+@Service
+@Primary  // ⭐ これがデフォルトで使われる
+public class EmailNotificationService implements NotificationService {
+    public void send(String message) {
+        System.out.println("Email: " + message);
+    }
+}
+
+@Service
+public class SmsNotificationService implements NotificationService {
+    public void send(String message) {
+        System.out.println("SMS: " + message);
+    }
+}
+```
+
+### 解決策2: `@Qualifier`で指定
+
+```java
+@RestController
+public class NotificationController {
+    private final NotificationService emailService;
+    private final NotificationService smsService;
+    
+    public NotificationController(
+        @Qualifier("emailNotificationService") NotificationService emailService,
+        @Qualifier("smsNotificationService") NotificationService smsService
+    ) {
+        this.emailService = emailService;
+        this.smsService = smsService;
+    }
+}
+```
+
+**Bean名のデフォルト**: クラス名の先頭を小文字にしたもの
+- `EmailNotificationService` → `emailNotificationService`
+- `SmsNotificationService` → `smsNotificationService`
+
+### 解決策3: カスタムBean名を指定
+
+```java
+@Service("email")  // Bean名を明示的に指定
+public class EmailNotificationService implements NotificationService {
+    // ...
+}
+
+@Service("sms")
+public class SmsNotificationService implements NotificationService {
+    // ...
+}
+
+// 使う側
+public class NotificationController {
+    private final NotificationService notificationService;
+    
+    public NotificationController(@Qualifier("email") NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+}
+```
+
+## 🔄 Beanのスコープ
+
+| スコープ | 説明 | 使用例 |
+|---|---|---|
+| **singleton** | アプリケーション全体で1つのインスタンス（デフォルト） | Service, Repository |
+| **prototype** | 要求のたびに新しいインスタンスを生成 | ステートフルなオブジェクト |
+| **request** | HTTPリクエストごとに1つ（Web環境のみ） | リクエストスコープのデータ保持 |
+| **session** | HTTPセッションごとに1つ（Web環境のみ） | ユーザーセッション情報 |
+
+### 実装例
+
+```java
+@Service
+@Scope("singleton")  // デフォルト、省略可能
+public class UserService {
+    // アプリ全体で1つのインスタンス
+}
+
+@Component
+@Scope("prototype")
+public class TaskProcessor {
+    // 毎回新しいインスタンスが生成される
+}
+
+@Component
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class RequestContext {
+    // HTTPリクエストごとに1つ
+}
+```
+
+### スコープの確認
+
+```java
+@RestController
+@RequestMapping("/api/scope")
+public class ScopeTestController {
+    private final ApplicationContext context;
+    
+    public ScopeTestController(ApplicationContext context) {
+        this.context = context;
+    }
+    
+    @GetMapping("/singleton")
+    public String testSingleton() {
+        UserService service1 = context.getBean(UserService.class);
+        UserService service2 = context.getBean(UserService.class);
         
-        // フィールドごとのエラーメッセージを収集
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message("入力値が正しくありません")
-                .status(HttpStatus.BAD_REQUEST.value())
-                .timestamp(LocalDateTime.now())
-                .errors(errors)
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(errorResponse);
+        // true（同じインスタンス）
+        return "Same instance: " + (service1 == service2);
     }
-
-    /**
-     * その他の例外のハンドリング
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .message("サーバーエラーが発生しました")
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorResponse);
+    
+    @GetMapping("/prototype")
+    public String testPrototype() {
+        TaskProcessor processor1 = context.getBean(TaskProcessor.class);
+        TaskProcessor processor2 = context.getBean(TaskProcessor.class);
+        
+        // false（異なるインスタンス）
+        return "Same instance: " + (processor1 == processor2);
     }
 }
 ```
 
----
+## 🛠️ 実践例: 戦略パターンとDI
 
-## ✅ ステップ4: 動作確認
-
-### 4-1. 正常なリクエスト
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Taro Yamada",
-    "email": "taro@example.com",
-    "age": 30
-  }'
-```
-
-**期待される結果**: 201 Created
-
-### 4-2. バリデーションエラー（空のname）
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "",
-    "email": "taro@example.com",
-    "age": 30
-  }'
-```
-
-**期待されるエラーレスポンス**:
-```json
-{
-  "message": "入力値が正しくありません",
-  "status": 400,
-  "timestamp": "2025-10-27T10:30:00",
-  "errors": {
-    "name": "ユーザー名は必須です"
-  }
-}
-```
-
-### 4-3. 複数のバリデーションエラー
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "A",
-    "email": "invalid-email",
-    "age": 200
-  }'
-```
-
-**期待されるエラーレスポンス**:
-```json
-{
-  "message": "入力値が正しくありません",
-  "status": 400,
-  "timestamp": "2025-10-27T10:30:00",
-  "errors": {
-    "name": "ユーザー名は2文字以上100文字以内で入力してください",
-    "email": "メールアドレスの形式が正しくありません",
-    "age": "年齢は150以下で入力してください"
-  }
-}
-```
-
----
-
-## 🚀 ステップ5: カスタムバリデーション
-
-### 5-1. カスタムアノテーションの作成
-
-電話番号のバリデーションを作成します。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/validation/PhoneNumber.java`
+### シナリオ: 支払い方法の切り替え
 
 ```java
-package com.example.hellospringboot.validation;
-
-import jakarta.validation.Constraint;
-import jakarta.validation.Payload;
-
-import java.lang.annotation.*;
-
-/**
- * 電話番号バリデーション
- */
-@Documented
-@Constraint(validatedBy = PhoneNumberValidator.class)
-@Target({ElementType.FIELD, ElementType.PARAMETER})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface PhoneNumber {
-
-    String message() default "電話番号の形式が正しくありません（例: 090-1234-5678）";
-
-    Class<?>[] groups() default {};
-
-    Class<? extends Payload>[] payload() default {};
+// 支払いインターフェース
+public interface PaymentService {
+    void pay(Long orderId, Integer amount);
 }
-```
 
-### 5-2. Validatorの実装
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/validation/PhoneNumberValidator.java`
-
-```java
-package com.example.hellospringboot.validation;
-
-import jakarta.validation.ConstraintValidator;
-import jakarta.validation.ConstraintValidatorContext;
-
-import java.util.regex.Pattern;
-
-/**
- * 電話番号バリデータ
- */
-public class PhoneNumberValidator implements ConstraintValidator<PhoneNumber, String> {
-
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^0\\d{1,4}-\\d{1,4}-\\d{4}$");
-
+// クレジットカード決済
+@Service("credit")
+public class CreditCardPaymentService implements PaymentService {
     @Override
-    public boolean isValid(String value, ConstraintValidatorContext context) {
-        // nullの場合は@NotBlankなどに任せる
-        if (value == null || value.isEmpty()) {
-            return true;
+    public void pay(Long orderId, Integer amount) {
+        System.out.println("Credit card payment: " + amount);
+        // クレジットカード決済処理
+    }
+}
+
+// PayPal決済
+@Service("paypal")
+public class PayPalPaymentService implements PaymentService {
+    @Override
+    public void pay(Long orderId, Integer amount) {
+        System.out.println("PayPal payment: " + amount);
+        // PayPal決済処理
+    }
+}
+
+// 銀行振込
+@Service("bank")
+public class BankTransferPaymentService implements PaymentService {
+    @Override
+    public void pay(Long orderId, Integer amount) {
+        System.out.println("Bank transfer: " + amount);
+        // 銀行振込処理
+    }
+}
+```
+
+### 戦略パターンで動的に切り替え
+
+```java
+@Service
+public class OrderService {
+    private final Map<String, PaymentService> paymentServices;
+    
+    // Map<String, PaymentService>で全実装を受け取る
+    public OrderService(Map<String, PaymentService> paymentServices) {
+        this.paymentServices = paymentServices;
+    }
+    
+    public void checkout(Long orderId, Integer amount, String paymentMethod) {
+        PaymentService paymentService = paymentServices.get(paymentMethod);
+        
+        if (paymentService == null) {
+            throw new IllegalArgumentException("Unknown payment method: " + paymentMethod);
         }
         
-        return PHONE_PATTERN.matcher(value).matches();
+        paymentService.pay(orderId, amount);
     }
 }
 ```
 
-### 5-3. カスタムバリデーションの使用
+### Controller
 
 ```java
-public class UserCreateRequest {
+@RestController
+@RequestMapping("/api/orders")
+@RequiredArgsConstructor
+public class OrderController {
+    private final OrderService orderService;
     
-    @PhoneNumber
-    private String phoneNumber;
+    @PostMapping("/{id}/checkout")
+    public ResponseEntity<String> checkout(
+            @PathVariable Long id,
+            @RequestParam Integer amount,
+            @RequestParam String method) {  // "credit", "paypal", "bank"
+        
+        orderService.checkout(id, amount, method);
+        return ResponseEntity.ok("Payment processed");
+    }
+}
+```
+
+### 動作確認
+
+```bash
+# クレジットカード決済
+curl -X POST "http://localhost:8080/api/orders/1/checkout?amount=10000&method=credit"
+
+# PayPal決済
+curl -X POST "http://localhost:8080/api/orders/1/checkout?amount=10000&method=paypal"
+
+# 銀行振込
+curl -X POST "http://localhost:8080/api/orders/1/checkout?amount=10000&method=bank"
+```
+
+## 🏗️ `@Configuration`と`@Bean`の詳細
+
+### 外部ライブラリのBean登録
+
+```java
+@Configuration
+public class AppConfig {
     
-    // ... 他のフィールド
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(SerializationFeature.INDENT_OUTPUT, true);
+        mapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd"));
+        return mapper;
+    }
+    
+    @Bean
+    public RestTemplate restTemplate() {
+        RestTemplate restTemplate = new RestTemplate();
+        // タイムアウト設定など
+        return restTemplate;
+    }
 }
 ```
 
----
-
-## 🚀 ステップ6: グループバリデーション
-
-### 6-1. バリデーショングループの定義
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/validation/ValidationGroups.java`
+### 条件付きBean登録
 
 ```java
-package com.example.hellospringboot.validation;
-
-/**
- * バリデーショングループ
- */
-public class ValidationGroups {
-
-    /**
-     * 作成時のバリデーション
-     */
-    public interface Create {}
-
-    /**
-     * 更新時のバリデーション
-     */
-    public interface Update {}
+@Configuration
+public class DataSourceConfig {
+    
+    @Bean
+    @Profile("dev")  // 開発環境のみ
+    public DataSource devDataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .build();
+    }
+    
+    @Bean
+    @Profile("prod")  // 本番環境のみ
+    public DataSource prodDataSource() {
+        HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setJdbcUrl("jdbc:mysql://prod-db:3306/myapp");
+        return dataSource;
+    }
 }
 ```
 
-### 6-2. グループ別バリデーションの適用
+## ✅ 動作確認
+
+### 1. Bean一覧の確認
 
 ```java
-public class UserRequest {
-
-    @NotNull(groups = ValidationGroups.Update.class)
-    private Long id;
-
-    @NotBlank(groups = {ValidationGroups.Create.class, ValidationGroups.Update.class})
-    private String name;
-
-    @NotBlank(groups = ValidationGroups.Create.class)
-    @Email(groups = {ValidationGroups.Create.class, ValidationGroups.Update.class})
-    private String email;
+@RestController
+@RequestMapping("/api/beans")
+public class BeanListController {
+    private final ApplicationContext context;
+    
+    public BeanListController(ApplicationContext context) {
+        this.context = context;
+    }
+    
+    @GetMapping
+    public List<String> listBeans() {
+        return Arrays.asList(context.getBeanDefinitionNames());
+    }
+    
+    @GetMapping("/services")
+    public List<String> listServices() {
+        return context.getBeansWithAnnotation(Service.class)
+            .keySet()
+            .stream()
+            .sorted()
+            .toList();
+    }
 }
 ```
 
-### 6-3. Controllerで使用
+### 2. 起動ログでBean生成を確認
+
+```
+Creating shared instance of singleton bean 'userService'
+Creating shared instance of singleton bean 'userRepository'
+```
+
+## 🚀 発展課題
+
+### 課題1: Factory PatternとDI
+
+プロダクト種別に応じた処理を行うファクトリーを実装してください。
 
 ```java
-@PostMapping
-public ResponseEntity<UserResponse> createUser(
-        @Validated(ValidationGroups.Create.class) @RequestBody UserRequest request) {
-    // ...
+public interface ProductProcessor {
+    void process(Product product);
 }
 
-@PutMapping("/{id}")
-public ResponseEntity<UserResponse> updateUser(
-        @PathVariable Long id,
-        @Validated(ValidationGroups.Update.class) @RequestBody UserRequest request) {
-    // ...
+@Service("book")
+public class BookProcessor implements ProductProcessor { }
+
+@Service("electronic")
+public class ElectronicProcessor implements ProductProcessor { }
+
+@Service
+public class ProductProcessorFactory {
+    private final Map<String, ProductProcessor> processors;
+    
+    public ProductProcessorFactory(Map<String, ProductProcessor> processors) {
+        this.processors = processors;
+    }
+    
+    public ProductProcessor getProcessor(String type) {
+        return processors.get(type);
+    }
 }
 ```
 
----
+### 課題2: 循環依存の解決
 
-## 🚀 ステップ7: ネストしたオブジェクトのバリデーション
-
-### 7-1. ネストしたDTOの例
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/AddressRequest.java`
+次のような循環依存を解決してください。
 
 ```java
-package com.example.hellospringboot.dto.request;
+@Service
+public class ServiceA {
+    private final ServiceB serviceB;  // ❌ ServiceA → ServiceB
+    
+    public ServiceA(ServiceB serviceB) {
+        this.serviceB = serviceB;
+    }
+}
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class AddressRequest {
-
-    @NotBlank(message = "郵便番号は必須です")
-    @Pattern(regexp = "^\\d{3}-\\d{4}$", message = "郵便番号の形式が正しくありません（例: 123-4567）")
-    private String postalCode;
-
-    @NotBlank(message = "都道府県は必須です")
-    private String prefecture;
-
-    @NotBlank(message = "市区町村は必須です")
-    private String city;
-
-    @NotBlank(message = "番地は必須です")
-    private String street;
-
-    private String building;  // 建物名は任意
+@Service
+public class ServiceB {
+    private final ServiceA serviceA;  // ❌ ServiceB → ServiceA
+    
+    public ServiceB(ServiceA serviceA) {
+        this.serviceA = serviceA;
+    }
 }
 ```
 
-### 7-2. ネストしたバリデーション
-
-```java
-public class UserCreateRequest {
-
-    @NotBlank
-    private String name;
-
-    @Valid  // ネストしたオブジェクトもバリデーション
-    private AddressRequest address;
-}
-```
-
----
-
-## 🎨 チャレンジ課題
-
-### チャレンジ 1: パスワード強度バリデーション
-
-パスワードの強度をチェックするカスタムバリデーションを作成してください。
-
-**要件**:
-- 8文字以上
-- 大文字、小文字、数字を含む
-- 特殊文字を1つ以上含む
-
-### チャレンジ 2: ユニークメール検証
-
-データベースに既に存在するメールアドレスを拒否するバリデーションを作成してください。
-
-**ヒント**:
-```java
-@Target({ElementType.FIELD})
-@Retention(RetentionPolicy.RUNTIME)
-@Constraint(validatedBy = UniqueEmailValidator.class)
-public @interface UniqueEmail {
-    String message() default "このメールアドレスは既に登録されています";
-    Class<?>[] groups() default {};
-    Class<? extends Payload>[] payload() default {};
-}
-```
-
-### チャレンジ 3: クロスフィールドバリデーション
-
-2つのフィールドを比較するバリデーションを作成してください。
-
-**例**: パスワードと確認用パスワードが一致すること
-
----
-
-## 🐛 トラブルシューティング
-
-### バリデーションが動作しない
-
-**症状**: `@Valid`を付けてもバリデーションされない
-
-**原因1**: `spring-boot-starter-validation`が不足
-
-**解決策**: `pom.xml`に追加
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-validation</artifactId>
-</dependency>
-```
-
-**原因2**: `@Valid`を忘れている
-
-**解決策**: Controllerのメソッド引数に`@Valid`追加
-
-### カスタムバリデーションが動作しない
-
-**症状**: カスタムバリデーションアノテーションが無視される
-
-**解決策**: `@Constraint`でValidatorクラスを指定
-```java
-@Constraint(validatedBy = PhoneNumberValidator.class)
-public @interface PhoneNumber {
-    // ...
-}
-```
-
-### エラーメッセージが日本語にならない
-
-**解決策**: `ValidationMessages.properties`を作成
-
-**ファイルパス**: `src/main/resources/ValidationMessages.properties`
-```properties
-jakarta.validation.constraints.NotBlank.message = {0}は必須です
-jakarta.validation.constraints.Email.message = メールアドレスの形式が正しくありません
-```
+**解決策**: 設計を見直し、共通のServiceを抽出する
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ Bean Validationアノテーション
-- ✅ `@Valid`によるバリデーション実行
-- ✅ `@RestControllerAdvice`による例外ハンドリング
-- ✅ カスタムバリデーションアノテーション
-- ✅ グループバリデーション
-- ✅ ネストしたオブジェクトのバリデーション
-- ✅ ユーザーフレンドリーなエラーレスポンス
+- ✅ DI（依存性注入）とIoC（制御の反転）の概念
+- ✅ コンストラクタインジェクション、セッターインジェクション、フィールドインジェクションの違い
+- ✅ `@Component`、`@Service`、`@Repository`、`@Controller`の使い分け
+- ✅ Beanの登録方法（アノテーションベース、`@Bean`メソッド）
+- ✅ `@Primary`と`@Qualifier`による複数Bean対応
+- ✅ Beanのスコープ（singleton、prototype、request、session）
+- ✅ `@Configuration`と`@Bean`での手動Bean登録
+- ✅ 戦略パターンとDIの組み合わせ
+
+**ベストプラクティス**:
+- コンストラクタインジェクション + `@RequiredArgsConstructor`を使う
+- フィールドは`final`にして不変性を保つ
+- 複数実装がある場合は`@Primary`または`@Qualifier`で明示
+- デフォルトのsingletonスコープを基本とする
 
 ---
 
-## 💡 補足: バリデーションのベストプラクティス
+## 🔄 Gitへのコミットとレビュー依頼
 
-### レイヤー別のバリデーション
-
-| レイヤー | バリデーション内容 |
-|----------|-------------------|
-| **Controller** | 形式チェック（@Valid） |
-| **Service** | ビジネスルール |
-| **Database** | データ整合性（制約） |
-
-### メッセージの国際化
-
-```properties
-# messages.properties
-user.name.required=ユーザー名は必須です
-
-# messages_en.properties
-user.name.required=Name is required
-```
-
-```java
-@NotBlank(message = "{user.name.required}")
-private String name;
-```
-
-### パフォーマンス考慮
-
-```java
-// ❌ 悪い例: データベースアクセスを伴うバリデーションを全フィールドで実行
-@UniqueEmail
-private String email;
-
-@UniqueUsername
-private String username;
-
-// ✅ 良い例: Serviceレイヤーで1回だけチェック
-public void createUser(UserCreateRequest request) {
-    if (userRepository.existsByEmail(request.getEmail())) {
-        throw new DuplicateEmailException();
-    }
-    // ...
-}
-```
-
----
-
-## 🔄 Gitへのコミット
-
-進捗を記録しましょう：
+進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
-git commit -m "Step 16: バリデーション完了"
+
+# コミット
+git commit -m "Step 16: DI/IoCコンテナの深掘り完了"
+
+# リモートにプッシュ
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 17: 例外ハンドリング](STEP_17.md)へ進みましょう！
+レビューが完了したら、[Step 17: 例外ハンドリング](STEP_17.md)へ進みましょう！
 
-カスタム例外を作成し、統一されたエラーレスポンスを返すAPIを実装します。
-
----
-
-お疲れさまでした！ 🎉
-
-DI/IoCはSpring Frameworkの心臓部です。
-不正なデータを早期に検出し、ユーザーにわかりやすいエラーメッセージを返すことで、
-UXとセキュリティの両方を向上させることができます！
+エラー処理を適切に実装し、クライアントに分かりやすいエラーレスポンスを返す方法を学びます。
