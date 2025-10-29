@@ -1,424 +1,806 @@
-# Step 29: OpenAPI/Swagger によるAPI仕様書
+# Step 29: テストカバレッジ
 
 ## 🎯 このステップの目標
 
-- OpenAPI 3.0を理解する
-- SpringDocを使ってAPI仕様書を自動生成する
-- Swagger UIでAPIドキュメントを提供する
-- カスタムアノテーションでドキュメントを充実させる
+- テストカバレッジの概念と重要性を理解する
+- JaCoCoを使ってコードカバレッジを測定できる
+- カバレッジレポートを読み解ける
+- 目標カバレッジ（80%以上）を達成できる
+- カバレッジを継続的に監視できる
 
-**所要時間**: 約1時間30分
-
----
-
-## 💡 OpenAPIとは？
-
-### API仕様書の重要性
-
-- ✅ APIの使い方が明確になる
-- ✅ フロントエンドとの連携がスムーズ
-- ✅ テストが容易になる
-- ✅ コードから自動生成できる
+**所要時間**: 約1時間
 
 ---
 
-## 🚀 ステップ1: SpringDoc依存関係の追加
+## 📋 事前準備
 
-### 1-1. pom.xmlの更新
+このステップを始める前に、以下を確認してください：
+
+- Step 28（統合テスト）が完了していること
+- ユニットテストと統合テストを実装していること
+- JUnit 5とMockitoの使い方を理解していること
+
+---
+
+## 📝 概要
+
+テストカバレッジ（コードカバレッジ）は、テストコードによって実行されたプロダクションコードの割合を示す指標です。カバレッジが高いほど、テストされていないコードが少なく、バグが潜んでいる可能性が低くなります。
+
+## 💡 テストカバレッジとは
+
+### カバレッジの種類
+
+| 種類 | 説明 | 測定単位 |
+|---|---|---|
+| **Line Coverage（行カバレッジ）** | 実行された行の割合 | 最も一般的 |
+| **Branch Coverage（分岐カバレッジ）** | if文などの分岐の割合 | 条件分岐の網羅性 |
+| **Method Coverage（メソッドカバレッジ）** | 実行されたメソッドの割合 | メソッド単位 |
+| **Class Coverage（クラスカバレッジ）** | 実行されたクラスの割合 | クラス単位 |
+
+### なぜカバレッジが重要か
+
+**カバレッジが低い場合の問題**:
+- ❌ テストされていないコードにバグが潜む
+- ❌ リファクタリング時の安心感がない
+- ❌ 仕様変更の影響範囲が見えない
+
+**カバレッジが高い場合のメリット**:
+- ✅ バグの早期発見
+- ✅ リファクタリングの安全性向上
+- ✅ コードの品質が可視化される
+
+### 目標カバレッジ
+
+| プロジェクト種類 | 推奨カバレッジ |
+|---|---|
+| **エンタープライズアプリ** | 80%以上 |
+| **ライブラリ/フレームワーク** | 90%以上 |
+| **プロトタイプ** | 50%〜70% |
+
+**注意**: カバレッジ100%を目指す必要はありません。重要なのは**質の高いテスト**を書くことです。
+
+---
+
+## 🚀 ステップ1: JaCoCoのセットアップ
+
+### 1-1. pom.xmlに依存関係を追加
 
 ```xml
-<dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.3.0</version>
-</dependency>
+<project>
+    <!-- 既存の設定 -->
+    
+    <build>
+        <plugins>
+            <!-- 既存のプラグイン -->
+            
+            <!-- JaCoCo Maven Plugin -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <executions>
+                    <!-- テスト実行前にJaCoCoエージェントを準備 -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <!-- テスト実行後にレポート生成 -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <!-- カバレッジ目標チェック -->
+                    <execution>
+                        <id>check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>PACKAGE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
 ```
 
-### 1-2. アプリケーション起動
+### 1-2. 設定の説明
 
-依存関係を追加すると、自動的にSwagger UIが有効になります。
-
-**アクセス**:
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- **prepare-agent**: テスト実行時にJaCoCoエージェントを起動
+- **report**: テスト後にHTMLレポートを生成
+- **check**: 最小カバレッジをチェック（80%未満でビルド失敗）
 
 ---
 
-## 🚀 ステップ2: OpenAPI設定
+## 🚀 ステップ2: 既存のテストコードの確認
 
-### 2-1. OpenAPIConfig
+カバレッジを測定する前に、既存のテストを確認しましょう。
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/OpenAPIConfig.java`
+### 2-1. ユニットテストの例（Service層）
 
 ```java
-package com.example.hellospringboot.config;
+package com.example.demo.service;
 
-import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.info.Contact;
-import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.info.License;
-import io.swagger.v3.oas.models.security.SecurityRequirement;
-import io.swagger.v3.oas.models.security.SecurityScheme;
-import io.swagger.v3.oas.models.Components;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.response.UserResponse;
+import com.example.demo.entity.User;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.mapper.UserMapper;
+import com.example.demo.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-/**
- * OpenAPI設定
- */
-@Configuration
-public class OpenAPIConfig {
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
-    @Bean
-    public OpenAPI customOpenAPI() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("Hello Spring Boot API")
-                        .version("1.0.0")
-                        .description("Spring Boot 3.5.7 カリキュラム用API")
-                        .contact(new Contact()
-                                .name("Your Name")
-                                .email("your.email@example.com")
-                                .url("https://example.com"))
-                        .license(new License()
-                                .name("Apache 2.0")
-                                .url("https://www.apache.org/licenses/LICENSE-2.0.html")))
-                .components(new Components()
-                        .addSecuritySchemes("bearerAuth", new SecurityScheme()
-                                .type(SecurityScheme.Type.HTTP)
-                                .scheme("bearer")
-                                .bearerFormat("JWT")))
-                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+    
+    @Mock
+    private UserRepository userRepository;
+    
+    @Mock
+    private UserMapper userMapper;
+    
+    @InjectMocks
+    private UserService userService;
+    
+    private User testUser;
+    private UserCreateRequest createRequest;
+    private UserResponse userResponse;
+    
+    @BeforeEach
+    void setUp() {
+        testUser = new User();
+        testUser.setId(1L);
+        testUser.setName("Test User");
+        testUser.setEmail("test@example.com");
+        testUser.setAge(25);
+        
+        createRequest = new UserCreateRequest();
+        createRequest.setName("New User");
+        createRequest.setEmail("new@example.com");
+        createRequest.setAge(30);
+        
+        userResponse = UserResponse.builder()
+            .id(1L)
+            .name("Test User")
+            .email("test@example.com")
+            .age(25)
+            .build();
+    }
+    
+    @Test
+    @DisplayName("全ユーザー取得 - 成功")
+    void findAll_Success() {
+        // Given
+        List<User> users = Arrays.asList(testUser);
+        when(userRepository.findAll()).thenReturn(users);
+        when(userMapper.toResponse(any(User.class))).thenReturn(userResponse);
+        
+        // When
+        List<UserResponse> result = userService.findAll();
+        
+        // Then
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Test User", result.get(0).getName());
+        verify(userRepository, times(1)).findAll();
+    }
+    
+    @Test
+    @DisplayName("ID指定でユーザー取得 - 成功")
+    void findById_Success() {
+        // Given
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userMapper.toResponse(testUser)).thenReturn(userResponse);
+        
+        // When
+        UserResponse result = userService.findById(1L);
+        
+        // Then
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Test User", result.getName());
+    }
+    
+    @Test
+    @DisplayName("ID指定でユーザー取得 - ユーザーが存在しない場合")
+    void findById_NotFound() {
+        // Given
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        
+        // When & Then
+        assertThrows(ResourceNotFoundException.class, () -> {
+            userService.findById(999L);
+        });
+    }
+    
+    @Test
+    @DisplayName("ユーザー作成 - 成功")
+    void create_Success() {
+        // Given
+        when(userMapper.toEntity(createRequest)).thenReturn(testUser);
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(userMapper.toResponse(testUser)).thenReturn(userResponse);
+        
+        // When
+        UserResponse result = userService.create(createRequest);
+        
+        // Then
+        assertNotNull(result);
+        verify(userRepository, times(1)).save(any(User.class));
+    }
+    
+    @Test
+    @DisplayName("ユーザー削除 - 成功")
+    void delete_Success() {
+        // Given
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        doNothing().when(userRepository).delete(testUser);
+        
+        // When
+        assertDoesNotThrow(() -> userService.delete(1L));
+        
+        // Then
+        verify(userRepository, times(1)).delete(testUser);
+    }
+}
+```
+
+### 2-2. 統合テストの例（Controller層）
+
+```java
+package com.example.demo.controller;
+
+import com.example.demo.dto.request.UserCreateRequest;
+import com.example.demo.dto.response.UserResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.hamcrest.Matchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
+class UserControllerIntegrationTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Test
+    @DisplayName("全ユーザー取得 - 統合テスト")
+    @Sql("/test-data.sql")
+    void getAll_Success() throws Exception {
+        mockMvc.perform(get("/api/users"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(greaterThan(0))))
+            .andExpect(jsonPath("$[0].name").exists());
+    }
+    
+    @Test
+    @DisplayName("ユーザー作成 - 統合テスト")
+    void create_Success() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setName("Integration Test User");
+        request.setEmail("integration@example.com");
+        request.setAge(28);
+        
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.name").value("Integration Test User"))
+            .andExpect(jsonPath("$.email").value("integration@example.com"));
+    }
+    
+    @Test
+    @DisplayName("バリデーションエラー - 統合テスト")
+    void create_ValidationError() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setName(""); // 空の名前
+        request.setEmail("invalid-email"); // 不正なメール
+        request.setAge(10); // 18歳未満
+        
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors").exists());
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ3: コントローラーのドキュメント化
+## 🚀 ステップ3: カバレッジレポートの生成
 
-### 3-1. UserControllerにアノテーション追加
+### 3-1. テストを実行してレポート生成
+
+```bash
+# テスト実行 + カバレッジレポート生成
+./mvnw clean test
+
+# または
+./mvnw clean verify
+```
+
+**出力例**:
+```
+[INFO] --- jacoco-maven-plugin:0.8.11:report (report) @ demo ---
+[INFO] Loading execution data file target/jacoco.exec
+[INFO] Analyzed bundle 'demo' with 15 classes
+```
+
+### 3-2. レポートの確認
+
+レポートは以下のディレクトリに生成されます：
+
+```
+target/site/jacoco/
+├── index.html              # カバレッジサマリー
+├── com.example.demo/       # パッケージごとのレポート
+│   ├── controller/
+│   ├── service/
+│   └── repository/
+└── jacoco.xml              # CI/CD用XMLレポート
+```
+
+**ブラウザで確認**:
+```bash
+# macOS
+open target/site/jacoco/index.html
+
+# Linux
+xdg-open target/site/jacoco/index.html
+
+# Windows
+start target/site/jacoco/index.html
+```
+
+---
+
+## 🚀 ステップ4: カバレッジレポートの読み方
+
+### 4-1. サマリー画面
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Element         Instructions  Branches  Lines  Methods  │
+├─────────────────────────────────────────────────────────┤
+│ Total           85% (425/500) 70% (14/20) 82% (82/100)  │
+│ com.example.demo.controller  90%  75%    88%    90%     │
+│ com.example.demo.service     95%  80%    92%    100%    │
+│ com.example.demo.repository  100% N/A    100%   100%    │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 4-2. カバレッジの色分け
+
+- 🟢 **緑**: カバーされている（実行された）
+- 🟡 **黄色**: 部分的にカバーされている（分岐の一部のみ）
+- 🔴 **赤**: カバーされていない（未実行）
+
+### 4-3. ファイル別カバレッジの確認
 
 ```java
-package com.example.hellospringboot.controller;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-
-@RestController
-@RequestMapping("/api/users")
-@RequiredArgsConstructor
-@Tag(name = "User", description = "ユーザー管理API")
-public class UserController {
-
-    private final UserService userService;
-
-    @Operation(summary = "ユーザー作成", description = "新しいユーザーを作成します")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "201", description = "作成成功",
-                content = @Content(schema = @Schema(implementation = UserResponse.class))),
-        @ApiResponse(responseCode = "400", description = "バリデーションエラー"),
-        @ApiResponse(responseCode = "409", description = "メールアドレス重複")
-    })
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                description = "ユーザー作成リクエスト",
-                required = true,
-                content = @Content(schema = @Schema(implementation = UserCreateRequest.class)))
-            @Valid @RequestBody UserCreateRequest request) {
-        UserResponse response = userService.createUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+public class UserService {
+    
+    public UserResponse findById(Long id) {  // 🟢 カバー済み
+        return userRepository.findById(id)
+            .map(userMapper::toResponse)     // 🟢 カバー済み
+            .orElseThrow(() ->               // 🟢 カバー済み
+                new ResourceNotFoundException("User", "id", id)
+            );
     }
-
-    @Operation(summary = "全ユーザー取得", description = "全ユーザーのリストを取得します")
-    @ApiResponse(responseCode = "200", description = "取得成功")
-    @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
-    }
-
-    @Operation(summary = "ユーザー取得", description = "IDを指定してユーザーを取得します")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "取得成功"),
-        @ApiResponse(responseCode = "404", description = "ユーザーが見つかりません")
-    })
-    @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(
-            @Parameter(description = "ユーザーID", required = true, example = "1")
-            @PathVariable Long id) {
-        UserResponse response = userService.getUserById(id);
-        return ResponseEntity.ok(response);
+    
+    public void deleteInactive() {           // 🔴 未カバー
+        // このメソッドはテストされていない
+        userRepository.deleteByActiveIsFalse();
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ4: DTOのドキュメント化
+## 🚀 ステップ5: カバレッジを改善する
 
-### 4-1. UserCreateRequestにスキーマ情報追加
+### 5-1. カバーされていないコードの特定
+
+```bash
+# カバレッジチェックを実行
+./mvnw clean verify
+```
+
+**カバレッジ不足の例**:
+```
+[WARNING] Rule violated for package com.example.demo.service:
+lines covered ratio is 0.65, but expected minimum is 0.80
+```
+
+### 5-2. 不足しているテストを追加
 
 ```java
-package com.example.hellospringboot.dto.request;
+@Test
+@DisplayName("非アクティブユーザーの削除 - 成功")
+void deleteInactive_Success() {
+    // Given
+    doNothing().when(userRepository).deleteByActiveIsFalse();
+    
+    // When
+    assertDoesNotThrow(() -> userService.deleteInactive());
+    
+    // Then
+    verify(userRepository, times(1)).deleteByActiveIsFalse();
+}
+```
 
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+### 5-3. エッジケースのテスト
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@Schema(description = "ユーザー作成リクエスト")
-public class UserCreateRequest {
+```java
+@Test
+@DisplayName("年齢がnullの場合のユーザー作成")
+void create_WithNullAge() {
+    // Given
+    UserCreateRequest request = new UserCreateRequest();
+    request.setName("Test User");
+    request.setEmail("test@example.com");
+    request.setAge(null);  // nullケース
+    
+    // When & Then
+    // バリデーションエラーになることを確認
+}
 
-    @Schema(description = "ユーザー名", example = "山田太郎", required = true)
-    @NotBlank(message = "ユーザー名は必須です")
-    @Size(min = 2, max = 100, message = "ユーザー名は2文字以上100文字以内で入力してください")
-    private String name;
-
-    @Schema(description = "メールアドレス", example = "taro@example.com", required = true)
-    @NotBlank(message = "メールアドレスは必須です")
-    @Email(message = "メールアドレスの形式が正しくありません")
-    private String email;
-
-    @Schema(description = "年齢", example = "30", minimum = "0", maximum = "150", required = true)
-    @NotNull(message = "年齢は必須です")
-    @Min(value = 0, message = "年齢は0以上で入力してください")
-    @Max(value = 150, message = "年齢は150以下で入力してください")
-    private Integer age;
+@Test
+@DisplayName("重複メールでのユーザー作成")
+void create_DuplicateEmail() {
+    // Given
+    when(userRepository.existsByEmail("duplicate@example.com"))
+        .thenReturn(true);
+    
+    // When & Then
+    assertThrows(BusinessException.class, () -> {
+        // 重複エラーが発生することを確認
+    });
 }
 ```
 
 ---
 
-## 🚀 ステップ5: application.ymlでカスタマイズ
+## 🚀 ステップ6: カバレッジの継続的監視
 
-### 5-1. SpringDoc設定
+### 6-1. ビルド時に自動チェック
 
-**ファイルパス**: `src/main/resources/application.yml`
+`pom.xml`の設定により、カバレッジが80%未満の場合はビルドが失敗します：
 
-```yaml
-# SpringDoc設定
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-    tags-sorter: alpha
-    operations-sorter: alpha
-    display-request-duration: true
-    doc-expansion: none
-  show-actuator: false
+```bash
+./mvnw clean verify
+```
+
+**カバレッジ不足時の出力**:
+```
+[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.11:check
+[ERROR] Rule violated for package com.example.demo: 
+        lines covered ratio is 0.75, but expected minimum is 0.80
+```
+
+### 6-2. 特定のクラスを除外
+
+設定クラスやDTOなど、テスト不要なクラスを除外：
+
+```xml
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <version>0.8.11</version>
+    <configuration>
+        <excludes>
+            <!-- 設定クラス -->
+            <exclude>**/config/**</exclude>
+            <!-- DTO -->
+            <exclude>**/dto/**</exclude>
+            <!-- メインクラス -->
+            <exclude>**/DemoApplication.class</exclude>
+        </excludes>
+    </configuration>
+    <!-- executions は同じ -->
+</plugin>
+```
+
+### 6-3. パッケージ別の目標設定
+
+```xml
+<rules>
+    <!-- Service層は90%以上 -->
+    <rule>
+        <element>PACKAGE</element>
+        <includes>
+            <include>com.example.demo.service.*</include>
+        </includes>
+        <limits>
+            <limit>
+                <counter>LINE</counter>
+                <value>COVEREDRATIO</value>
+                <minimum>0.90</minimum>
+            </limit>
+        </limits>
+    </rule>
+    <!-- Controller層は80%以上 -->
+    <rule>
+        <element>PACKAGE</element>
+        <includes>
+            <include>com.example.demo.controller.*</include>
+        </includes>
+        <limits>
+            <limit>
+                <counter>LINE</counter>
+                <value>COVEREDRATIO</value>
+                <minimum>0.80</minimum>
+            </limit>
+        </limits>
+    </rule>
+</rules>
 ```
 
 ---
 
 ## ✅ 動作確認
 
-### Swagger UIにアクセス
+### 1. カバレッジレポートの生成
 
+```bash
+./mvnw clean test
 ```
-http://localhost:8080/swagger-ui.html
+
+### 2. レポートをブラウザで確認
+
+```bash
+open target/site/jacoco/index.html
 ```
 
 **確認項目**:
-- ✅ API一覧が表示される
-- ✅ 各エンドポイントの説明が表示される
-- ✅ リクエスト/レスポンスのスキーマが表示される
-- ✅ 「Try it out」でAPIを直接テストできる
+- 全体のカバレッジが80%以上か
+- 各パッケージのカバレッジが適切か
+- 赤く表示されている（未カバー）のコードがあるか
 
-### OpenAPI JSONダウンロード
+### 3. カバレッジチェック
 
 ```bash
-curl http://localhost:8080/v3/api-docs -o openapi.json
+./mvnw clean verify
+```
+
+**成功例**:
+```
+[INFO] All coverage checks have been met.
+[INFO] BUILD SUCCESS
 ```
 
 ---
 
-## 💡 補足: ThymeleafによるUI提供との組み合わせ
+## 🎨 発展課題
 
-Phase 5でThymeleafを学習した場合、**REST API**と**Thymeleaf UI**を併用する設計も可能です。
+### 課題1: Branch Coverageの改善
 
-### REST API vs Thymeleaf UIの使い分け
+分岐カバレッジを90%以上にしてください。
 
-| アプローチ | 用途 | メリット | デメリット |
-|----------|------|---------|----------|
-| **REST API** | SPA、モバイルアプリ | フロントエンド独立、柔軟性高い | 初期設定が複雑 |
-| **Thymeleaf** | 従来型Webアプリ | 学習コスト低い、サーバー完結 | リッチUIに限界 |
-| **ハイブリッド** | 段階的移行 | 既存資産活用、柔軟な選択 | 複雑性増加 |
-
-### ハイブリッド構成の例
-
-**プロジェクト構造**:
-```
-src/main/java/com/example/hellospringboot/
-├── controller/
-│   ├── api/              ← REST APIコントローラー
-│   │   └── UserApiController.java
-│   └── web/              ← Thymeleafコントローラー
-│       └── UserWebController.java
-├── service/
-│   └── UserService.java  ← 共通のビジネスロジック
-└── ...
-```
-
-**REST APIコントローラー**:
 ```java
-@RestController
-@RequestMapping("/api/users")
-@Tag(name = "User API", description = "ユーザー管理API（REST）")
-public class UserApiController {
-    
-    private final UserService userService;
-    
-    @GetMapping
-    @Operation(summary = "ユーザー一覧取得", description = "全ユーザーをJSON形式で返します")
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
-    }
-}
-```
-
-**Thymeleafコントローラー**:
-```java
-@Controller
-@RequestMapping("/users")
-public class UserWebController {
-    
-    private final UserService userService;
-    
-    @GetMapping
-    public String listUsers(Model model) {
-        List<UserResponse> users = userService.getAllUsers();
-        model.addAttribute("users", users);
-        return "users/list";  // templates/users/list.html
-    }
-    
-    @GetMapping("/new")
-    public String newUserForm(Model model) {
-        model.addAttribute("user", new UserCreateRequest());
-        return "users/form";
-    }
-    
-    @PostMapping
-    public String createUser(@Valid @ModelAttribute UserCreateRequest request,
-                            BindingResult result,
-                            RedirectAttributes redirectAttributes) {
-        if (result.hasErrors()) {
-            return "users/form";
+public class UserService {
+    public String getUserStatus(User user) {
+        if (user.getAge() < 18) {
+            return "未成年";
+        } else if (user.getAge() < 65) {
+            return "成人";
+        } else {
+            return "高齢者";
         }
-        
-        userService.createUser(request);
-        redirectAttributes.addFlashAttribute("message", "ユーザーを作成しました");
-        return "redirect:/users";
     }
 }
 ```
 
-### OpenAPI仕様書の設定
+**必要なテスト**:
+- 18歳未満のケース
+- 18歳以上65歳未満のケース
+- 65歳以上のケース
 
-REST APIのみをSwagger UIに表示する設定:
+### 課題2: Mutation Testing
 
-```java
-@Configuration
-public class OpenAPIConfig {
+PITestを導入してミューテーションテストを実施してください。
 
-    @Bean
-    public GroupedOpenApi publicApi() {
-        return GroupedOpenApi.builder()
-                .group("api")
-                .pathsToMatch("/api/**")  // /api/** のみをドキュメント化
-                .build();
-    }
-    
-    @Bean
-    public OpenAPI customOpenAPI() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("Hello Spring Boot REST API")
-                        .description("REST APIエンドポイント（Web UIは /users などでアクセス）"));
-    }
-}
+```xml
+<plugin>
+    <groupId>org.pitest</groupId>
+    <artifactId>pitest-maven</artifactId>
+    <version>1.15.3</version>
+    <dependencies>
+        <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>1.2.1</version>
+        </dependency>
+    </dependencies>
+    <configuration>
+        <targetClasses>
+            <param>com.example.demo.service.*</param>
+        </targetClasses>
+        <targetTests>
+            <param>com.example.demo.service.*Test</param>
+        </targetTests>
+    </configuration>
+</plugin>
 ```
 
-### 実装の推奨
+```bash
+./mvnw org.pitest:pitest-maven:mutationCoverage
+```
 
-**小規模アプリ**: Thymeleafのみで実装（シンプル）
+### 課題3: CI/CDでのカバレッジ監視
 
-**中規模アプリ**: 
-- 管理画面: Thymeleaf
-- 外部連携API: REST API
+GitHub Actionsでカバレッジを自動チェック：
 
-**大規模アプリ**: 
-- フロントエンド: React/Vue (REST API使用)
-- バックエンド: Spring Boot REST API
-- 管理画面: Thymeleaf（オプション）
+```yaml
+# .github/workflows/test.yml
+name: Test with Coverage
 
-> **💡 Phase 5の復習**: Thymeleafの基礎は[STEP_21](../../phase5/STEP_21.md)〜[STEP_24](../../phase5/STEP_24.md)で学習しました。REST APIとThymeleafの両方を理解することで、プロジェクトに応じた最適な選択ができるようになります。
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Run tests with coverage
+        run: ./mvnw clean verify
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./target/site/jacoco/jacoco.xml
+```
 
 ---
 
-## 🎨 チャレンジ課題
+## 🐛 トラブルシューティング
 
-### チャレンジ 1: 認証の統合
+### エラー: "Rule violated for package"
 
-Swagger UIでJWTトークンを使えるようにしてください。
+**原因**: カバレッジが目標値（80%）に達していない
 
-### チャレンジ 2: グループ化
+**解決策**:
+1. カバーされていないコードを特定
+2. 不足しているテストケースを追加
+3. 必要に応じて除外設定を追加
 
-`@Tag`を使ってAPIをグループ化してください。
+### エラー: "Could not find artifact org.jacoco:jacoco-maven-plugin"
 
-### チャレンジ 3: OpenAPIクライアント生成
+**原因**: ネットワーク問題またはMavenリポジトリの設定
 
-OpenAPI Generatorで自動的にクライアントコードを生成してください。
+**解決策**:
+```bash
+# Maven キャッシュをクリア
+./mvnw dependency:purge-local-repository
 
-### チャレンジ 4: ハイブリッド構成
+# 再度ビルド
+./mvnw clean install
+```
 
-同じUserServiceを使って、REST APIコントローラーとThymeleafコントローラーの両方を実装してください。
+### レポートが生成されない
+
+**原因**: テストが実行されていない
+
+**解決策**:
+```bash
+# テストをスキップせずに実行
+./mvnw clean test
+
+# target/site/jacoco/ が生成されているか確認
+ls -la target/site/jacoco/
+```
+
+### カバレッジが100%にならない
+
+**原因**: Lombokやフレームワーク生成コードが含まれている
+
+**解決策**: 除外設定を追加
+```xml
+<configuration>
+    <excludes>
+        <!-- Lombok生成コード -->
+        <exclude>**/*$*</exclude>
+    </excludes>
+</configuration>
+```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ SpringDocの導入
-- ✅ Swagger UIの使用
-- ✅ @Operationによるエンドポイント説明
-- ✅ @Schemaによるモデル説明
-- ✅ セキュリティスキームの設定
+- ✅ テストカバレッジの概念と種類（行、分岐、メソッド、クラス）
+- ✅ JaCoCoのセットアップと設定方法
+- ✅ カバレッジレポートの生成と確認方法
+- ✅ カバレッジレポートの読み方（色分け、パーセンテージ）
+- ✅ カバーされていないコードの特定方法
+- ✅ 目標カバレッジ（80%以上）の設定と自動チェック
+- ✅ 特定のクラス・パッケージの除外設定
+- ✅ ビルド時の自動カバレッジチェック
+- ✅ カバレッジの継続的監視
+
+**カバレッジのベストプラクティス**:
+- 目標は80%〜90%が現実的
+- 100%を目指す必要はない（コストと効果のバランス）
+- 重要なビジネスロジックは必ず高カバレッジに
+- 設定クラスやDTOは除外してOK
+- カバレッジよりもテストの質が重要
 
 ---
 
-## 🔄 Phase 6完了！
+## 🔄 Gitへのコミットとレビュー依頼
+
+進捗を記録してレビューを受けましょう：
 
 ```bash
+# 変更をステージング
 git add .
-git commit -m "Step 29: テストカバレッジ完了 - Phase 6完了"
+
+# コミット
+git commit -m "Step 29: テストカバレッジ完了 - JaCoCoで80%以上達成"
+
+# リモートにプッシュ
 git push origin main
 ```
 
----
-
-## ➡️ 次のPhase
-
-Phase 6お疲れさまでした！次は**Phase 7: 実践的な機能**に進みます。
-
-[Step 30: ファイルアップロード](../phase7/STEP_30.md)で、マルチパートリクエストを扱う方法を学びます。
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
-お疲れさまでした！ 🎉
+## ➡️ 次のステップ
 
-Phase 6では、セキュリティ、テスト、API仕様書の作成方法を学びました。
-これで実務レベルのSpring Bootアプリケーション開発の基礎が身につきました！
+おめでとうございます！🎉 **Phase 6: セキュリティとテスト**が完了しました！
+
+レビューが完了したら、**[Phase 7: 実践的な機能](../phase7/STEP_30.md)** へ進みましょう！
+
+ファイルアップロード、ページネーション、キャッシュ、非同期処理など、実務で必要となる機能を実装します。
