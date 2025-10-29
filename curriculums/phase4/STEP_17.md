@@ -775,6 +775,46 @@ logging:
     com.example.hellospringboot: DEBUG
 ```
 
+### MyBatisで例外が発生する
+
+**症状**: `PersistenceException`や`DataAccessException`
+
+**MyBatis特有の例外**:
+```java
+// MyBatis Mapperでの例外
+@Mapper
+public interface UserMapper {
+    Optional<User> findById(Long id);  // Optionalで安全に
+}
+
+// Service層でのハンドリング
+public UserResponse getUserById(Long id) {
+    return userMapper.findById(id)
+        .map(dtoMapper::toResponse)
+        .orElseThrow(() -> new UserNotFoundException(id));
+}
+```
+
+**MyBatis例外のハンドリング**:
+```java
+@ExceptionHandler(PersistenceException.class)
+public ResponseEntity<ErrorResponse> handlePersistenceException(
+        PersistenceException ex) {
+    
+    log.error("データベースエラー", ex);
+    
+    ErrorResponse errorResponse = ErrorResponse.builder()
+        .message("データベースエラーが発生しました")
+        .errorCode("DATABASE_ERROR")
+        .timestamp(LocalDateTime.now())
+        .build();
+    
+    return ResponseEntity
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(errorResponse);
+}
+```
+
 ---
 
 ## 📚 このステップで学んだこと

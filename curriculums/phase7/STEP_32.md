@@ -403,6 +403,145 @@ FLUSHDB
 
 ---
 
+## 🔧 補足: MyBatisでのキャッシング
+
+Phase 3でMyBatisを学習した場合、MyBatis Mapperでもキャッシュを使用できます。
+
+### MyBatis Mapperでのキャッシュ
+
+**UserMapper（MyBatis版）**:
+```java
+@Mapper
+public interface UserMapper {
+    
+    @Select("SELECT * FROM users WHERE id = #{id}")
+    Optional<User> findById(Long id);
+    
+    @Select("SELECT * FROM users")
+    List<User> findAll();
+    
+    @Insert("INSERT INTO users (name, email, age, created_at, updated_at) " +
+            "VALUES (#{name}, #{email}, #{age}, NOW(), NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void insert(User user);
+    
+    @Update("UPDATE users SET name = #{name}, email = #{email}, age = #{age}, updated_at = NOW() " +
+            "WHERE id = #{id}")
+    void update(User user);
+    
+    @Delete("DELETE FROM users WHERE id = #{id}")
+    void deleteById(Long id);
+}
+```
+
+### MyBatis使用時のService層キャッシング
+
+```java
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class UserService {
+
+    private final UserMapper userMapper;  // MyBatis Mapper
+    private final UserDtoMapper dtoMapper;  // DTO変換用
+
+    /**
+     * ユーザー取得（キャッシュあり）
+     */
+    @Cacheable(value = "users", key = "#id")
+    public UserResponse getUserById(Long id) {
+        log.info("データベースからユーザーを取得します: {}", id);
+        User user = userMapper.findById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+        return dtoMapper.toResponse(user);
+    }
+
+    /**
+     * 全ユーザー取得（キャッシュあり）
+     */
+    @Cacheable(value = "users", key = "'all'")
+    public List<UserResponse> getAllUsers() {
+        log.info("データベースから全ユーザーを取得します");
+        return userMapper.findAll().stream()
+                .map(dtoMapper::toResponse)
+                .toList();
+    }
+
+    /**
+     * ユーザー作成（キャッシュクリア）
+     */
+    @Transactional
+    @CacheEvict(value = "users", key = "'all'")
+    public UserResponse createUser(UserCreateRequest request) {
+        log.info("ユーザーを作成します: {}", request.getEmail());
+        
+        User user = dtoMapper.toEntity(request);
+        userMapper.insert(user);
+        return dtoMapper.toResponse(user);
+    }
+
+    /**
+     * ユーザー更新（キャッシュ更新）
+     */
+    @Transactional
+    @CachePut(value = "users", key = "#id")
+    @CacheEvict(value = "users", key = "'all'")
+    public UserResponse updateUser(Long id, UserUpdateRequest request) {
+        log.info("ユーザーを更新します: {}", id);
+        
+        User user = userMapper.findById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setAge(request.getAge());
+
+        userMapper.update(user);
+        return dtoMapper.toResponse(user);
+    }
+
+    /**
+     * ユーザー削除（キャッシュクリア）
+     */
+    @Transactional
+    @CacheEvict(value = "users", allEntries = true)
+    public void deleteUser(Long id) {
+        log.info("ユーザーを削除します: {}", id);
+        userMapper.deleteById(id);
+    }
+}
+```
+
+### MyBatis独自のキャッシュ機能
+
+MyBatisには**Second Level Cache**という独自のキャッシュ機能もあります。
+
+**Mapper XMLでのキャッシュ設定**:
+```xml
+<mapper namespace="com.example.hellospringboot.mapper.UserMapper">
+    <!-- Second Level Cache有効化 -->
+    <cache eviction="LRU" flushInterval="60000" size="512" readOnly="true"/>
+    
+    <select id="findById" resultType="User">
+        SELECT * FROM users WHERE id = #{id}
+    </select>
+</mapper>
+```
+
+### Spring Cache vs MyBatis Cache
+
+| 観点 | Spring Cache | MyBatis Second Level Cache |
+|------|-------------|---------------------------|
+| **スコープ** | アプリケーション全体 | Mapperごと |
+| **柔軟性** | 高い（Redis等と連携） | 中程度 |
+| **設定** | アノテーションベース | XMLベース |
+| **推奨** | ✅ REST API、マイクロサービス | 単一アプリ、シンプルなケース |
+
+> **💡 推奨**: モダンなSpring Bootアプリケーションでは、**Spring Cache + Redis**の組み合わせを推奨します。MyBatis Cacheは小規模アプリやレガシーシステムで検討してください。
+
+---
+
 ## 🎨 チャレンジ課題
 
 ### チャレンジ 1: キャッシュ統計

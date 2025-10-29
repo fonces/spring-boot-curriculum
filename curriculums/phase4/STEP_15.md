@@ -61,8 +61,14 @@
 |----------|------|---------------------|
 | **Presentation** | HTTPリクエスト/レスポンス処理 | `@RestController` |
 | **Business Logic** | ビジネスルール、トランザクション | `@Service` |
-| **Data Access** | データベースCRUD | `@Repository` (JpaRepository) |
-| **Domain** | ビジネスオブジェクト | `@Entity` |
+| **Data Access** | データベースCRUD | `@Repository` (JpaRepository) または `@Mapper` (MyBatis) |
+| **Domain** | ビジネスオブジェクト | `@Entity` またはPOJO |
+
+> **💡 Phase 3の復習**: Phase 3でMyBatisを学習しました。Data Access層では**JPA (Spring Data JPA)** と **MyBatis** の両方が選択肢になります。
+> - **JPA**: シンプルなCRUD、オブジェクト指向的な設計に向いている
+> - **MyBatis**: 複雑なSQL、パフォーマンス最適化が必要な場合に向いている
+> 
+> このステップではJPAを使った実装例を示しますが、Phase 3で学んだMyBatisでも同じアーキテクチャパターンが適用できます。
 
 ---
 
@@ -94,9 +100,15 @@ public ResponseEntity<User> getUser(@PathVariable Long id) {
 - APIの契約とDB設計を分離
 
 ```
-Controller → DTO → Service → Entity → Repository → DB
-           ← DTO ←         ← Entity ←            ←
+Controller → DTO → Service → Entity/POJO → Repository/Mapper → DB
+           ← DTO ←         ← Entity/POJO ←                    ←
 ```
+
+> **💡 MyBatisとの違い**:
+> - **JPA**: `Entity` (JPAアノテーション付き) → `Repository` (JpaRepository)
+> - **MyBatis**: POJO (単純なJavaクラス) → `Mapper` (MyBatisインターフェース)
+> 
+> どちらもDTOパターンは同じように使えます。
 
 ---
 
@@ -840,7 +852,97 @@ UserResponse toResponse(User user);
 
 ---
 
-## 🐛 トラブルシューティング
+## � 補足: MyBatisでの実装
+
+Phase 3でMyBatisを学習した場合、同じアーキテクチャパターンをMyBatisでも実装できます。
+
+### MyBatisでのData Access層
+
+**Mapper Interface**:
+```java
+package com.example.hellospringboot.mapper;
+
+import com.example.hellospringboot.entity.User;
+import org.apache.ibatis.annotations.*;
+
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface UserMapper {
+    
+    @Insert("INSERT INTO users (name, email, created_at, updated_at) " +
+            "VALUES (#{name}, #{email}, NOW(), NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void insert(User user);
+    
+    @Select("SELECT * FROM users WHERE id = #{id}")
+    Optional<User> findById(Long id);
+    
+    @Select("SELECT * FROM users")
+    List<User> findAll();
+    
+    @Update("UPDATE users SET name = #{name}, email = #{email}, updated_at = NOW() " +
+            "WHERE id = #{id}")
+    void update(User user);
+    
+    @Delete("DELETE FROM users WHERE id = #{id}")
+    void deleteById(Long id);
+    
+    @Select("SELECT COUNT(*) > 0 FROM users WHERE email = #{email}")
+    boolean existsByEmail(String email);
+}
+```
+
+### Service層での利用
+
+```java
+@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    private final UserMapper userMapper;  // MyBatis Mapper
+    private final UserDtoMapper dtoMapper;  // MapStructのマッパー
+
+    @Transactional
+    public UserResponse createUser(UserCreateRequest request) {
+        User user = dtoMapper.toEntity(request);
+        userMapper.insert(user);  // MyBatisのinsert
+        return dtoMapper.toResponse(user);
+    }
+
+    public List<UserResponse> getAllUsers() {
+        List<User> users = userMapper.findAll();  // MyBatisのselect
+        return dtoMapper.toResponseList(users);
+    }
+
+    public Optional<UserResponse> getUserById(Long id) {
+        return userMapper.findById(id)
+                .map(dtoMapper::toResponse);
+    }
+}
+```
+
+### JPA vs MyBatisの選択基準
+
+| 観点 | JPA | MyBatis |
+|------|-----|---------|
+| **CRUD操作** | 自動生成で簡単 | SQL手書きが必要 |
+| **複雑なクエリ** | JPQLやCriteria APIが煩雑 | SQL直接記述で柔軟 |
+| **動的クエリ** | Specification API | XMLの動的SQL |
+| **パフォーマンス** | N+1問題に注意 | 必要なカラムだけ取得可能 |
+| **テスト** | H2などで簡単 | 本番DBと同じ構造が必要 |
+
+**推奨**:
+- **シンプルなCRUD**: JPA
+- **複雑な検索・集計**: MyBatis
+- **大規模プロジェクト**: 両方を併用（用途に応じて使い分け）
+
+> このカリキュラムでは主にJPAを使用しますが、Phase 3で学んだMyBatisの知識も活かせることを覚えておいてください！
+
+---
+
+## �🐛 トラブルシューティング
 
 ### MapStructが動作しない
 

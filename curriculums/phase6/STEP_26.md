@@ -656,7 +656,7 @@ curl http://localhost:8080/api/users
 
 ## 🚀 ステップ8: データベースユーザー認証への移行
 
-### 8-1. UserDetailsServiceの実装
+### 8-1. UserDetailsServiceの実装（JPA版）
 
 **ファイルパス**: `src/main/java/com/example/hellospringboot/security/CustomUserDetailsService.java`
 
@@ -701,7 +701,51 @@ public class CustomUserDetailsService implements UserDetailsService {
 }
 ```
 
-### 8-2. Userエンティティの更新
+### 8-2. MyBatisを使う場合のUserDetailsService
+
+**Phase 3でMyBatisを学習した場合**、MyBatis Mapperを使ったUserDetailsServiceも実装できます。
+
+**UserMapper.java**:
+```java
+@Mapper
+public interface UserMapper {
+    @Select("SELECT * FROM users WHERE email = #{email}")
+    Optional<User> findByEmail(String email);
+}
+```
+
+**CustomUserDetailsService（MyBatis版）**:
+```java
+@Service
+@RequiredArgsConstructor
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final UserMapper userMapper;  // MyBatis Mapper
+
+    @Override
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+        User user = userMapper.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                    "ユーザーが見つかりません: " + email
+                ));
+
+        return org.springframework.security.core.userdetails.User.builder()
+                .username(user.getEmail())
+                .password(user.getPassword())
+                .authorities(Collections.singletonList(
+                    new SimpleGrantedAuthority("ROLE_" + user.getRole())
+                ))
+                .build();
+    }
+}
+```
+
+> **💡 JPA vs MyBatisの選択**:
+> - **シンプルなユーザー認証**: JPAで十分
+> - **複雑な認証ロジック**: MyBatisで柔軟にクエリを記述
+> - **大規模システム**: 両方を併用（認証はMyBatis、CRUD はJPAなど）
+
+### 8-3. Userエンティティの更新
 
 ```java
 @Entity

@@ -246,6 +246,161 @@ src/main/java/com/example/hellospringboot/
 
 ---
 
+## 💡 補足: Data Access層の技術選択
+
+Phase 3でMyBatisを、Phase 2でJPAを学習してきました。最終プロジェクトでは、**用途に応じて使い分ける**ことが重要です。
+
+### JPA vs MyBatisの使い分け指針
+
+**このプロジェクトでの推奨**:
+
+| 機能 | 推奨技術 | 理由 |
+|------|---------|------|
+| **User CRUD** | JPA | シンプルなCRUD操作 |
+| **Project CRUD** | JPA | リレーション管理が簡単 |
+| **Task CRUD** | JPA | エンティティ間の関連が多い |
+| **Task検索** | MyBatis | 複雑な条件検索、動的クエリ |
+| **ダッシュボード集計** | MyBatis | 複数テーブルのJOIN、集計 |
+| **レポート出力** | MyBatis | パフォーマンス最適化 |
+
+### 併用パターンの実装例
+
+**1. JPAでCRUD、MyBatisで検索**:
+```java
+@Service
+@RequiredArgsConstructor
+public class TaskService {
+    
+    private final TaskRepository taskRepository;  // JPA
+    private final TaskSearchMapper taskSearchMapper;  // MyBatis
+    
+    // CRUDはJPA
+    public TaskResponse createTask(TaskCreateRequest request) {
+        Task task = taskMapper.toEntity(request);
+        Task saved = taskRepository.save(task);
+        return taskMapper.toResponse(saved);
+    }
+    
+    // 複雑な検索はMyBatis
+    public List<TaskResponse> searchTasks(TaskSearchCriteria criteria) {
+        return taskSearchMapper.search(criteria);
+    }
+}
+```
+
+**2. MyBatisでの複雑な検索Mapper**:
+```java
+@Mapper
+public interface TaskSearchMapper {
+    
+    List<TaskResponse> search(@Param("criteria") TaskSearchCriteria criteria);
+    
+    List<TaskStatistics> getProjectStatistics(@Param("projectId") Long projectId);
+    
+    List<TaskResponse> findUpcomingTasks(@Param("days") int days);
+}
+```
+
+**Mapper XML（動的SQL）**:
+```xml
+<select id="search" resultType="TaskResponse">
+    SELECT 
+        t.id, t.title, t.description, t.status, t.priority,
+        u.username as assigneeName,
+        p.name as projectName
+    FROM tasks t
+    LEFT JOIN users u ON t.assignee_id = u.id
+    LEFT JOIN projects p ON t.project_id = p.id
+    WHERE 1=1
+    <if test="criteria.status != null">
+        AND t.status = #{criteria.status}
+    </if>
+    <if test="criteria.priority != null">
+        AND t.priority = #{criteria.priority}
+    </if>
+    <if test="criteria.keyword != null">
+        AND (t.title LIKE CONCAT('%', #{criteria.keyword}, '%')
+             OR t.description LIKE CONCAT('%', #{criteria.keyword}, '%'))
+    </if>
+    ORDER BY 
+    <choose>
+        <when test="criteria.sortBy == 'priority'">t.priority DESC</when>
+        <when test="criteria.sortBy == 'dueDate'">t.due_date ASC</when>
+        <otherwise>t.created_at DESC</otherwise>
+    </choose>
+</select>
+```
+
+### 実装上の注意点
+
+**1. トランザクション管理**:
+```java
+@Service
+@RequiredArgsConstructor
+public class TaskService {
+    
+    private final TaskRepository taskRepository;  // JPA
+    private final TaskMapper taskMapper;  // MyBatis
+    
+    @Transactional  // JPA、MyBatis両方に適用される
+    public void processTask(Long taskId) {
+        // JPA操作
+        Task task = taskRepository.findById(taskId).orElseThrow();
+        task.setStatus(TaskStatus.IN_PROGRESS);
+        taskRepository.save(task);
+        
+        // MyBatis操作
+        taskMapper.updateLastProcessedAt(taskId, LocalDateTime.now());
+    }
+}
+```
+
+**2. 依存関係**:
+```xml
+<!-- pom.xml -->
+<dependencies>
+    <!-- JPA -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    
+    <!-- MyBatis -->
+    <dependency>
+        <groupId>org.mybatis.spring.boot</groupId>
+        <artifactId>mybatis-spring-boot-starter</artifactId>
+        <version>3.0.3</version>
+    </dependency>
+</dependencies>
+```
+
+**3. 設定ファイル**:
+```yaml
+# application.yml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+```
+
+### このプロジェクトでの実装方針
+
+Phase 8の最終プロジェクトでは、以下のアプローチを推奨します：
+
+1. **基本はJPA**: CRUD操作、エンティティ管理
+2. **複雑な検索はMyBatis**: タスク検索、ダッシュボード集計
+3. **パフォーマンス重視の部分はMyBatis**: レポート、統計情報
+
+この使い分けにより、開発速度とパフォーマンスのバランスが取れます。
+
+---
+
 ## 🎨 チャレンジ課題
 
 ### チャレンジ 1: ワイヤーフレーム

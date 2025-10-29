@@ -390,6 +390,165 @@ open target/site/jacoco/index.html
 
 ---
 
+## 🔧 補足: MyBatisのテスト
+
+Phase 3でMyBatisを学習した場合、MyBatis Mapperのテストも重要です。
+
+### MyBatis Mapperのテスト
+
+**ファイルパス**: `src/test/java/com/example/hellospringboot/mapper/UserMapperTest.java`
+
+```java
+package com.example.hellospringboot.mapper;
+
+import com.example.hellospringboot.entity.User;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mybatis.spring.boot.test.autoconfigure.MybatisTest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.test.context.ActiveProfiles;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * UserMapper のテスト
+ */
+@MybatisTest  // MyBatis専用のテストアノテーション
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@ActiveProfiles("test")
+@DisplayName("UserMapper Tests")
+class UserMapperTest {
+
+    @Autowired
+    private UserMapper userMapper;
+
+    @Test
+    @DisplayName("ユーザーを挿入できること")
+    void testInsert() {
+        // Given
+        User user = User.builder()
+                .name("Test User")
+                .email("test@example.com")
+                .age(25)
+                .build();
+
+        // When
+        userMapper.insert(user);
+
+        // Then
+        assertThat(user.getId()).isNotNull();  // IDが自動生成される
+    }
+
+    @Test
+    @DisplayName("IDでユーザーを検索できること")
+    void testFindById() {
+        // Given
+        User user = User.builder()
+                .name("John Doe")
+                .email("john@example.com")
+                .age(30)
+                .build();
+        userMapper.insert(user);
+
+        // When
+        Optional<User> foundUser = userMapper.findById(user.getId());
+
+        // Then
+        assertThat(foundUser).isPresent();
+        assertThat(foundUser.get().getName()).isEqualTo("John Doe");
+    }
+
+    @Test
+    @DisplayName("全ユーザーを取得できること")
+    void testFindAll() {
+        // Given
+        User user1 = User.builder().name("User 1").email("user1@example.com").age(25).build();
+        User user2 = User.builder().name("User 2").email("user2@example.com").age(30).build();
+        userMapper.insert(user1);
+        userMapper.insert(user2);
+
+        // When
+        List<User> users = userMapper.findAll();
+
+        // Then
+        assertThat(users).hasSizeGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("ユーザーを更新できること")
+    void testUpdate() {
+        // Given
+        User user = User.builder()
+                .name("Original Name")
+                .email("original@example.com")
+                .age(25)
+                .build();
+        userMapper.insert(user);
+
+        // When
+        user.setName("Updated Name");
+        user.setAge(26);
+        userMapper.update(user);
+
+        // Then
+        Optional<User> updatedUser = userMapper.findById(user.getId());
+        assertThat(updatedUser).isPresent();
+        assertThat(updatedUser.get().getName()).isEqualTo("Updated Name");
+        assertThat(updatedUser.get().getAge()).isEqualTo(26);
+    }
+
+    @Test
+    @DisplayName("ユーザーを削除できること")
+    void testDelete() {
+        // Given
+        User user = User.builder()
+                .name("To Delete")
+                .email("delete@example.com")
+                .age(25)
+                .build();
+        userMapper.insert(user);
+        Long userId = user.getId();
+
+        // When
+        userMapper.deleteById(userId);
+
+        // Then
+        Optional<User> deletedUser = userMapper.findById(userId);
+        assertThat(deletedUser).isEmpty();
+    }
+}
+```
+
+### MyBatisテストの依存関係
+
+**pom.xml**:
+```xml
+<dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter-test</artifactId>
+    <version>3.0.3</version>
+    <scope>test</scope>
+</dependency>
+```
+
+### JPA vs MyBatisのテスト比較
+
+| 観点 | JPA (@DataJpaTest) | MyBatis (@MybatisTest) |
+|------|-------------------|------------------------|
+| **テストアノテーション** | `@DataJpaTest` | `@MybatisTest` |
+| **トランザクション** | 自動ロールバック | 自動ロールバック |
+| **テストDB** | H2などのインメモリDB | 本番と同じDBを推奨 |
+| **設定** | application-test.yml | application-test.yml |
+| **依存関係** | spring-boot-starter-test | mybatis-spring-boot-starter-test |
+
+> **💡 推奨**: MyBatisはSQLを直接記述するため、本番環境と同じデータベース（Docker MySQL等）でテストすることを推奨します。
+
+---
+
 ## 🎨 チャレンジ課題
 
 ### チャレンジ 1: PostServiceのテスト
