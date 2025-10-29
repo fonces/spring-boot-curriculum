@@ -684,6 +684,10 @@ curl -X POST http://localhost:8080/api/users \
 
 - [Spring Boot Reference Documentation](https://spring.pleiades.io/spring-boot/)
 - [Spring Framework API](https://docs.spring.io/spring-framework/docs/current/javadoc-api/)
+- [MyBatis 3 Documentation](https://mybatis.org/mybatis-3/ja/)
+- [MyBatis-Spring Documentation](https://mybatis.org/spring/ja/)
+- [Thymeleaf Documentation](https://www.thymeleaf.org/documentation.html)
+- [Thymeleaf Tutorial](https://www.thymeleaf.org/doc/tutorials/3.1/usingthymeleaf.html)
 
 ### スタイルガイド
 
