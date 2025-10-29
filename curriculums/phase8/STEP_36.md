@@ -283,6 +283,275 @@ http://localhost:8080/swagger-ui.html
 
 ---
 
+## 💡 補足: フロントエンド実装の選択肢
+
+Phase 5でThymeleafを学習しました。最終プロジェクトでは、**REST API**と**Thymeleaf UI**のどちらを使うか、または両方を組み合わせるか選択できます。
+
+### アプローチ1: REST API（推奨：モダンなSPA）
+
+**フロントエンド**: React, Vue.js, Angular など
+
+**メリット**:
+- フロントエンドとバックエンドの完全分離
+- リッチなUIを実装可能
+- モバイルアプリとも共通のAPIを利用
+
+**このプロジェクトでの実装**:
+```
+バックエンド: Spring Boot REST API（このステップで実装済み）
+フロントエンド: React/Vue（別リポジトリで実装）
+```
+
+### アプローチ2: Thymeleaf（推奨：学習目的、小規模）
+
+**フロントエンド**: Thymeleaf + Bootstrap/Tailwind CSS
+
+**メリット**:
+- サーバーサイドで完結、シンプル
+- Spring Bootの知識だけで実装可能
+- 学習コストが低い
+
+**Thymeleaf版のコントローラー例**:
+```java
+@Controller
+@RequestMapping("/projects")
+@RequiredArgsConstructor
+public class ProjectWebController {
+
+    private final ProjectService projectService;
+
+    /**
+     * プロジェクト一覧画面
+     */
+    @GetMapping
+    public String listProjects(Model model, Authentication authentication) {
+        String username = authentication.getName();
+        List<ProjectResponse> projects = projectService.getUserProjects(username);
+        model.addAttribute("projects", projects);
+        return "projects/list";  // templates/projects/list.html
+    }
+
+    /**
+     * プロジェクト作成フォーム
+     */
+    @GetMapping("/new")
+    public String newProjectForm(Model model) {
+        model.addAttribute("project", new ProjectCreateRequest());
+        return "projects/form";
+    }
+
+    /**
+     * プロジェクト作成処理
+     */
+    @PostMapping
+    public String createProject(@Valid @ModelAttribute("project") ProjectCreateRequest request,
+                                BindingResult result,
+                                Authentication authentication,
+                                RedirectAttributes redirectAttributes) {
+        if (result.hasErrors()) {
+            return "projects/form";
+        }
+
+        String username = authentication.getName();
+        ProjectResponse created = projectService.createProject(request, username);
+        
+        redirectAttributes.addFlashAttribute("message", "プロジェクトを作成しました");
+        return "redirect:/projects/" + created.getId();
+    }
+
+    /**
+     * プロジェクト詳細画面
+     */
+    @GetMapping("/{id}")
+    public String projectDetail(@PathVariable Long id, Model model) {
+        ProjectResponse project = projectService.getProjectById(id);
+        List<TaskResponse> tasks = projectService.getProjectTasks(id);
+        
+        model.addAttribute("project", project);
+        model.addAttribute("tasks", tasks);
+        model.addAttribute("newTask", new TaskCreateRequest());
+        
+        return "projects/detail";
+    }
+}
+```
+
+**Thymeleafテンプレート例**: `templates/projects/list.html`
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>プロジェクト一覧</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>プロジェクト一覧</h1>
+            <a th:href="@{/projects/new}" class="btn btn-primary">
+                ➕ 新規プロジェクト
+            </a>
+        </div>
+
+        <div th:if="${message}" class="alert alert-success alert-dismissible fade show">
+            <span th:text="${message}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-4" th:each="project : ${projects}">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title" th:text="${project.name}">プロジェクト名</h5>
+                        <p class="card-text text-muted" th:text="${project.description}">説明</p>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                作成日: <span th:text="${#temporals.format(project.createdAt, 'yyyy/MM/dd')}">2025/01/01</span>
+                            </small>
+                        </p>
+                    </div>
+                    <div class="card-footer">
+                        <a th:href="@{/projects/{id}(id=${project.id})}" class="btn btn-sm btn-outline-primary">
+                            詳細を見る
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div th:if="${#lists.isEmpty(projects)}" class="alert alert-info">
+            プロジェクトがありません。新しいプロジェクトを作成しましょう！
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
+
+**タスク詳細画面**: `templates/projects/detail.html`
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${project.name}">プロジェクト詳細</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a th:href="@{/projects}">プロジェクト</a></li>
+                <li class="breadcrumb-item active" th:text="${project.name}">現在のプロジェクト</li>
+            </ol>
+        </nav>
+
+        <h1 th:text="${project.name}">プロジェクト名</h1>
+        <p class="lead" th:text="${project.description}">説明</p>
+
+        <h2 class="mt-5">タスク一覧</h2>
+        
+        <div class="row">
+            <div class="col-md-4" th:each="status : ${T(com.example.hellospringboot.entity.TaskStatus).values()}">
+                <div class="card mb-4">
+                    <div class="card-header" th:classappend="${status == T(com.example.hellospringboot.entity.TaskStatus).TODO ? 'bg-secondary' : 
+                                                              status == T(com.example.hellospringboot.entity.TaskStatus).IN_PROGRESS ? 'bg-primary' : 'bg-success'} text-white">
+                        <h5 th:text="${status.name()}">TODO</h5>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item" 
+                            th:each="task : ${tasks}" 
+                            th:if="${task.status == status}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="mb-1" th:text="${task.title}">タスク名</h6>
+                                    <small class="text-muted">
+                                        <span th:if="${task.assignee != null}">
+                                            👤 <span th:text="${task.assignee.name}">担当者</span>
+                                        </span>
+                                        <span th:if="${task.dueDate != null}">
+                                            📅 <span th:text="${#temporals.format(task.dueDate, 'MM/dd')}">期限</span>
+                                        </span>
+                                    </small>
+                                </div>
+                                <span class="badge" 
+                                      th:classappend="${task.priority == T(com.example.hellospringboot.entity.Priority).HIGH ? 'bg-danger' : 
+                                                       task.priority == T(com.example.hellospringboot.entity.Priority).MEDIUM ? 'bg-warning' : 'bg-secondary'}"
+                                      th:text="${task.priority.name()}">HIGH</span>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- タスク作成フォーム -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>新しいタスクを作成</h5>
+            </div>
+            <div class="card-body">
+                <form th:action="@{/projects/{id}/tasks(id=${project.id})}" th:object="${newTask}" method="post">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">タイトル</label>
+                        <input type="text" class="form-control" id="title" th:field="*{title}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">説明</label>
+                        <textarea class="form-control" id="description" th:field="*{description}" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="priority" class="form-label">優先度</label>
+                            <select class="form-select" id="priority" th:field="*{priority}">
+                                <option th:each="p : ${T(com.example.hellospringboot.entity.Priority).values()}" 
+                                        th:value="${p}" th:text="${p.name()}">HIGH</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="dueDate" class="form-label">期限</label>
+                            <input type="date" class="form-control" id="dueDate" th:field="*{dueDate}">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">作成</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
+
+### アプローチ3: ハイブリッド（推奨：実務）
+
+**構成**:
+- 管理画面: Thymeleaf（社内ユーザー向け）
+- 外部API: REST API（モバイルアプリ、外部連携）
+
+**プロジェクト構造**:
+```
+src/main/java/com/example/hellospringboot/
+├── controller/
+│   ├── api/          ← REST APIコントローラー（このステップで実装）
+│   └── web/          ← Thymeleafコントローラー（オプション）
+├── service/          ← 共通のビジネスロジック
+└── ...
+```
+
+> **💡 選択のポイント**:
+> - **学習目的**: Thymeleafで完結させて、フルスタック開発を体験
+> - **実務想定**: REST API + React/Vue で、モダンな開発を学ぶ
+> - **段階的移行**: Thymeleafから始めて、後でREST API化
+>
+> Phase 5で学んだThymeleafの知識を活かして、自分のプロジェクトに最適なアプローチを選びましょう！
+
+---
+
 ## 🎨 チャレンジ課題
 
 ### チャレンジ 1: プロジェクトメンバー権限チェック

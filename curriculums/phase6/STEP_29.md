@@ -246,6 +246,130 @@ curl http://localhost:8080/v3/api-docs -o openapi.json
 
 ---
 
+## 💡 補足: ThymeleafによるUI提供との組み合わせ
+
+Phase 5でThymeleafを学習した場合、**REST API**と**Thymeleaf UI**を併用する設計も可能です。
+
+### REST API vs Thymeleaf UIの使い分け
+
+| アプローチ | 用途 | メリット | デメリット |
+|----------|------|---------|----------|
+| **REST API** | SPA、モバイルアプリ | フロントエンド独立、柔軟性高い | 初期設定が複雑 |
+| **Thymeleaf** | 従来型Webアプリ | 学習コスト低い、サーバー完結 | リッチUIに限界 |
+| **ハイブリッド** | 段階的移行 | 既存資産活用、柔軟な選択 | 複雑性増加 |
+
+### ハイブリッド構成の例
+
+**プロジェクト構造**:
+```
+src/main/java/com/example/hellospringboot/
+├── controller/
+│   ├── api/              ← REST APIコントローラー
+│   │   └── UserApiController.java
+│   └── web/              ← Thymeleafコントローラー
+│       └── UserWebController.java
+├── service/
+│   └── UserService.java  ← 共通のビジネスロジック
+└── ...
+```
+
+**REST APIコントローラー**:
+```java
+@RestController
+@RequestMapping("/api/users")
+@Tag(name = "User API", description = "ユーザー管理API（REST）")
+public class UserApiController {
+    
+    private final UserService userService;
+    
+    @GetMapping
+    @Operation(summary = "ユーザー一覧取得", description = "全ユーザーをJSON形式で返します")
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        List<UserResponse> users = userService.getAllUsers();
+        return ResponseEntity.ok(users);
+    }
+}
+```
+
+**Thymeleafコントローラー**:
+```java
+@Controller
+@RequestMapping("/users")
+public class UserWebController {
+    
+    private final UserService userService;
+    
+    @GetMapping
+    public String listUsers(Model model) {
+        List<UserResponse> users = userService.getAllUsers();
+        model.addAttribute("users", users);
+        return "users/list";  // templates/users/list.html
+    }
+    
+    @GetMapping("/new")
+    public String newUserForm(Model model) {
+        model.addAttribute("user", new UserCreateRequest());
+        return "users/form";
+    }
+    
+    @PostMapping
+    public String createUser(@Valid @ModelAttribute UserCreateRequest request,
+                            BindingResult result,
+                            RedirectAttributes redirectAttributes) {
+        if (result.hasErrors()) {
+            return "users/form";
+        }
+        
+        userService.createUser(request);
+        redirectAttributes.addFlashAttribute("message", "ユーザーを作成しました");
+        return "redirect:/users";
+    }
+}
+```
+
+### OpenAPI仕様書の設定
+
+REST APIのみをSwagger UIに表示する設定:
+
+```java
+@Configuration
+public class OpenAPIConfig {
+
+    @Bean
+    public GroupedOpenApi publicApi() {
+        return GroupedOpenApi.builder()
+                .group("api")
+                .pathsToMatch("/api/**")  // /api/** のみをドキュメント化
+                .build();
+    }
+    
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("Hello Spring Boot REST API")
+                        .description("REST APIエンドポイント（Web UIは /users などでアクセス）"));
+    }
+}
+```
+
+### 実装の推奨
+
+**小規模アプリ**: Thymeleafのみで実装（シンプル）
+
+**中規模アプリ**: 
+- 管理画面: Thymeleaf
+- 外部連携API: REST API
+
+**大規模アプリ**: 
+- フロントエンド: React/Vue (REST API使用)
+- バックエンド: Spring Boot REST API
+- 管理画面: Thymeleaf（オプション）
+
+> **💡 Phase 5の復習**: Thymeleafの基礎は[STEP_21](../../phase5/STEP_21.md)〜[STEP_24](../../phase5/STEP_24.md)で学習しました。REST APIとThymeleafの両方を理解することで、プロジェクトに応じた最適な選択ができるようになります。
+
+---
+
 ## 🎨 チャレンジ課題
 
 ### チャレンジ 1: 認証の統合
@@ -259,6 +383,10 @@ Swagger UIでJWTトークンを使えるようにしてください。
 ### チャレンジ 3: OpenAPIクライアント生成
 
 OpenAPI Generatorで自動的にクライアントコードを生成してください。
+
+### チャレンジ 4: ハイブリッド構成
+
+同じUserServiceを使って、REST APIコントローラーとThymeleafコントローラーの両方を実装してください。
 
 ---
 
