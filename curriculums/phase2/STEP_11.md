@@ -529,7 +529,7 @@ curl http://localhost:8080/api/posts
 curl http://localhost:8080/api/posts/user/1
 ```
 
-### 5-6. H2 Consoleで確認
+### 5-6. DBeaverで確認
 
 ```sql
 SELECT * FROM posts;
@@ -787,10 +787,10 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 12: MySQLへの切り替え](STEP_12.md)へ進みましょう！
+レビューが完了したら、[Step 12: MyBatisの基礎](../phase3/STEP_12.md)へ進みましょう！
 
-次のステップでは、H2からMySQLに切り替えます。Docker Composeを使ってMySQLを起動し、
-プロファイル（dev/prod）で環境を切り替える方法を学びます。Phase 2の最終ステップです！
+次のステップでは、MyBatisを使ったSQLの直接制御について学びます。
+JPAとは異なるアプローチでのデータベース操作を習得します。Phase 3のスタートです！
 
 ---
 

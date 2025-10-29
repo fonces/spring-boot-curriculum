@@ -115,8 +115,8 @@ STEP_34で設計したテーブル定義をもとに、POJOクラス（Plain Old
 **データベースの確認方法：**
 - **DBeaver** (推奨): 無料で使いやすいDBビューアー
   - [https://dbeaver.io/](https://dbeaver.io/)
-  - MySQL、PostgreSQL、H2など多数のDBに対応
-- **その他のツール**: DataGrip、MySQL Workbench、pgAdminなど
+  - MySQL、PostgreSQLなど多数のDBに対応
+- **その他のツール**: DataGrip、MySQL Workbenchなど
 
 > **💡 ヒント**: DBeaverで接続情報を設定して、テーブル構造とデータを確認しましょう
 

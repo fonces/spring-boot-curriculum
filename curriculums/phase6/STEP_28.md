@@ -217,10 +217,10 @@ class UserControllerIntegrationTest {
 ```yaml
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:mysql://localhost:3306/hello_db_test?useSSL=false&serverTimezone=Asia/Tokyo
+    username: appuser
+    password: apppassword
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
@@ -229,16 +229,18 @@ spring:
     properties:
       hibernate:
         format_sql: true
-
-  h2:
-    console:
-      enabled: false
+        dialect: org.hibernate.dialect.MySQLDialect
 
 logging:
   level:
     com.example.hellospringboot: DEBUG
     org.springframework.test: INFO
 ```
+
+> **💡 ヒント**: テスト用に別のデータベース（`hello_db_test`）を使用することで、本番データと分離できます。テスト前に以下のコマンドでテスト用DBを作成してください：
+> ```sql
+> CREATE DATABASE IF NOT EXISTS hello_db_test;
+> ```
 
 ---
 

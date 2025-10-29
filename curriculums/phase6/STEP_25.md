@@ -139,7 +139,6 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 公開エンドポイント
                 .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
                 
                 // 認証が必要なエンドポイント
                 .anyRequest().authenticated()
@@ -147,9 +146,6 @@ public class SecurityConfig {
             
             // HTTP Basic認証を有効化
             .httpBasic(basic -> {});
-
-        // H2 Consoleのフレーム表示を許可
-        http.headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
         return http.build();
     }

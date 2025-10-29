@@ -550,7 +550,6 @@ public class SecurityConfig {
                 // 公開エンドポイント
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
                 
                 // 管理者のみ
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -569,9 +568,6 @@ public class SecurityConfig {
             
             // JWTフィルターを追加
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-        // H2 Consoleのフレーム表示を許可
-        http.headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
         return http.build();
     }

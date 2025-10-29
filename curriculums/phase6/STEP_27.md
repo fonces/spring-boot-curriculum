@@ -541,7 +541,7 @@ class UserMapperTest {
 |------|-------------------|------------------------|
 | **テストアノテーション** | `@DataJpaTest` | `@MybatisTest` |
 | **トランザクション** | 自動ロールバック | 自動ロールバック |
-| **テストDB** | H2などのインメモリDB | 本番と同じDBを推奨 |
+| **テストDB** | インメモリDBなどで可能 | 本番と同じDBを推奨 |
 | **設定** | application-test.yml | application-test.yml |
 | **依存関係** | spring-boot-starter-test | mybatis-spring-boot-starter-test |
 

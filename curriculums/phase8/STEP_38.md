@@ -63,7 +63,7 @@
 - セキュリティ設定（HTTPS、CSRF対策など）
 
 **考えてほしいこと：**
-- 本番環境でH2ではなく本物のDBを使う
+- 本番環境で適切なデータベースを使う（MySQL、PostgreSQLなど）
 - パスワードなど機密情報を環境変数で管理する
 - エラー時のログをどう記録するか？
 
@@ -422,7 +422,7 @@ git push origin main
 **Phase 1**: Spring Boot基礎
 
 **Phase 2**: データベース連携の基礎
-- JPA, Spring Data JPA, H2/MySQL
+- JPA, Spring Data JPA, MySQL
 
 **Phase 3**: MyBatisによるSQL制御
 

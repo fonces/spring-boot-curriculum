@@ -1,1613 +1,581 @@
-# Step 6: MySQL環境構築# Step 6: MySQL環境構築# Step 6: H2データベース導入
-
-
+# Step 6: MySQL環境構築
 
 ## 🎯 このステップの目標
 
+- DockerでMySQLコンテナを起動する
+- Spring BootからMySQLに接続する設定を行う
+- データベースとテーブルを作成する
+- 接続確認を行う
 
-
-- Docker Composeを使ってMySQL環境を構築する## 🎯 このステップの目標## 🎯 このステップの目標
-
-- Spring BootからMySQLに接続する
-
-- データベースの基本的な操作を理解する
-
-- application.ymlでデータベース接続設定を管理する
-
-- Docker Composeを使ってMySQL環境を構築する- H2データベースとは何かを理解する
-
-**所要時間**: 約40分
-
-- Spring BootからMySQLに接続する- Spring BootにH2依存関係を追加する
+**所要時間**: 約1時間
 
 ---
-
-- データベースの基本的な操作を理解する- H2 Consoleを有効化してブラウザでデータベースを確認する
 
 ## 📋 事前準備
 
-- application.ymlでデータベース接続設定を管理する- データベースの基本的な操作を理解する
+- Step 5で作成した`hello-spring-boot`プロジェクト
+- Docker Desktopのインストールと起動
+- Phase 2事前準備が完了していること
 
-- Phase 1で作成した`hello-spring-boot`プロジェクト
-
-- Phase 1 (Step 1〜5) の完了
-
-- **Docker Desktopのインストール**: [PREPARE.md](PREPARE.md)を参照
-
-**所要時間**: 約40分**所要時間**: 約30分
-
-**Phase 1をまだ完了していない場合**: [Phase 1](../phase1/STEP_1.md)を先に進めてください。
-
-
+**Phase 2事前準備をまだ完了していない場合**: [Phase 2 事前準備](PREPARE.md)を先に進めてください。
 
 ---
 
-------
+## 💡 なぜMySQLを使うのか？
 
-## 💡 なぜMySQLなのか？
+### データベースの必要性
 
+これまでのステップでは、データをメモリ上でのみ扱っていました。
+しかし、実際のアプリケーションでは：
 
+- ❌ アプリケーションを再起動するとデータが消える
+- ❌ 大量のデータを扱えない
+- ❌ 複数のユーザーが同時にアクセスできない
 
-### MySQL の特徴
+**データベースを使うと**:
+- ✅ データを永続的に保存できる
+- ✅ 大量のデータを効率的に管理できる
+- ✅ トランザクション処理ができる
+- ✅ 複数のユーザーが同時にアクセスできる
 
-## 📋 事前準備## 📋 事前準備
+### なぜDockerを使うのか？
 
-**MySQL** は、世界で最も人気のあるオープンソースのリレーショナルデータベースです。
+**従来の方法**: MySQLを直接PCにインストール
+- 環境を汚す可能性がある
+- アンインストールが面倒
+- バージョン管理が難しい
 
+**Dockerを使う方法**:
+- ✅ 数秒でMySQLを起動できる
+- ✅ 使い終わったら簡単に削除できる
+- ✅ 他の環境と競合しない
+- ✅ 本番環境と同じ構成を再現しやすい
 
+---
 
-**特徴**:
+## 🚀 ステップ1: MySQLコンテナの起動
 
-- ✅ **本番環境で広く使用**: 実務で最も使われるDB- Phase 1で作成した`hello-spring-boot`プロジェクト- Phase 1で作成した`hello-spring-boot`プロジェクト
+### 1-1. docker-compose.ymlの作成
 
-- ✅ **豊富なドキュメント**: 情報が多く学習しやすい
+プロジェクトのルートディレクトリ（`pom.xml`と同じ階層）に`docker-compose.yml`を作成します。
 
-- ✅ **高いパフォーマンス**: 大規模なデータにも対応- Phase 1 (Step 1〜5) の完了- Phase 1 (Step 1〜5) の完了
+**ファイルパス**: `hello-spring-boot/docker-compose.yml`
 
-- ✅ **Docker対応**: 開発環境の構築が簡単
-
-- **Docker Desktopのインストール**: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-### PostgreSQLも選択肢
-
-**Phase 1をまだ完了していない場合**: [Phase 1](../phase1/STEP_1.md)を先に進めてください。
-
-PostgreSQLも優れたデータベースです。MySQLの代わりにPostgreSQLを使用しても構いません。
-
-このカリキュラムではMySQLを例に説明しますが、PostgreSQLでも同様の手順で進められます。**Phase 1をまだ完了していない場合**: [Phase 1](../phase1/STEP_1.md)を先に進めてください。
-
-
-
-------
-
-
-
-## 🚀 ステップ1: Docker ComposeでMySQL起動---
-
-
-
-### 1-1. docker-compose.ymlの作成## 💡 H2データベースとは？
-
-
-
-プロジェクトのルートディレクトリに`docker-compose.yml`を作成します。## 💡 なぜMySQLから始めるのか？
-
-
-
-**ファイルパス**: `docker-compose.yml`（`pom.xml`と同じ階層）### H2の特徴
-
-
-
-```yaml### MySQL の特徴
-
+```yaml
 version: '3.8'
-
-**H2 Database** は、Javaで書かれた軽量なリレーショナルデータベースです。
 
 services:
-
-  mysql:**MySQL** は、世界で最も人気のあるオープンソースのリレーショナルデータベースです。
-
+  mysql:
     image: mysql:8.0
-
-    container_name: spring-boot-mysql**特徴**:
-
+    container_name: hello-spring-boot-mysql
     environment:
-
-      MYSQL_ROOT_PASSWORD: rootpassword**特徴**:- ✅ **インメモリモード**: データをメモリ上に保存（高速）
-
-      MYSQL_DATABASE: hellospringboot
-
-      MYSQL_USER: dbuser- ✅ **本番環境で広く使用**: 実務で最も使われるDB- ✅ **ファイルモード**: データをファイルに保存（永続化）
-
-      MYSQL_PASSWORD: dbpassword
-
-    ports:- ✅ **豊富なドキュメント**: 情報が多く学習しやすい- ✅ **組み込み可能**: アプリケーションに組み込んで使用
-
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: hello_db
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppassword
+    ports:
       - "3306:3306"
-
-    volumes:- ✅ **高いパフォーマンス**: 大規模なデータにも対応- ✅ **開発に最適**: セットアップ不要、すぐ使える
-
-      - mysql-data:/var/lib/mysql
-
-    command: --default-authentication-plugin=mysql_native_password- ✅ **Docker対応**: 開発環境の構築が簡単- ✅ **ブラウザUI**: H2 Consoleで簡単にデータ確認
-
-
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
 volumes:
+  mysql_data:
+```
 
-  mysql-data:
+### 1-2. 設定内容の解説
 
-```### H2ではなくMySQLで学ぶ理由### なぜH2から始めるのか？
+| 設定項目 | 説明 |
+|---------|------|
+| `image: mysql:8.0` | MySQL 8.0のDockerイメージを使用 |
+| `container_name` | コンテナの名前を指定 |
+| `MYSQL_ROOT_PASSWORD` | rootユーザーのパスワード |
+| `MYSQL_DATABASE` | 自動作成するデータベース名 |
+| `MYSQL_USER` | アプリケーション用ユーザー名 |
+| `MYSQL_PASSWORD` | アプリケーション用パスワード |
+| `ports` | ホストの3306ポートをコンテナの3306にマッピング |
+| `volumes` | データを永続化（コンテナを削除してもデータが残る） |
+| `command` | 文字コードをUTF-8に設定 |
 
+### 1-3. MySQLコンテナの起動
 
-
-**設定の説明**:
-
-
-
-| 項目 | 説明 || 比較項目 | MySQL | H2 || 比較項目 | H2 | MySQL/PostgreSQL |
-
-|------|------|
-
-| `image: mysql:8.0` | MySQL 8.0のDockerイメージを使用 ||---------|-------|----||---------|----|--------------------|
-
-| `MYSQL_DATABASE` | 作成するデータベース名 |
-
-| `MYSQL_USER` | アプリケーション用のユーザー名 || 本番利用 | ✅ 推奨 | ❌ 非推奨 || セットアップ | 依存関係を追加するだけ | インストールまたはDocker必要 |
-
-| `MYSQL_PASSWORD` | ユーザーのパスワード |
-
-| `ports: "3306:3306"` | ホストの3306番ポートをコンテナの3306番にマッピング || 実務スキル | 直接役立つ | 学習専用 || 起動速度 | 即座 | 数秒〜数十秒 |
-
-| `volumes` | データの永続化 |
-
-| SQL方言 | 本物のMySQL SQL | 標準SQL寄り || 学習コスト | 低い | やや高い |
-
-### 1-2. MySQLコンテナの起動
-
-| データ永続化 | ✅ 標準 | 設定が必要 || 本番利用 | ❌ 推奨しない | ✅ 推奨 |
+ターミナルでプロジェクトのルートディレクトリに移動し、以下のコマンドを実行します。
 
 ```bash
-
-docker compose up -d
-
+cd hello-spring-boot
+docker-compose up -d
 ```
 
-**Phase 2の学習戦略**:**Phase 2の学習戦略**:
+**コマンドの説明**:
+- `up`: コンテナを起動
+- `-d`: バックグラウンドで実行（デタッチモード）
 
-**オプション**:
-
-- `-d`: バックグラウンドで実行（デタッチモード）1. **Step 6**: MySQLのDocker環境構築1. **Step 6〜11**: H2で基本を学ぶ
-
-
-
-**出力例**:2. **Step 7〜11**: Spring Data JPAでCRUD操作2. **Step 12**: MySQLに切り替える
-
-```
-
-[+] Running 2/23. **Step 12〜13**: MyBatisで直接SQL操作
-
- ✔ Network hello-spring-boot_default  Created
-
- ✔ Container spring-boot-mysql        Started4. **Step 14**: JPAとMyBatisの使い分け---
-
-```
-
-
-
-### 1-3. コンテナの状態確認
-
----## 🚀 ステップ1: H2依存関係の追加
+### 1-4. 起動確認
 
 ```bash
-
-docker compose ps
-
+docker ps
 ```
 
-## 🚀 ステップ1: Docker Composeファイルの作成### 1-1. pom.xmlを編集
-
-**出力例**:
-
+**期待される出力**:
+```
+CONTAINER ID   IMAGE       COMMAND                  CREATED         STATUS         PORTS                    NAMES
+abc123def456   mysql:8.0   "docker-entrypoint.s…"   10 seconds ago  Up 9 seconds   0.0.0.0:3306->3306/tcp   hello-spring-boot-mysql
 ```
 
-NAME                 IMAGE       STATUS        PORTS
-
-spring-boot-mysql    mysql:8.0   Up 10 seconds 0.0.0.0:3306->3306/tcp### 1-1. プロジェクトルートにdocker-compose.ymlを作成プロジェクトのルートにある`pom.xml`を開きます。
-
-```
-
-
-
-`STATUS`が`Up`になっていればOKです！
-
-**ファイルパス**: `docker-compose.yml`**ファイルパス**: `pom.xml`
-
-### 1-4. MySQLに接続してみる
-
-
-
-```bash
-
-docker exec -it spring-boot-mysql mysql -udbuser -pdbpassword```yaml`<dependencies>`セクション内に以下を追加：
-
-```
-
-version: '3.8'
-
-MySQLプロンプトが表示されます：
-
-```xml
-
-```
-
-mysql> services:<dependencies>
-
-```
-
-  mysql:    <!-- 既存の依存関係 -->
-
-以下のコマンドでデータベースを確認：
-
-    image: mysql:8.0    <dependency>
-
-```sql
-
-SHOW DATABASES;    container_name: spring-boot-mysql        <groupId>org.springframework.boot</groupId>
-
-```
-
-    environment:        <artifactId>spring-boot-starter-web</artifactId>
-
-**出力例**:
-
-```      MYSQL_ROOT_PASSWORD: rootpassword    </dependency>
-
-+--------------------+
-
-| Database           |      MYSQL_DATABASE: hellospringboot
-
-+--------------------+
-
-| hellospringboot    |      MYSQL_USER: dbuser    <dependency>
-
-| information_schema |
-
-| performance_schema |      MYSQL_PASSWORD: dbpassword        <groupId>org.projectlombok</groupId>
-
-+--------------------+
-
-```    ports:        <artifactId>lombok</artifactId>
-
-
-
-`hellospringboot`データベースが作成されていることを確認できました！      - "3306:3306"        <optional>true</optional>
-
-
-
-```sql    volumes:    </dependency>
-
-exit;
-
-```      - mysql-data:/var/lib/mysql
-
-
-
-で終了します。    command: --default-authentication-plugin=mysql_native_password    <!-- H2 Databaseを追加 -->
-
-
-
----    <dependency>
-
-
-
-## 🚀 ステップ2: Spring BootにMySQL依存関係を追加volumes:        <groupId>com.h2database</groupId>
-
-
-
-### 2-1. pom.xmlを編集  mysql-data:        <artifactId>h2</artifactId>
-
-
-
-`pom.xml`の`<dependencies>`セクションに以下を追加します。```        <scope>runtime</scope>
-
-
-
-**ファイルパス**: `pom.xml`    </dependency>
-
-
-
-```xml### 1-2. 設定の説明
-
-<dependencies>
-
-    <!-- 既存の依存関係 -->    <!-- Spring Data JPAを追加 -->
-
-    <dependency>
-
-        <groupId>org.springframework.boot</groupId>| 項目 | 説明 |    <dependency>
-
-        <artifactId>spring-boot-starter-web</artifactId>
-
-    </dependency>|------|------|        <groupId>org.springframework.boot</groupId>
-
-    <dependency>
-
-        <groupId>org.projectlombok</groupId>| `image: mysql:8.0` | MySQL 8.0の公式イメージを使用 |        <artifactId>spring-boot-starter-data-jpa</artifactId>
-
-        <artifactId>lombok</artifactId>
-
-        <optional>true</optional>| `MYSQL_ROOT_PASSWORD` | rootユーザーのパスワード |    </dependency>
-
-    </dependency>
-
-| `MYSQL_DATABASE` | 初期作成されるデータベース名 |
-
-    <!-- Spring Data JPA -->
-
-    <dependency>| `MYSQL_USER` | アプリケーション用のユーザー名 |    <!-- テスト用（既存） -->
-
-        <groupId>org.springframework.boot</groupId>
-
-        <artifactId>spring-boot-starter-data-jpa</artifactId>| `MYSQL_PASSWORD` | アプリケーション用のパスワード |    <dependency>
-
-    </dependency>
-
-| `ports: 3306:3306` | ホストの3306ポートをコンテナの3306に接続 |        <groupId>org.springframework.boot</groupId>
-
-    <!-- MySQL Driver -->
-
-    <dependency>| `volumes` | データを永続化（コンテナ削除後もデータが残る） |        <artifactId>spring-boot-starter-test</artifactId>
-
-        <groupId>com.mysql</groupId>
-
-        <artifactId>mysql-connector-j</artifactId>        <scope>test</scope>
-
-        <scope>runtime</scope>
-
-    </dependency>---    </dependency>
-
-
-
-    <dependency></dependencies>
-
-        <groupId>org.springframework.boot</groupId>
-
-        <artifactId>spring-boot-starter-test</artifactId>## 🚀 ステップ2: MySQLコンテナの起動```
-
-        <scope>test</scope>
-
-    </dependency>
-
-</dependencies>
-
-```### 2-1. Docker Composeでコンテナを起動### 1-2. 依存関係の解説
-
-
-
-**追加した依存関係**:
-
-
-
-#### Spring Data JPA```bash#### H2 Database
-
-```xml
-
-<dependency>docker-compose up -d
-
-    <groupId>org.springframework.boot</groupId>
-
-    <artifactId>spring-boot-starter-data-jpa</artifactId>``````xml
-
-</dependency>
-
-```<dependency>
-
-- JPAとHibernateを含むSpring Dataのスターター
-
-- データベース操作を簡単にする**出力例**:    <groupId>com.h2database</groupId>
-
-
-
-#### MySQL Connector```    <artifactId>h2</artifactId>
-
-```xml
-
-<dependency>[+] Running 2/2    <scope>runtime</scope>
-
-    <groupId>com.mysql</groupId>
-
-    <artifactId>mysql-connector-j</artifactId> ✔ Network hello-spring-boot_default       Created</dependency>
-
-    <scope>runtime</scope>
-
-</dependency> ✔ Container spring-boot-mysql             Started```
-
-```
-
-- MySQLデータベースのJDBCドライバを提供```
-
-- `<scope>runtime</scope>`: 実行時のみ必要（コンパイル時は不要）
-
-- **`<scope>runtime</scope>`**: 実行時のみ必要（コンパイル時は不要）
-
-### 2-2. 依存関係の更新
-
-### 2-2. コンテナの状態確認- H2データベースのJDBCドライバを提供
-
-IDEで自動的に依存関係がダウンロードされますが、手動で更新する場合：
-
-
-
-```bash
-
-./mvnw clean install```bash#### Spring Data JPA
-
-```
-
-docker-compose ps
+**STATUS** が `Up` になっていればOKです。
 
 ---
 
-``````xml
+## 🚀 ステップ2: Spring Bootの依存関係追加
+
+### 2-1. pom.xmlに依存関係を追加
+
+`pom.xml`の`<dependencies>`セクションに以下を追加します。
+
+**ファイルパス**: `hello-spring-boot/pom.xml`
+
+```xml
+<!-- Spring Data JPA -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+
+<!-- MySQL Connector -->
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+**依存関係の説明**:
+- `spring-boot-starter-data-jpa`: JPAを使ってデータベース操作を行う
+- `mysql-connector-j`: MySQLに接続するためのドライバ
+
+### 2-2. Mavenの依存関係を更新
+
+IntelliJ IDEAで、`pom.xml`を開いた状態で：
+
+1. エディタ右上の **🔄 Load Maven Changes** アイコンをクリック
+2. または、`pom.xml`を右クリック → **Maven** → **Reload project**
+
+---
 
 ## 🚀 ステップ3: データベース接続設定
 
-<dependency>
+### 3-1. application.ymlの編集
 
-### 3-1. application.ymlの作成
-
-**出力例**:    <groupId>org.springframework.boot</groupId>
-
-`src/main/resources/application.properties`を削除して、代わりに`application.yml`を作成します。
-
-```    <artifactId>spring-boot-starter-data-jpa</artifactId>
+`application.yml`にデータベース接続設定を追加します。
 
 **ファイルパス**: `src/main/resources/application.yml`
 
-NAME                 IMAGE       STATUS       PORTS</dependency>
-
 ```yaml
-
-spring:spring-boot-mysql    mysql:8.0   Up 10 sec    0.0.0.0:3306->3306/tcp```
-
+spring:
+  application:
+    name: hello-spring-boot
+  
+  # データソース設定
   datasource:
-
-    url: jdbc:mysql://localhost:3306/hellospringboot```
-
-    username: dbuser
-
-    password: dbpassword- **JPA (Java Persistence API)**: Javaでデータベース操作を行う標準仕様
-
+    url: jdbc:mysql://localhost:3306/hello_db?useSSL=false&serverTimezone=Asia/Tokyo
+    username: appuser
+    password: apppassword
     driver-class-name: com.mysql.cj.jdbc.Driver
-
-### 2-3. MySQLログの確認- **Hibernate**: JPAの実装（自動的に含まれる）
-
+  
+  # JPA設定
   jpa:
-
-    hibernate:- **Spring Data JPA**: JPAをさらに使いやすくするSpringのライブラリ
-
-      ddl-auto: update
-
-    show-sql: true```bash
-
-    properties:
-
-      hibernate:docker-compose logs mysql### 1-3. Mavenプロジェクトの更新
-
-        format_sql: true
-
-        dialect: org.hibernate.dialect.MySQLDialect```
-
-```
-
-IntelliJ IDEAで：
-
-### 3-2. 設定の説明
-
-`ready for connections` というメッセージが表示されればOKです。1. `pom.xml`を保存
-
-#### データソース設定
-
-2. 右上の「Load Maven Changes」（Mアイコン）をクリック
-
-```yaml
-
-spring:---3. 依存関係がダウンロードされるまで待つ
-
-  datasource:
-
-    url: jdbc:mysql://localhost:3306/hellospringboot
-
-    username: dbuser
-
-    password: dbpassword## 🚀 ステップ3: Spring BootにMySQL依存関係を追加---
-
-    driver-class-name: com.mysql.cj.jdbc.Driver
-
-```
-
-
-
-- `url`: MySQL接続URL### 3-1. pom.xmlを編集## 🚀 ステップ2: H2 Consoleの有効化
-
-  - `localhost:3306`: Dockerで公開したポート
-
-  - `hellospringboot`: データベース名
-
-- `username`: MySQLのユーザー名（docker-compose.ymlで設定）
-
-- `password`: パスワード**ファイルパス**: `pom.xml`### 2-1. application.ymlの設定
-
-
-
-#### JPA/Hibernate設定
-
-
-
-```yaml```xml`src/main/resources/application.yml`を開いて、以下を追加：
-
-  jpa:
-
-    hibernate:<dependencies>
-
-      ddl-auto: update
-
-    show-sql: true    <!-- 既存の依存関係 -->**ファイルパス**: `src/main/resources/application.yml`
-
-    properties:
-
-      hibernate:    <dependency>
-
-        format_sql: true
-
-        dialect: org.hibernate.dialect.MySQLDialect        <groupId>org.springframework.boot</groupId>```yaml
-
-```
-
-        <artifactId>spring-boot-starter-web</artifactId>server:
-
-**ddl-autoの値**:
-
-    </dependency>  port: 8080
-
-| 値 | 説明 | 推奨環境 |
-
-|----|------|---------|    <dependency>
-
-| `create` | 起動時にテーブルを削除して再作成 | テスト |
-
-| `create-drop` | 起動時に作成、終了時に削除 | テスト |        <groupId>org.projectlombok</groupId>spring:
-
-| `update` | テーブルがなければ作成、あれば更新 | 開発 |
-
-| `validate` | スキーマ検証のみ | 本番 |        <artifactId>lombok</artifactId>  # H2 Console設定
-
-| `none` | 何もしない | 本番 |
-
-        <optional>true</optional>  h2:
-
-**その他の設定**:
-
-- `show-sql: true`: 実行されるSQLをコンソールに表示    </dependency>    console:
-
-- `format_sql: true`: SQLを整形して表示
-
-- `dialect`: MySQL用のSQL方言を指定      enabled: true  # H2 Consoleを有効化
-
-
-
----    <!-- Spring Data JPA -->      path: /h2-console  # アクセスパス
-
-
-
-## 🚀 ステップ4: エンティティの作成    <dependency>
-
-
-
-### 4-1. Userエンティティの作成        <groupId>org.springframework.boot</groupId>  # データソース設定
-
-
-
-新しいパッケージ`entity`を作成し、`User`エンティティを作成します。        <artifactId>spring-boot-starter-data-jpa</artifactId>  datasource:
-
-
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`    </dependency>    url: jdbc:h2:mem:testdb  # インメモリDB、名前は"testdb"
-
-
-
-```java    driverClassName: org.h2.Driver
-
-package com.example.hellospringboot.entity;
-
-    <!-- MySQL Driver -->    username: sa  # デフォルトユーザー名
-
-import jakarta.persistence.*;
-
-import lombok.*;    <dependency>    password:     # パスワードなし
-
-
-
-@Entity        <groupId>com.mysql</groupId>
-
-@Table(name = "users")
-
-@Getter        <artifactId>mysql-connector-j</artifactId>  # JPA設定
-
-@Setter
-
-@NoArgsConstructor        <scope>runtime</scope>  jpa:
-
-@AllArgsConstructor
-
-@Builder    </dependency>    database-platform: org.hibernate.dialect.H2Dialect
-
-public class User {
-
     hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
 
-    @Id
+# サーバー設定
+server:
+  port: 8080
 
-    @GeneratedValue(strategy = GenerationType.IDENTITY)    <!-- Test -->      ddl-auto: update  # テーブルを自動作成/更新
-
-    private Long id;
-
-    <dependency>    show-sql: true  # 実行されるSQLをコンソールに表示
-
-    @Column(nullable = false, length = 50)
-
-    private String name;        <groupId>org.springframework.boot</groupId>    properties:
-
-
-
-    @Column(nullable = false, unique = true, length = 100)        <artifactId>spring-boot-starter-test</artifactId>      hibernate:
-
-    private String email;
-
-        <scope>test</scope>        format_sql: true  # SQLを整形して表示
-
-    @Column
-
-    private Integer age;    </dependency>
-
-}
-
-```</dependencies># アプリケーション情報（Phase 1から継続）
-
-
-
-**アノテーションの説明**:```app:
-
-
-
-| アノテーション | 説明 |  name: Hello Spring Boot Application
-
-|--------------|------|
-
-| `@Entity` | JPAエンティティとして認識 |### 3-2. Mavenの依存関係を更新  version: 1.0.0
-
-| `@Table(name = "users")` | テーブル名を指定 |
-
-| `@Id` | 主キー |  description: Spring Bootを学ぶためのサンプルアプリケーション
-
-| `@GeneratedValue` | 自動採番（AUTO_INCREMENT） |
-
-| `@Column` | カラムの制約を指定 |IDEでMavenを再読み込みするか、以下を実行：```
-
-
-
-### 4-2. アプリケーションの起動
-
-
-
-```bash```bash### 2-2. 設定の解説
-
-./mvnw spring-boot:run
-
-```./mvnw clean install
-
-
-
-**ログ確認ポイント**:```#### H2 Console設定
-
+# アプリケーション設定
+app:
+  name: Hello Spring Boot Application
+  version: 1.0.0
 ```
 
-Hibernate: create table users (...)
+### 3-2. 設定内容の解説
 
+#### データソース設定（`spring.datasource`）
+
+| 設定項目 | 説明 |
+|---------|------|
+| `url` | データベース接続URL |
+| `username` | データベースユーザー名 |
+| `password` | データベースパスワード |
+| `driver-class-name` | MySQLドライバのクラス名 |
+
+**URL詳細**:
+- `jdbc:mysql://`: MySQLへの接続プロトコル
+- `localhost:3306`: 接続先（ホスト:ポート）
+- `hello_db`: データベース名
+- `useSSL=false`: SSL接続を無効化（開発環境用）
+- `serverTimezone=Asia/Tokyo`: タイムゾーンの設定
+
+#### JPA設定（`spring.jpa`）
+
+| 設定項目 | 説明 |
+|---------|------|
+| `hibernate.ddl-auto: update` | エンティティクラスからテーブルを自動作成・更新 |
+| `show-sql: true` | 実行されるSQLをログに出力 |
+| `properties.hibernate.format_sql: true` | SQLを読みやすく整形 |
+| `properties.hibernate.dialect` | MySQL用の方言（SQL方言）を指定 |
+
+**ddl-autoの選択肢**:
+- `none`: 何もしない
+- `validate`: スキーマの妥当性を検証
+- `update`: スキーマを更新（カラム追加は行うが削除はしない）
+- `create`: 起動時にテーブルを削除して再作成
+- `create-drop`: 起動時に作成、終了時に削除
+
+> ⚠️ **注意**: 本番環境では`ddl-auto: validate`または`none`を使用し、マイグレーションツール（Flyway, Liquibase）を使うのが一般的です。
+
+---
+
+## 🚀 ステップ4: 接続確認
+
+### 4-1. アプリケーションの起動
+
+Spring Bootアプリケーションを起動します。
+
+**IntelliJ IDEA**:
+1. `HelloSpringBootApplication.java`を開く
+2. クラス名の横の▶️アイコンをクリック
+3. **Run 'HelloSpringBootApplication'** を選択
+
+**または、Mavenコマンド**:
+```bash
+mvn spring-boot:run
 ```
 
-が表示されればOKです！---```yaml
+### 4-2. ログの確認
 
+起動時のログで以下のような行があればOKです：
 
+```
+2024-XX-XX XX:XX:XX.XXX  INFO 12345 --- [main] o.hibernate.dialect.Dialect: HHH000400: Using dialect: org.hibernate.dialect.MySQLDialect
+2024-XX-XX XX:XX:XX.XXX  INFO 12345 --- [main] o.h.e.t.j.p.i.JtaPlatformInitiator: HHH000490: Using JtaPlatform implementation: [org.hibernate.engine.transaction.jta.platform.internal.NoJtaPlatform]
+2024-XX-XX XX:XX:XX.XXX  INFO 12345 --- [main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2024-XX-XX XX:XX:XX.XXX  INFO 12345 --- [main] c.e.h.HelloSpringBootApplication: Started HelloSpringBootApplication in X.XXX seconds
+```
 
-このログが表示されれば、テーブルが自動生成されています。spring:
+**エラーが出る場合**:
+- MySQLコンテナが起動しているか確認: `docker ps`
+- `application.yml`の設定を確認（ユーザー名、パスワード、DB名）
+- ポート3306が他のプロセスで使われていないか確認
 
+---
 
+## 🚀 ステップ5: データベースツールで接続確認
 
----## 🚀 ステップ4: データベース接続設定  h2:
+### 5-1. DBeaverのインストール
 
+**DBeaver** は、無料で使える高機能なデータベース管理ツールです。
+MySQL、PostgreSQL、Oracle、SQL Serverなど、多数のデータベースに対応しています。
 
+**ダウンロード**: [https://dbeaver.io/download/](https://dbeaver.io/download/)
 
-## 🚀 ステップ5: データベースの確認    console:
+1. OSに合わせたインストーラーをダウンロード
+2. インストーラーを実行してインストール
+3. DBeaverを起動
 
+### 5-2. DBeaverでMySQLに接続
 
+1. **新しい接続を作成**:
+   - メニューバーから **Database** → **New Database Connection** をクリック
+   - または、左側のツールバーの **プラグアイコン** をクリック
 
-### 5-1. DBeaverで確認（推奨）### 4-1. application.ymlにMySQL接続情報を追加      enabled: true
+2. **MySQL を選択**:
+   - データベース一覧から **MySQL** を選択
+   - **Next** をクリック
 
+3. **接続情報を入力**:
+   - **Server Host**: `localhost`
+   - **Port**: `3306`
+   - **Database**: `hello_db`
+   - **Username**: `appuser`
+   - **Password**: `apppassword`
+   - **Save password locally** にチェック
 
+4. **ドライバーのダウンロード**（初回のみ）:
+   - **Download driver files** と表示されたら **Download** をクリック
+   - ドライバーのダウンロードが完了するまで待つ
 
-**DBeaver**は無料で使いやすいデータベースビューアーです。      path: /h2-console
+5. **接続テスト**:
+   - **Test Connection** をクリック
+   - "Connected" と表示されればOK
+   - **Finish** をクリック
 
+### 5-3. DBeaverでデータベースを確認
 
+接続が完了すると、左側のナビゲーターに `hello_db` が表示されます。
 
-1. [https://dbeaver.io/](https://dbeaver.io/)からダウンロード＆インストール**ファイルパス**: `src/main/resources/application.yml````
+1. **データベース構造を確認**:
+   - `hello_db` → **Schemas** → **hello_db** を展開
+   - **Tables** を展開（まだテーブルはありません）
 
-2. 新しい接続を作成:
+2. **SQLエディタを開く**:
+   - `hello_db` を右クリック → **SQL Editor** → **New SQL script**
+   - または、ツールバーの **SQL** アイコンをクリック
 
-   - Database: MySQL
+3. **SQLを実行してみる**:
+   ```sql
+   -- データベース一覧
+   SHOW DATABASES;
+   
+   -- 現在のデータベース
+   SELECT DATABASE();
+   
+   -- テーブル一覧（まだ空のはず）
+   SHOW TABLES;
+   ```
+   - SQLを入力して、**Ctrl + Enter**（macOSは **Cmd + Enter**）で実行
 
-   - Host: localhost
+### 5-4. MySQLクライアントで接続（オプション）
 
-   - Port: 3306```yaml- `enabled: true`: H2の管理画面を有効化
+コマンドラインから接続する場合：
 
-   - Database: hellospringboot
+```bash
+docker exec -it hello-spring-boot-mysql mysql -u appuser -p
+```
 
-   - Username: dbuserspring:- `path: /h2-console`: ブラウザでアクセスするパス
+パスワードを聞かれたら `apppassword` を入力します。
 
-   - Password: dbpassword
+**MySQLプロンプトでの操作**:
+```sql
+-- データベース一覧
+SHOW DATABASES;
 
-3. 接続して`users`テーブルを確認  application:
+-- hello_dbを選択
+USE hello_db;
 
-
-
-### 5-2. MySQL CLIで確認    name: hello-spring-boot#### データソース設定
-
-
-
-```bash  
-
-docker exec -it spring-boot-mysql mysql -udbuser -pdbpassword hellospringboot
-
-```  datasource:```yaml
-
-
-
-以下のSQLを実行：    url: jdbc:mysql://localhost:3306/hellospringboot?useSSL=false&serverTimezone=Asia/Tokyo&allowPublicKeyRetrieval=truedatasource:
-
-
-
-```sql    username: dbuser  url: jdbc:h2:mem:testdb
-
+-- テーブル一覧（まだ空のはず）
 SHOW TABLES;
 
-```    password: dbpassword  driverClassName: org.h2.Driver
-
-
-
-**出力例**:    driver-class-name: com.mysql.cj.jdbc.Driver  username: sa
-
+-- 終了
+EXIT;
 ```
 
-+---------------------------+    password:
+---
 
-| Tables_in_hellospringboot |
+## 🚀 ステップ6: 簡単なテストエンティティで確認
 
-+---------------------------+  jpa:```
+### 6-1. テスト用エンティティクラスの作成
 
-| users                     |
+データベース接続が正しく動作するか確認するため、簡単なエンティティクラスを作成します。
 
-+---------------------------+    hibernate:
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/TestEntity.java`
 
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+@Entity
+@Table(name = "test_table")
+@Data
+public class TestEntity {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false)
+    private String name;
+}
 ```
 
-      ddl-auto: update- `jdbc:h2:mem:testdb`: インメモリDBを使用、DB名は`testdb`
+### 6-2. アプリケーションの再起動
 
-テーブル構造を確認：
+Spring Bootアプリケーションを再起動します。
 
-    show-sql: true- `username: sa`: デフォルトユーザー（System Administrator）
+### 6-3. テーブル作成の確認
+
+ログに以下のようなCREATE TABLE文が出力されればOKです：
 
 ```sql
-
-DESC users;    properties:- `password:` (空): パスワードなし
-
+Hibernate: 
+    create table test_table (
+        id bigint not null auto_increment,
+        name varchar(255) not null,
+        primary key (id)
+    ) engine=InnoDB
 ```
 
-      hibernate:
+### 6-4. DBeaverでテーブルを確認
 
-**出力例**:
+DBeaverでテーブルが作成されたことを確認します。
 
-```        format_sql: true#### JPA設定
+**方法1: ナビゲーターから確認**
 
-+-------+--------------+------+-----+---------+----------------+
+1. 左側のナビゲーターで `hello_db` → **Schemas** → **hello_db** → **Tables** を右クリック
+2. **Refresh** を選択
+3. **Tables** を展開すると `test_table` が表示される
+4. `test_table` をクリックすると、右側にテーブル構造が表示される
 
-| Field | Type         | Null | Key | Default | Extra          |        dialect: org.hibernate.dialect.MySQLDialect
+**方法2: SQLで確認**
 
-+-------+--------------+------+-----+---------+----------------+
-
-| id    | bigint       | NO   | PRI | NULL    | auto_increment |```yaml
-
-| name  | varchar(50)  | NO   |     | NULL    |                |
-
-| email | varchar(100) | NO   | UNI | NULL    |                |server:jpa:
-
-| age   | int          | YES  |     | NULL    |                |
-
-+-------+--------------+------+-----+---------+----------------+  port: 8080  hibernate:
-
-```
-
-    ddl-auto: update
-
-期待通りのテーブルが作成されています！
-
-logging:  show-sql: true
+SQLエディタで以下を実行：
 
 ```sql
-
-exit;  level:```
-
+-- テーブル一覧
+SHOW TABLES;
 ```
 
-    org.hibernate.SQL: DEBUG
+**期待される出力**:
+```
++--------------------+
+| Tables_in_hello_db |
++--------------------+
+| test_table         |
++--------------------+
+```
+
+**テーブル構造の確認**:
+
+```sql
+-- テーブル構造を表示
+DESCRIBE test_table;
+```
+
+**期待される出力**:
+```
++-------+--------------+------+-----+---------+----------------+
+| Field | Type         | Null | Key | Default | Extra          |
++-------+--------------+------+-----+---------+----------------+
+| id    | bigint       | NO   | PRI | NULL    | auto_increment |
+| name  | varchar(255) | NO   |     | NULL    |                |
++-------+--------------+------+-----+---------+----------------+
+```
+
+**ERダイアグラムで確認（視覚的）**:
+
+1. `test_table` を右クリック → **View Diagram**
+2. テーブル構造が図として表示される
+3. カラム名、型、制約が視覚的に確認できる
 
 ---
 
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE- `ddl-auto: update`: エンティティクラスからテーブルを自動生成
+## 🧹 Dockerコンテナの管理
 
-## ✅ チェックリスト
+### コンテナの停止
 
-```  - `create`: 起動時に毎回テーブルを作り直す
+```bash
+docker-compose stop
+```
 
-- [ ] Docker ComposeでMySQLを起動できた
+### コンテナの起動（停止後）
 
-- [ ] MySQLコンテナが正常に動いている（`docker compose ps`）  - `update`: テーブルがなければ作成、あれば更新
+```bash
+docker-compose start
+```
 
-- [ ] Spring BootからMySQLに接続できた
+### コンテナの停止と削除
 
-- [ ] `users`テーブルが自動作成された### 4-2. 設定の説明  - `none`: 何もしない（本番環境推奨）
+```bash
+docker-compose down
+```
 
-- [ ] DBeaverまたはMySQL CLIでテーブルを確認できた
+> ⚠️ **注意**: `docker-compose down`を実行してもボリュームは残るため、データは保持されます。
 
-- `show-sql: true`: SQLログを出力（学習用）
+### ボリュームも含めて完全に削除
 
----
+```bash
+docker-compose down -v
+```
 
-#### DataSource設定
-
-## 🎨 チャレンジ課題
-
----
-
-### チャレンジ 1: PostgreSQLに切り替え
-
-| 項目 | 説明 |
-
-MySQLの代わりにPostgreSQLを使ってみましょう。
-
-|------|------|## 🚀 ステップ3: アプリケーションの起動と確認
-
-**ヒント**:
-
-- `docker-compose.yml`でPostgreSQLイメージに変更| `url` | MySQL接続URL |
-
-- `pom.xml`でPostgreSQLドライバに変更
-
-- `application.yml`の接続情報を変更| `username` | データベースユーザー名 |### 3-1. アプリケーション起動
-
-
-
-### チャレンジ 2: データベースGUIツールを使ってみる| `password` | データベースパスワード |
-
-
-
-DBeaver以外のGUIツールも試してみましょう：| `driver-class-name` | MySQLドライバークラス |`HelloSpringBootApplication.java`を実行して、アプリケーションを起動します。
-
-- MySQL Workbench
-
-- DataGrip（有料）
-
-- TablePlus
-
-#### JPA/Hibernate設定コンソールに以下のようなログが表示されることを確認：
+> ⚠️ **警告**: ボリュームを削除するとデータが消えます。
 
 ---
 
+## ✅ 確認チェックリスト
 
+このステップを完了したら、以下を確認してください：
 
-## 🔧 トラブルシューティング
+- [ ] MySQLコンテナが起動している（`docker ps`で確認）
+- [ ] `pom.xml`にJPAとMySQL Connectorの依存関係を追加した
+- [ ] `application.yml`にデータベース接続設定を追加した
+- [ ] Spring Bootアプリケーションが正常に起動する
+- [ ] ログにHibernateの起動メッセージが表示される
+- [ ] テストエンティティからテーブルが自動作成される
+- [ ] DBeaverでデータベースに接続できる
+- [ ] DBeaverでtest_tableが表示される
 
-| 項目 | 説明 |```
+---
+
+## 🎉 お疲れ様でした！
+
+MySQL環境の構築が完了しました！
+
+次のステップでは、Spring Data JPAを使って実際にデータの登録・取得を行います。
+
+---
+
+## 📚 次のステップ
+
+- [Step 7: Spring Data JPAでCRUDの基本](STEP_7.md) - エンティティとリポジトリでデータベース操作
+
+---
+
+## 🔍 トラブルシューティング
 
 ### MySQLコンテナが起動しない
 
-|------|------|Hibernate: 
+**ポート3306が既に使われている場合**:
 
-**症状**: `docker compose up -d`でエラー
-
-| `ddl-auto: update` | エンティティからテーブルを自動生成・更新 |    
-
-**原因**: ポート3306が既に使用されている
-
-| `show-sql: true` | 実行されるSQLをログ出力 |    drop table if exists users CASCADE 
-
-**解決策**:
-
-```bash| `format_sql: true` | SQLを整形して表示 |Hibernate: 
-
-# ポート3306を使用しているプロセスを確認
-
-lsof -i :3306| `dialect` | MySQL用のSQL方言 |    
-
-
-
-# 既存のMySQLを停止、またはdocker-compose.ymlでポートを変更    create table users (
-
-ports:
-
-  - "3307:3306"**ddl-autoの値**:       ...
-
+```bash
+# ポートを使用しているプロセスを確認
+lsof -i :3306  # macOS/Linux
+netstat -ano | findstr :3306  # Windows
 ```
 
-- `create`: 起動時にテーブルを削除して再作成```
+**解決策**:
+1. 既存のMySQLを停止する
+2. または、`docker-compose.yml`のポートを変更（例: `"3307:3306"`）して`application.yml`のURLも変更
 
-### Spring Bootが起動しない
+### 接続エラー: Communications link failure
 
-- `create-drop`: 起動時に作成、終了時に削除
-
-**症状**: `Connection refused`エラー
-
-- `update`: テーブルがなければ作成、あれば更新（本番非推奨）（まだエンティティを作成していないので、テーブルは作成されませんが、H2は起動しています）
-
-**原因**: MySQLコンテナが起動していない
-
-- `validate`: スキーマ検証のみ
+**原因**: MySQLコンテナが完全に起動していない可能性があります。
 
 **解決策**:
+```bash
+# コンテナのログを確認
+docker-compose logs mysql
 
-```bash- `none`: 何もしない（本番推奨）### 3-2. H2 Consoleにアクセス
-
-docker compose ps  # コンテナの状態を確認
-
-docker compose up -d  # コンテナを起動
-
+# 起動完了まで待つ（30秒〜1分程度）
 ```
 
----ブラウザで以下のURLにアクセス：
+### Access denied for user 'appuser'
+
+**原因**: `application.yml`のユーザー名またはパスワードが間違っています。
+
+**解決策**:
+- `docker-compose.yml`と`application.yml`の設定を確認
+- 設定を修正したら、コンテナを再起動: `docker-compose restart`
 
 ### テーブルが作成されない
 
-
-
-**症状**: `users`テーブルが見つからない
-
-## 🚀 ステップ5: 簡単なエンティティで接続確認```
-
-**原因**: `ddl-auto`が`none`または`validate`になっている
-
-http://localhost:8080/h2-console
-
-**解決策**: `application.yml`で`ddl-auto: update`に設定
-
-### 5-1. Userエンティティの作成```
-
----
-
-
-
-## 📚 このステップで学んだこと
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`**H2ログイン画面**が表示されます。
-
-- ✅ Docker ComposeでMySQLを起動する方法
-
-- ✅ Spring BootからMySQLに接続する設定
-
-- ✅ JPAエンティティからテーブルを自動生成
-
-- ✅ application.ymlでの設定管理```java### 3-3. H2 Consoleでログイン
-
-- ✅ データベースGUIツール（DBeaver）の使い方
-
-package com.example.hellospringboot.entity;
-
----
-
-ログイン画面で以下を入力：
-
-## 🔄 Gitへのコミット
-
-import jakarta.persistence.*;
-
-```bash
-
-git add .import lombok.*;- **Saved Settings**: Generic H2 (Embedded)
-
-git commit -m "Step 6: MySQL環境構築完了
-
-- **Setting Name**: Generic H2 (Embedded)
-
-- Docker ComposeでMySQL起動
-
-- Spring Data JPA依存関係追加@Entity- **Driver Class**: `org.h2.Driver`（自動入力済み）
-
-- MySQL接続設定
-
-- Userエンティティ作成"@Table(name = "users")- **JDBC URL**: `jdbc:h2:mem:testdb`
-
-git push origin main
-
-```@Getter- **User Name**: `sa`
-
-
-
----@Setter- **Password**: （空欄のまま）
-
-
-
-## ➡️ 次のステップ@NoArgsConstructor
-
-
-
-次は[Step 7: Spring Data JPAの基本](STEP_7.md)へ進みましょう！@AllArgsConstructor「Connect」ボタンをクリックします。
-
-
-
-Spring Data JPAを使って、データベースのCRUD操作を実装します。@Builder
-
-
-
----public class User {### 3-4. H2 Consoleの画面確認
-
-
-
-お疲れさまでした！ 🎉
-
-
-
-MySQLとSpring Bootの接続ができました。    @Idログインに成功すると、以下の画面が表示されます：
-
-次のステップでは、実際にデータの作成・読み取り・更新・削除を実装していきます。
-
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-
-    private Long id;- **左側**: テーブル一覧（現在は空）
-
-- **右上**: SQLクエリ入力欄
-
-    @Column(nullable = false, length = 50)- **右下**: 実行結果表示エリア
-
-    private String name;
-
-試しにSQLを実行してみましょう：
-
-    @Column(nullable = false, unique = true, length = 100)
-
-    private String email;```sql
-
-}SELECT 1;
-
-``````
-
-
-
-### 5-2. アプリケーションの起動「Run」ボタン（または Ctrl+Enter）をクリック。
-
-
-
-```bash**結果**:
-
-./mvnw spring-boot:run```
-
-```1
-
--
-
-**ログ確認ポイント**:1
-
-``````
-
-Hibernate: create table users (...)
-
-```が表示されればOKです！
-
-
-
-このログが表示されれば、テーブルが自動生成されています。---
-
-
-
----## 🚀 ステップ4: 簡単なテーブルを作成してみる
-
-
-
-## 🚀 ステップ6: MySQLクライアントでデータベース確認### 4-1. SQLで直接テーブルを作成
-
-
-
-### 6-1. MySQL CLIでの確認（方法1）H2 Consoleで以下のSQLを実行：
-
-
-
-```bash```sql
-
-docker exec -it spring-boot-mysql mysql -udbuser -pdbpassword hellospringbootCREATE TABLE users (
-
-```    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-
-    name VARCHAR(100) NOT NULL,
-
-MySQLプロンプトが表示されたら：    email VARCHAR(100) NOT NULL
-
-);
-
-```sql```
-
-SHOW TABLES;
-
-```「Run」をクリック。
-
-
-
-**出力例**:**結果**: 左側のテーブル一覧に「USERS」が表示されます。
-
-```
-
-+---------------------------+### 4-2. データを挿入
-
-| Tables_in_hellospringboot |
-
-+---------------------------+```sql
-
-| users                     |INSERT INTO users (name, email) VALUES ('Taro', 'taro@example.com');
-
-+---------------------------+INSERT INTO users (name, email) VALUES ('Hanako', 'hanako@example.com');
-
-```INSERT INTO users (name, email) VALUES ('Jiro', 'jiro@example.com');
-
-```
-
-テーブル構造を確認：
-
-### 4-3. データを確認
-
-```sql
-
-DESC users;```sql
-
-```SELECT * FROM users;
-
-```
-
-**出力例**:
-
-```**結果**:
-
-+-------+--------------+------+-----+---------+----------------+```
-
-| Field | Type         | Null | Key | Default | Extra          |ID  NAME     EMAIL
-
-+-------+--------------+------+-----+---------+----------------+1   Taro     taro@example.com
-
-| id    | bigint       | NO   | PRI | NULL    | auto_increment |2   Hanako   hanako@example.com
-
-| name  | varchar(50)  | NO   |     | NULL    |                |3   Jiro     jiro@example.com
-
-| email | varchar(100) | NO   | UNI | NULL    |                |```
-
-+-------+--------------+------+-----+---------+----------------+
-
-```おめでとうございます！データベースの基本操作ができました！
-
-
-
-終了：---
-
-```sql
-
-EXIT;## 💡 インメモリDBの特性を理解する
-
-```
-
-### 重要な注意点
-
-### 6-2. GUI ツールでの確認（方法2）
-
-**インメモリDB（`jdbc:h2:mem:testdb`）の特徴**:
-
-**推奨ツール**:
-
-- **MySQL Workbench**: [ダウンロード](https://www.mysql.com/products/workbench/)- ✅ 高速
-
-- **DBeaver**: [ダウンロード](https://dbeaver.io/)- ✅ セットアップ不要
-
-- **TablePlus**: [ダウンロード](https://tableplus.com/)- ❌ **アプリケーションを停止するとデータが消える**
-
-
-
-**接続情報**:### 実験: データの永続性を確認
-
-- Host: `localhost`
-
-- Port: `3306`1. アプリケーションを**停止**する
-
-- Database: `hellospringboot`2. 再度**起動**する
-
-- Username: `dbuser`3. H2 Consoleにアクセスして`SELECT * FROM users;`を実行
-
-- Password: `dbpassword`
-
-**結果**: テーブルもデータも消えています。
-
----
-
-**これはバグではなく、インメモリDBの仕様です。**
-
-## ✅ 動作確認
-
-### ファイルモードに変更（オプション）
-
-### 確認項目
-
-データを永続化したい場合は、`application.yml`を以下のように変更：
-
-- [ ] Docker Composeでコンテナが起動している
-
-- [ ] Spring Bootアプリケーションが起動できる```yaml
-
-- [ ] ログに`create table users`が表示されるspring:
-
-- [ ] MySQLで`users`テーブルが確認できる  datasource:
-
-    # インメモリモード（データは揮発）
-
-### トラブルシューティング    # url: jdbc:h2:mem:testdb
-
-    
-
-#### 問題1: `Port 3306 is already in use`    # ファイルモード（データを永続化）
-
-    url: jdbc:h2:file:./data/testdb
-
-**原因**: 既にMySQLがローカルで起動している```
-
-
-
-**解決策**:`./data/testdb.mv.db`というファイルにデータが保存されます。
-
-```bash
-
-# ローカルのMySQLを停止**Phase 2ではインメモリモードを使用します**（学習目的のため）。
-
-sudo service mysql stop  # Linux
-
-brew services stop mysql # macOS---
-
-
-
-# または、docker-compose.ymlのポートを変更## 🎨 チャレンジ課題
-
-ports:
-
-  - "3307:3306"  # ホスト側を3307に変更### チャレンジ 1: 別のテーブルを作成
-
-
-
-# application.ymlのURLも修正`products`テーブルを作成して、データを挿入・取得してください。
-
-url: jdbc:mysql://localhost:3307/hellospringboot...
-
-```**テーブル定義**:
-
-- `id` (BIGINT, PRIMARY KEY, AUTO_INCREMENT)
-
-#### 問題2: `Access denied for user 'dbuser'@'localhost'`- `name` (VARCHAR(100))
-
-- `price` (INT)
-
-**原因**: パスワードの不一致- `category` (VARCHAR(50))
-
-
-
-**解決策**:**ヒント**:
-
-1. `docker-compose.yml`のパスワードを確認```sql
-
-2. `application.yml`のパスワードが一致しているか確認CREATE TABLE products (
-
-3. コンテナを再作成    -- ここに定義
-
-```bash);
-
-docker-compose down -v
-
-docker-compose up -dINSERT INTO products (name, price, category) VALUES (...);
-
-```
-
-SELECT * FROM products;
-
-#### 問題3: `Unknown database 'hellospringboot'````
-
-
-
-**原因**: データベースが作成されていない### チャレンジ 2: SQLの練習
-
-
-
-**解決策**:以下のSQLを実行してみてください：
-
-```bash
-
-# コンテナに入ってデータベースを手動作成```sql
-
-docker exec -it spring-boot-mysql mysql -uroot -prootpassword-- 特定のユーザーを検索
-
-SELECT * FROM users WHERE name = 'Taro';
-
-CREATE DATABASE hellospringboot;
-
-GRANT ALL PRIVILEGES ON hellospringboot.* TO 'dbuser'@'%';-- メールアドレスが'hanako'を含むユーザー
-
-FLUSH PRIVILEGES;SELECT * FROM users WHERE email LIKE '%hanako%';
-
-EXIT;
-
-```-- ユーザー数をカウント
-
-SELECT COUNT(*) FROM users;
-
----
-
--- ユーザーを削除
-
-## 💡 補足知識DELETE FROM users WHERE id = 1;
-
-
-
-### Docker Composeの基本コマンド-- 確認
-
-SELECT * FROM users;
-
-```bash```
-
-# コンテナ起動（バックグラウンド）
-
-docker-compose up -d### チャレンジ 3: JOINを試す
-
-
-
-# コンテナ停止`orders`テーブルを作成して、`users`テーブルとJOINしてみましょう。
-
-docker-compose stop
-
-```sql
-
-# コンテナ停止＆削除CREATE TABLE orders (
-
-docker-compose down    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-
-    user_id BIGINT NOT NULL,
-
-# コンテナ停止＆削除＆ボリューム削除（データも削除）    product_name VARCHAR(100),
-
-docker-compose down -v    amount INT
-
-);
-
-# ログ表示
-
-docker-compose logs -fINSERT INTO orders (user_id, product_name, amount) VALUES (2, 'Laptop', 1200);
-
-INSERT INTO orders (user_id, product_name, amount) VALUES (3, 'Mouse', 25);
-
-# コンテナの状態確認
-
-docker-compose ps-- JOINでユーザー名と注文を一緒に表示
-
-```SELECT u.name, o.product_name, o.amount
-
-FROM users u
-
-### データの永続化についてJOIN orders o ON u.id = o.user_id;
-
-```
-
-`volumes`を設定することで、コンテナを削除してもデータが残ります。
-
----
-
-```yaml
-
-volumes:## 🐛 トラブルシューティング
-
-  - mysql-data:/var/lib/mysql
-
-```### H2 Consoleにアクセスできない
-
-
-
-データを完全に削除したい場合：**エラー**: ブラウザで404 Not Found
-
-```bash
-
-docker-compose down -v**原因**: H2 Consoleが有効化されていない
-
-```
+**原因**: エンティティクラスが認識されていない可能性があります。
 
 **解決策**:
-
-### 本番環境との違い1. `application.yml`で`spring.h2.console.enabled: true`を確認
-
-2. アプリケーションを再起動
-
-| 項目 | 開発環境（このステップ） | 本番環境 |3. URLが`http://localhost:8080/h2-console`であることを確認
-
-|------|----------------------|----------|
-
-| ddl-auto | `update` | `none`または`validate` |### "Database may be already in use"
-
-| show-sql | `true` | `false` |
-
-| パスワード管理 | ファイルに記述 | 環境変数・シークレット管理 |**エラー**: `Database "testdb" may be already in use`
-
-| ボリューム | ローカル | クラウドストレージ |
-
-**原因**: 別のプロセスがH2を使用中、またはアプリケーションが多重起動
+1. エンティティクラスに`@Entity`アノテーションがあるか確認
+2. パッケージが`com.example.hellospringboot`またはそのサブパッケージにあるか確認
+3. `application.yml`の`ddl-auto`が`update`または`create`になっているか確認
 
 ---
 
-**解決策**:
-
-## 🎨 チャレンジ課題1. すべてのアプリケーションを停止
-
-2. IntelliJ IDEAで実行中のプロセスを確認（停止ボタンをクリック）
-
-### チャレンジ 1: 別のエンティティを追加3. 再起動
-
-
-
-`Product`エンティティを作成して、MySQLにテーブルが自動生成されることを確認してください。### ログインできない
-
-
-
-### チャレンジ 2: 環境別プロファイル**症状**: H2 Consoleで「Wrong user name or password」
-
-
-
-`application-dev.yml`と`application-prod.yml`を分けて、開発環境と本番環境で異なるDB設定を管理してください。**解決策**:
-
-- **JDBC URL**: `jdbc:h2:mem:testdb`（application.ymlと一致させる）
-
-### チャレンジ 3: データベースの初期データ投入- **User Name**: `sa`
-
-- **Password**: 空欄
-
-`data.sql`ファイルを使って、アプリケーション起動時に初期データを投入してください。
-
-### SQLが実行されない
-
----
-
-**症状**: SQLを入力しても何も起こらない
-
-## 📚 このステップで学んだこと
-
-**解決策**:
-
-- ✅ Docker ComposeでMySQL環境を構築- 「Run」ボタンをクリック（または Ctrl+Enter / Cmd+Enter）
-
-- ✅ Spring BootからMySQLへの接続- SQL末尾にセミコロン（`;`）があるか確認
-
-- ✅ application.ymlでのDB設定管理
-
-- ✅ JPAによるテーブル自動生成（ddl-auto）### テーブルが見つからない
-
-- ✅ MySQLクライアントでのデータベース操作
-
-**エラー**: `Table "USERS" not found`
-
----
-
-**原因**: テーブルをまだ作成していない、またはアプリケーションを再起動してデータが消えた
-
-## 🔄 Gitへのコミット
-
-**解決策**:
-
-```bash- `CREATE TABLE`文を再実行
-
-git add .- 次のステップ（Step 7）でエンティティクラスから自動生成する方法を学びます
-
-git commit -m "Phase 2: STEP_6完了（MySQL環境構築）"
-
-git push origin main---
-
-```
-
-## 📚 このステップで学んだこと
-
----
-
-- ✅ H2データベースの特徴（インメモリDB）
-
-## ➡️ 次のステップ- ✅ H2とSpring Data JPAの依存関係追加
-
-- ✅ `application.yml`でデータソース設定
-
-次は[Step 7: Spring Data JPAでCRUDの基本](STEP_7.md)へ進みましょう！- ✅ H2 Consoleの有効化とブラウザでのアクセス
-
-- ✅ SQLでのテーブル作成・データ挿入・検索
-
-MySQLの準備が整ったので、次はSpring Data JPAを使ってデータベース操作を学びます。- ✅ インメモリDBとファイルDBの違い
-
-- ✅ `ddl-auto`設定の理解
-
----
-
----
-
-お疲れさまでした！ 🎉
-
-## 💡 補足: Spring BootのデータベースAutoConfiguration
-
-### なぜ設定が少ないのか？
-
-Spring Bootは**AutoConfiguration**で多くを自動設定します：
-
-1. `pom.xml`にH2とJPAの依存関係がある
-2. → Spring Bootが「データベースを使うんだな」と判断
-3. → H2のJDBCドライバを自動設定
-4. → データソースを自動作成
-5. → Hibernateを自動設定
-
-**従来のSpring Frameworkとの違い**:
-- 従来: XML設定ファイルで大量の設定が必要
-- Spring Boot: `application.yml`で最小限の設定のみ
-
-### show-sqlの出力例
-
-`show-sql: true`を設定すると、実行されるSQLがコンソールに表示されます：
-
-```
-Hibernate: 
-    insert 
-    into
-        users
-        (email, name, id) 
-    values
-        (?, ?, ?)
-```
-
-**学習には便利ですが、本番環境では`false`にすることを推奨します。**
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 6: H2データベース導入完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
-
----
-
-## ➡️ 次のステップ
-
-レビューが完了したら、[Step 7: Spring Data JPAでCRUDの基本](STEP_7.md)へ進みましょう！
-
-次のステップでは、SQLを書かずに、Javaのコードだけでデータベース操作を行う方法を学びます。
-`@Entity`でテーブル定義、`JpaRepository`でCRUD操作を実装します！
-
----
-
-お疲れさまでした！ 🎉
-
-H2データベースの環境が整いました。
-次はいよいよJPAを使って、Javaでデータベース操作を行います！
+## 📖 参考資料
+
+- [Spring Boot - Database Initialization](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-initialization)
+- [Spring Data JPA - Reference Documentation](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/)
+- [MySQL Docker Hub](https://hub.docker.com/_/mysql)
+- [Hibernate ORM Documentation](https://hibernate.org/orm/documentation/)

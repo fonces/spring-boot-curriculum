@@ -390,7 +390,7 @@ curl -X POST http://localhost:8080/api/orders \
 }
 ```
 
-H2 Consoleで確認：
+DBeaverで確認：
 ```sql
 SELECT * FROM orders;
 ```
@@ -417,7 +417,7 @@ curl -X POST http://localhost:8080/api/orders/test-rollback \
 }
 ```
 
-H2 Consoleで確認：
+DBeaverで確認：
 ```sql
 SELECT * FROM orders;
 ```

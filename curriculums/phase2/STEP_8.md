@@ -701,7 +701,7 @@ public ResponseEntity<User> patchUser(@PathVariable Long id, @RequestBody User u
 
 **原因**: トランザクションがコミットされていない（通常は自動）
 
-**解決策**: アプリケーションを再起動、またはH2 Consoleで確認
+**解決策**: アプリケーションを再起動、またはDBeaverで確認
 
 ### PUTとPATCHの違いがわからない
 

@@ -931,7 +931,7 @@ public class UserService {
 | **複雑なクエリ** | JPQLやCriteria APIが煩雑 | SQL直接記述で柔軟 |
 | **動的クエリ** | Specification API | XMLの動的SQL |
 | **パフォーマンス** | N+1問題に注意 | 必要なカラムだけ取得可能 |
-| **テスト** | H2などで簡単 | 本番DBと同じ構造が必要 |
+| **テスト** | インメモリDBなどで簡単 | 本番DBと同じ構造が必要 |
 
 **推奨**:
 - **シンプルなCRUD**: JPA
