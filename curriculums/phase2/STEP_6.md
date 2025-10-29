@@ -106,7 +106,7 @@
 </dependency>
 ```
 
-- **`scope>runtime</scope>`**: 実行時のみ必要（コンパイル時は不要）
+- **`<scope>runtime</scope>`**: 実行時のみ必要（コンパイル時は不要）
 - H2データベースのJDBCドライバを提供
 
 #### Spring Data JPA
