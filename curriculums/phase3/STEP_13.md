@@ -1,599 +1,70 @@
-# Step 13: レイヤードアーキテクチャとDTOパターン
+# Step 13: MyBatisで複雑なクエリ
 
 ## 🎯 このステップの目標
 
-- レイヤードアーキテクチャの概念を理解する
-- DTO (Data Transfer Object) パターンを理解し実装する
-- エンティティとDTOを分離する理由を理解する
-- MapStructを使ってマッピングを自動化する
+- 動的SQL（`<if>`, `<choose>`, `<foreach>`）を使った柔軟なクエリを実装する
+- JOINを使って複数テーブルのデータを効率的に取得する
+- ResultMapで複雑なオブジェクトマッピングを定義する
+- ページネーション機能を実装する
+- MyBatisの高度な機能を理解し、実務レベルの検索APIを作成する
 
-**所要時間**: 約2時間
+**所要時間**: 約1.5時間
 
 ---
 
 ## 📋 事前準備
 
-- Phase 2までのデータベース統合が理解できていること
-- UserエンティティとPostエンティティが実装されていること
+- Step 12の完了
+- MyBatisの基本的な使い方（Mapper XMLとMapperインターフェース）の理解
+- 商品管理APIが動作していること
+- MySQLが起動していること
 
-**Phase 2をまだ完了していない場合**: [Phase 2](../phase2/STEP_6.md)を先に進めてください。
-
----
-
-## 💡 レイヤードアーキテクチャとは？
-
-### アーキテクチャの必要性
-
-小規模なアプリでは問題なくても、成長すると：
-- ❌ コードの責任範囲が不明確
-- ❌ 変更の影響範囲が大きい
-- ❌ テストが困難
-- ❌ 再利用性が低い
-
-**解決策**: レイヤー（層）に分けて責任を分離する
-
-### レイヤードアーキテクチャの構造
-
-```
-┌─────────────────────────────────┐
-│   Presentation Layer            │  ← ユーザーとのやり取り
-│   (Controller)                  │
-└─────────────────────────────────┘
-            ↓↑
-┌─────────────────────────────────┐
-│   Business Logic Layer          │  ← ビジネスロジック
-│   (Service)                     │
-└─────────────────────────────────┘
-            ↓↑
-┌─────────────────────────────────┐
-│   Data Access Layer             │  ← データベース操作
-│   (Repository)                  │
-└─────────────────────────────────┘
-            ↓↑
-┌─────────────────────────────────┐
-│   Database                      │
-└─────────────────────────────────┘
-```
-
-### 各レイヤーの責任
-
-| レイヤー | 責任 | Spring Bootでの実装 |
-|----------|------|---------------------|
-| **Presentation** | HTTPリクエスト/レスポンス処理 | `@RestController` |
-| **Business Logic** | ビジネスルール、トランザクション | `@Service` |
-| **Data Access** | データベースCRUD | `@Repository` (JpaRepository) |
-| **Domain** | ビジネスオブジェクト | `@Entity` |
+**Step 12をまだ完了していない場合**: [Step 12: MyBatisの基礎](STEP_12.md)を先に進めてください。
 
 ---
 
-## 💡 DTOパターンとは？
+## 1. テーブル設計の拡張
 
-### エンティティをそのまま返す問題
+### 1.1 カテゴリテーブルの追加
 
-**現在の実装**:
-```java
-@GetMapping("/{id}")
-public ResponseEntity<User> getUser(@PathVariable Long id) {
-    return userService.getUserById(id)
-        .map(ResponseEntity::ok)
-        .orElse(ResponseEntity.notFound().build());
-}
-```
+商品にカテゴリを関連付けるため、新しいテーブルを作成します。
 
-**問題点**:
-1. **セキュリティリスク**: 内部実装がAPIに露出
-2. **循環参照**: `User → Posts → User → ...`
-3. **不要なデータ**: パスワードなど返すべきでないデータ
-4. **柔軟性の欠如**: API変更がDB変更に直結
+**resources/db/migration/V2__create_category_table.sql**
+```sql
+CREATE TABLE categories (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
-### DTOによる解決
+-- 商品テーブルにカテゴリIDを追加
+ALTER TABLE products ADD COLUMN category_id BIGINT;
+ALTER TABLE products ADD CONSTRAINT fk_category 
+    FOREIGN KEY (category_id) REFERENCES categories(id);
 
-**DTO (Data Transfer Object)**:
-- レイヤー間でデータを転送するためのオブジェクト
-- 必要なデータだけを含む
-- APIの契約とDB設計を分離
+-- サンプルデータ
+INSERT INTO categories (name, description) VALUES
+('電化製品', '家電製品全般'),
+('書籍', '本や雑誌'),
+('食品', '食料品'),
+('衣類', '服やアクセサリー');
 
-```
-Controller → DTO → Service → Entity → Repository → DB
-         ←  DTO ←        ←  Entity ←           ←
+-- 既存の商品にカテゴリを設定
+UPDATE products SET category_id = 1 WHERE id = 1;
+UPDATE products SET category_id = 2 WHERE id = 2;
 ```
 
 ---
 
-## 🚀 ステップ1: DTOクラスの作成
+## 2. エンティティクラスの作成
 
-### 1-1. User用DTOの作成
+### 2.1 Categoryエンティティ
 
-**ディレクトリ構造**:
-```
-src/main/java/com/example/hellospringboot/
-├── controller/
-├── service/
-├── repository/
-├── entity/
-└── dto/              ← 新規作成
-    ├── request/
-    │   ├── UserCreateRequest.java
-    │   └── UserUpdateRequest.java
-    └── response/
-        └── UserResponse.java
-```
-
-### 1-2. UserCreateRequest
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/UserCreateRequest.java`
-
+**com/example/demo/entity/Category.java**
 ```java
-package com.example.hellospringboot.dto.request;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * ユーザー作成リクエストDTO
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserCreateRequest {
-
-    /**
-     * ユーザー名
-     */
-    private String name;
-
-    /**
-     * メールアドレス
-     */
-    private String email;
-
-    /**
-     * 年齢
-     */
-    private Integer age;
-}
-```
-
-### 1-3. UserUpdateRequest
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/UserUpdateRequest.java`
-
-```java
-package com.example.hellospringboot.dto.request;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * ユーザー更新リクエストDTO
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserUpdateRequest {
-
-    /**
-     * ユーザー名
-     */
-    private String name;
-
-    /**
-     * メールアドレス
-     */
-    private String email;
-
-    /**
-     * 年齢
-     */
-    private Integer age;
-}
-```
-
-### 1-4. UserResponse
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/UserResponse.java`
-
-```java
-package com.example.hellospringboot.dto.response;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.List;
-
-/**
- * ユーザーレスポンスDTO
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserResponse {
-
-    /**
-     * ユーザーID
-     */
-    private Long id;
-
-    /**
-     * ユーザー名
-     */
-    private String name;
-
-    /**
-     * メールアドレス
-     */
-    private String email;
-
-    /**
-     * 年齢
-     */
-    private Integer age;
-
-    /**
-     * 投稿数（エンティティには存在しない計算フィールド）
-     */
-    private Integer postCount;
-}
-```
-
----
-
-## 🚀 ステップ2: マッパークラスの作成
-
-### 2-1. 手動マッピングの実装
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/mapper/UserMapper.java`
-
-```java
-package com.example.hellospringboot.mapper;
-
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.stream.Collectors;
-
-/**
- * UserエンティティとDTOの相互変換を行うマッパー
- */
-@Component
-public class UserMapper {
-
-    /**
-     * UserCreateRequest → User エンティティ
-     */
-    public User toEntity(UserCreateRequest request) {
-        return User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
-                .age(request.getAge())
-                .build();
-    }
-
-    /**
-     * UserUpdateRequest → User エンティティ（既存エンティティを更新）
-     */
-    public void updateEntity(User user, UserUpdateRequest request) {
-        user.setName(request.getName());
-        user.setEmail(request.getEmail());
-        user.setAge(request.getAge());
-    }
-
-    /**
-     * User エンティティ → UserResponse
-     */
-    public UserResponse toResponse(User user) {
-        return UserResponse.builder()
-                .id(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())
-                .age(user.getAge())
-                .postCount(user.getPosts() != null ? user.getPosts().size() : 0)
-                .build();
-    }
-
-    /**
-     * User エンティティリスト → UserResponse リスト
-     */
-    public List<UserResponse> toResponseList(List<User> users) {
-        return users.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
-    }
-}
-```
-
----
-
-## 🚀 ステップ3: Serviceレイヤーの更新
-
-### 3-1. UserServiceの更新
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
-
-```java
-package com.example.hellospringboot.service;
-
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.mapper.UserMapper;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.Optional;
-
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class UserService {
-
-    private final UserRepository userRepository;
-    private final UserMapper userMapper;
-
-    /**
-     * ユーザーを作成
-     */
-    @Transactional
-    public UserResponse createUser(UserCreateRequest request) {
-        // DTOからエンティティへ変換
-        User user = userMapper.toEntity(request);
-        
-        // 保存
-        User savedUser = userRepository.save(user);
-        
-        // エンティティからDTOへ変換して返却
-        return userMapper.toResponse(savedUser);
-    }
-
-    /**
-     * 全ユーザーを取得
-     */
-    public List<UserResponse> getAllUsers() {
-        List<User> users = userRepository.findAll();
-        return userMapper.toResponseList(users);
-    }
-
-    /**
-     * IDでユーザーを取得
-     */
-    public Optional<UserResponse> getUserById(Long id) {
-        return userRepository.findById(id)
-                .map(userMapper::toResponse);
-    }
-
-    /**
-     * ユーザーを更新
-     */
-    @Transactional
-    public Optional<UserResponse> updateUser(Long id, UserUpdateRequest request) {
-        return userRepository.findById(id)
-                .map(user -> {
-                    // 既存エンティティを更新
-                    userMapper.updateEntity(user, request);
-                    User updatedUser = userRepository.save(user);
-                    return userMapper.toResponse(updatedUser);
-                });
-    }
-
-    /**
-     * ユーザーを削除
-     */
-    @Transactional
-    public boolean deleteUser(Long id) {
-        if (userRepository.existsById(id)) {
-            userRepository.deleteById(id);
-            return true;
-        }
-        return false;
-    }
-}
-```
-
----
-
-## 🚀 ステップ4: Controllerレイヤーの更新
-
-### 4-1. UserControllerの更新
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.request.UserUpdateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.service.UserService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequestMapping("/api/users")
-@RequiredArgsConstructor
-public class UserController {
-
-    private final UserService userService;
-
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(@RequestBody UserCreateRequest request) {
-        UserResponse response = userService.createUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    /**
-     * 全ユーザー取得
-     * GET /api/users
-     */
-    @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
-    }
-
-    /**
-     * IDでユーザー取得
-     * GET /api/users/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
-        return userService.getUserById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * ユーザー更新
-     * PUT /api/users/{id}
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateUser(
-            @PathVariable Long id,
-            @RequestBody UserUpdateRequest request) {
-        return userService.updateUser(id, request)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * ユーザー削除
-     * DELETE /api/users/{id}
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        if (userService.deleteUser(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
-    }
-}
-```
-
----
-
-## ✅ ステップ5: 動作確認
-
-### 5-1. アプリケーション起動
-
-### 5-2. ユーザー作成（DTOを使用）
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Taro Yamada",
-    "email": "taro@example.com",
-    "age": 30
-  }'
-```
-
-**期待されるレスポンス**:
-```json
-{
-  "id": 1,
-  "name": "Taro Yamada",
-  "email": "taro@example.com",
-  "age": 30,
-  "postCount": 0
-}
-```
-
-### 5-3. 投稿を追加してpostCountを確認
-
-```bash
-# 投稿作成
-curl -X POST http://localhost:8080/api/posts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": 1,
-    "title": "First Post",
-    "content": "Hello World"
-  }'
-
-# ユーザー取得（postCountが1になる）
-curl http://localhost:8080/api/users/1
-```
-
-**期待されるレスポンス**:
-```json
-{
-  "id": 1,
-  "name": "Taro Yamada",
-  "email": "taro@example.com",
-  "age": 30,
-  "postCount": 1
-}
-```
-
----
-
-## 🚀 ステップ6: Post用DTOの作成（演習）
-
-### 6-1. PostCreateRequest
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/PostCreateRequest.java`
-
-```java
-package com.example.hellospringboot.dto.request;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class PostCreateRequest {
-
-    /**
-     * 投稿するユーザーのID
-     */
-    private Long userId;
-
-    /**
-     * タイトル
-     */
-    private String title;
-
-    /**
-     * 本文
-     */
-    private String content;
-}
-```
-
-### 6-2. PostResponse
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/PostResponse.java`
-
-```java
-package com.example.hellospringboot.dto.response;
+package com.example.demo.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -603,344 +74,721 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class PostResponse {
-
-    /**
-     * 投稿ID
-     */
+public class Category {
     private Long id;
-
-    /**
-     * タイトル
-     */
-    private String title;
-
-    /**
-     * 本文
-     */
-    private String content;
-
-    /**
-     * 作成日時
-     */
+    private String name;
+    private String description;
     private LocalDateTime createdAt;
-
-    /**
-     * 投稿者情報
-     */
-    private UserSummary user;
-
-    /**
-     * 投稿者サマリー（循環参照を防ぐ）
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class UserSummary {
-        private Long id;
-        private String name;
-        private String email;
-    }
+    private LocalDateTime updatedAt;
 }
 ```
 
-### 6-3. PostMapper
+### 2.2 Productエンティティの拡張
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/mapper/PostMapper.java`
-
+**com/example/demo/entity/Product.java**
 ```java
-package com.example.hellospringboot.mapper;
+package com.example.demo.entity;
 
-import com.example.hellospringboot.dto.response.PostResponse;
-import com.example.hellospringboot.entity.Post;
-import org.springframework.stereotype.Component;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Product {
+    private Long id;
+    private String name;
+    private BigDecimal price;
+    private Integer stock;
+    private Long categoryId;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    
+    // 結合用フィールド
+    private Category category;
+}
+```
+
+---
+
+## 3. 動的SQLの実装
+
+### 3.1 検索条件DTOの作成
+
+**com/example/demo/dto/ProductSearchRequest.java**
+```java
+package com.example.demo.dto;
+
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+@Data
+public class ProductSearchRequest {
+    private String name;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
+    private Integer minStock;
+    private Long categoryId;
+    private List<Long> categoryIds;
+    private String sortBy; // name, price, stock
+    private String sortOrder; // asc, desc
+    private Integer page;
+    private Integer size;
+}
+```
+
+### 3.2 Mapperインターフェースの拡張
+
+**com/example/demo/mapper/ProductMapper.java**
+```java
+package com.example.demo.mapper;
+
+import com.example.demo.dto.ProductSearchRequest;
+import com.example.demo.entity.Product;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
-@Component
-public class PostMapper {
+@Mapper
+public interface ProductMapper {
+    // 既存のメソッド
+    List<Product> findAll();
+    Product findById(Long id);
+    void insert(Product product);
+    void update(Product product);
+    void deleteById(Long id);
+    
+    // 新規追加
+    List<Product> search(ProductSearchRequest request);
+    int countByCondition(ProductSearchRequest request);
+    List<Product> findWithCategory();
+    Product findByIdWithCategory(Long id);
+    List<Product> findByCategoryIds(@Param("categoryIds") List<Long> categoryIds);
+}
+```
 
-    /**
-     * Post エンティティ → PostResponse
-     */
-    public PostResponse toResponse(Post post) {
-        return PostResponse.builder()
-                .id(post.getId())
-                .title(post.getTitle())
-                .content(post.getContent())
-                .createdAt(post.getCreatedAt())
-                .user(PostResponse.UserSummary.builder()
-                        .id(post.getUser().getId())
-                        .name(post.getUser().getName())
-                        .email(post.getUser().getEmail())
-                        .build())
-                .build();
+### 3.3 動的SQL（XML Mapper）
+
+**resources/mapper/ProductMapper.xml**
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.ProductMapper">
+
+    <!-- ResultMap: 基本的な商品 -->
+    <resultMap id="productResultMap" type="com.example.demo.entity.Product">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="price" column="price"/>
+        <result property="stock" column="stock"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- ResultMap: カテゴリを含む商品 -->
+    <resultMap id="productWithCategoryResultMap" type="com.example.demo.entity.Product">
+        <id property="id" column="product_id"/>
+        <result property="name" column="product_name"/>
+        <result property="price" column="price"/>
+        <result property="stock" column="stock"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <association property="category" javaType="com.example.demo.entity.Category">
+            <id property="id" column="category_id"/>
+            <result property="name" column="category_name"/>
+            <result property="description" column="category_description"/>
+        </association>
+    </resultMap>
+
+    <!-- 既存のSQL -->
+    <select id="findAll" resultMap="productResultMap">
+        SELECT * FROM products
+        ORDER BY id
+    </select>
+
+    <select id="findById" resultMap="productResultMap">
+        SELECT * FROM products WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO products (name, price, stock, category_id)
+        VALUES (#{name}, #{price}, #{stock}, #{categoryId})
+    </insert>
+
+    <update id="update">
+        UPDATE products
+        SET name = #{name},
+            price = #{price},
+            stock = #{stock},
+            category_id = #{categoryId}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM products WHERE id = #{id}
+    </delete>
+
+    <!-- 動的SQL: 条件付き検索 -->
+    <select id="search" resultMap="productResultMap">
+        SELECT * FROM products
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="minPrice != null">
+                AND price &gt;= #{minPrice}
+            </if>
+            <if test="maxPrice != null">
+                AND price &lt;= #{maxPrice}
+            </if>
+            <if test="minStock != null">
+                AND stock &gt;= #{minStock}
+            </if>
+            <if test="categoryId != null">
+                AND category_id = #{categoryId}
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND category_id IN
+                <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+            </if>
+        </where>
+        <if test="sortBy != null">
+            ORDER BY
+            <choose>
+                <when test="sortBy == 'name'">name</when>
+                <when test="sortBy == 'price'">price</when>
+                <when test="sortBy == 'stock'">stock</when>
+                <otherwise>id</otherwise>
+            </choose>
+            <choose>
+                <when test="sortOrder == 'desc'">DESC</when>
+                <otherwise>ASC</otherwise>
+            </choose>
+        </if>
+        <if test="page != null and size != null">
+            LIMIT #{size} OFFSET #{page}
+        </if>
+    </select>
+
+    <!-- 検索結果のカウント -->
+    <select id="countByCondition" resultType="int">
+        SELECT COUNT(*) FROM products
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="minPrice != null">
+                AND price &gt;= #{minPrice}
+            </if>
+            <if test="maxPrice != null">
+                AND price &lt;= #{maxPrice}
+            </if>
+            <if test="minStock != null">
+                AND stock &gt;= #{minStock}
+            </if>
+            <if test="categoryId != null">
+                AND category_id = #{categoryId}
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND category_id IN
+                <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+            </if>
+        </where>
+    </select>
+
+    <!-- JOIN: カテゴリ情報を含む商品一覧 -->
+    <select id="findWithCategory" resultMap="productWithCategoryResultMap">
+        SELECT 
+            p.id as product_id,
+            p.name as product_name,
+            p.price,
+            p.stock,
+            p.category_id,
+            p.created_at,
+            p.updated_at,
+            c.name as category_name,
+            c.description as category_description
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        ORDER BY p.id
+    </select>
+
+    <!-- JOIN: 特定商品のカテゴリ情報 -->
+    <select id="findByIdWithCategory" resultMap="productWithCategoryResultMap">
+        SELECT 
+            p.id as product_id,
+            p.name as product_name,
+            p.price,
+            p.stock,
+            p.category_id,
+            p.created_at,
+            p.updated_at,
+            c.name as category_name,
+            c.description as category_description
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.id = #{id}
+    </select>
+
+    <!-- foreach: 複数カテゴリIDで検索 -->
+    <select id="findByCategoryIds" resultMap="productResultMap">
+        SELECT * FROM products
+        WHERE category_id IN
+        <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper>
+```
+
+---
+
+## 4. Serviceレイヤーの実装
+
+### 4.1 ProductService
+
+**com/example/demo/service/ProductService.java**
+```java
+package com.example.demo.service;
+
+import com.example.demo.dto.ProductSearchRequest;
+import com.example.demo.entity.Product;
+import com.example.demo.mapper.ProductMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class ProductService {
+    
+    private final ProductMapper productMapper;
+
+    public List<Product> getAllProducts() {
+        return productMapper.findAll();
     }
 
-    /**
-     * Post エンティティリスト → PostResponse リスト
-     */
-    public List<PostResponse> toResponseList(List<Post> posts) {
-        return posts.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+    public Product getProductById(Long id) {
+        return productMapper.findById(id);
+    }
+
+    @Transactional
+    public Product createProduct(Product product) {
+        productMapper.insert(product);
+        return product;
+    }
+
+    @Transactional
+    public Product updateProduct(Long id, Product product) {
+        Product existing = productMapper.findById(id);
+        if (existing == null) {
+            throw new RuntimeException("Product not found");
+        }
+        product.setId(id);
+        productMapper.update(product);
+        return productMapper.findById(id);
+    }
+
+    @Transactional
+    public void deleteProduct(Long id) {
+        productMapper.deleteById(id);
+    }
+
+    // 新規追加
+    public List<Product> searchProducts(ProductSearchRequest request) {
+        // ページネーション計算
+        if (request.getPage() != null && request.getSize() != null) {
+            int offset = request.getPage() * request.getSize();
+            request.setPage(offset);
+        }
+        return productMapper.search(request);
+    }
+
+    public int countProducts(ProductSearchRequest request) {
+        return productMapper.countByCondition(request);
+    }
+
+    public List<Product> getProductsWithCategory() {
+        return productMapper.findWithCategory();
+    }
+
+    public Product getProductByIdWithCategory(Long id) {
+        return productMapper.findByIdWithCategory(id);
+    }
+
+    public List<Product> getProductsByCategoryIds(List<Long> categoryIds) {
+        return productMapper.findByCategoryIds(categoryIds);
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ7: MapStructによる自動マッピング（オプション）
+## 5. Controllerの実装
 
-### 7-1. MapStructとは？
+### 5.1 ProductController
 
-手動マッピングは面倒：
+**com/example/demo/controller/ProductController.java**
 ```java
-return UserResponse.builder()
-    .id(user.getId())
-    .name(user.getName())
-    .email(user.getEmail())
-    .age(user.getAge())
-    .build();
+package com.example.demo.controller;
+
+import com.example.demo.dto.ProductSearchRequest;
+import com.example.demo.entity.Product;
+import com.example.demo.service.ProductService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/products")
+@RequiredArgsConstructor
+public class ProductController {
+
+    private final ProductService productService;
+
+    @GetMapping
+    public List<Product> getAllProducts() {
+        return productService.getAllProducts();
+    }
+
+    @GetMapping("/{id}")
+    public Product getProduct(@PathVariable Long id) {
+        return productService.getProductById(id);
+    }
+
+    @PostMapping
+    public Product createProduct(@RequestBody Product product) {
+        return productService.createProduct(product);
+    }
+
+    @PutMapping("/{id}")
+    public Product updateProduct(@PathVariable Long id, @RequestBody Product product) {
+        return productService.updateProduct(id, product);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // 新規追加
+    @GetMapping("/search")
+    public Map<String, Object> searchProducts(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) java.math.BigDecimal minPrice,
+            @RequestParam(required = false) java.math.BigDecimal maxPrice,
+            @RequestParam(required = false) Integer minStock,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) List<Long> categoryIds,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortOrder,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size
+    ) {
+        ProductSearchRequest request = new ProductSearchRequest();
+        request.setName(name);
+        request.setMinPrice(minPrice);
+        request.setMaxPrice(maxPrice);
+        request.setMinStock(minStock);
+        request.setCategoryId(categoryId);
+        request.setCategoryIds(categoryIds);
+        request.setSortBy(sortBy);
+        request.setSortOrder(sortOrder);
+        request.setPage(page);
+        request.setSize(size);
+
+        List<Product> products = productService.searchProducts(request);
+        int totalCount = productService.countProducts(request);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("products", products);
+        response.put("totalCount", totalCount);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalPages", (int) Math.ceil((double) totalCount / size));
+
+        return response;
+    }
+
+    @GetMapping("/with-category")
+    public List<Product> getProductsWithCategory() {
+        return productService.getProductsWithCategory();
+    }
+
+    @GetMapping("/{id}/with-category")
+    public Product getProductByIdWithCategory(@PathVariable Long id) {
+        return productService.getProductByIdWithCategory(id);
+    }
+
+    @GetMapping("/by-categories")
+    public List<Product> getProductsByCategoryIds(@RequestParam List<Long> categoryIds) {
+        return productService.getProductsByCategoryIds(categoryIds);
+    }
+}
 ```
 
-**MapStruct**:
-- コンパイル時にマッピングコードを自動生成
-- 型安全
-- 高速（リフレクションなし）
+---
 
-### 7-2. MapStructの追加
+## 6. 動作確認
 
-**ファイルパス**: `pom.xml`
+### 6.1 アプリケーションの起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 6.2 API テスト
+
+#### 6.2.1 カテゴリ付き商品一覧を取得
+
+```bash
+curl http://localhost:8080/api/products/with-category | jq
+```
+
+**期待されるレスポンス:**
+```json
+[
+  {
+    "id": 1,
+    "name": "ノートPC",
+    "price": 89800,
+    "stock": 5,
+    "categoryId": 1,
+    "category": {
+      "id": 1,
+      "name": "電化製品",
+      "description": "家電製品全般"
+    }
+  }
+]
+```
+
+#### 6.2.2 動的検索（名前と価格範囲）
+
+```bash
+curl "http://localhost:8080/api/products/search?name=ノート&minPrice=50000&maxPrice=100000&sortBy=price&sortOrder=asc" | jq
+```
+
+#### 6.2.3 複数カテゴリで検索
+
+```bash
+curl "http://localhost:8080/api/products/by-categories?categoryIds=1&categoryIds=2" | jq
+```
+
+#### 6.2.4 ページネーション付き検索
+
+```bash
+curl "http://localhost:8080/api/products/search?page=0&size=5" | jq
+```
+
+**期待されるレスポンス:**
+```json
+{
+  "products": [...],
+  "totalCount": 15,
+  "page": 0,
+  "size": 5,
+  "totalPages": 3
+}
+```
+
+#### 6.2.5 複合条件検索
+
+```bash
+curl "http://localhost:8080/api/products/search?name=PC&minStock=3&categoryId=1&sortBy=price&sortOrder=desc" | jq
+```
+
+---
+
+## 7. MyBatis動的SQLの要素
+
+### 7.1 `<if>` 条件分岐
 
 ```xml
-<properties>
-    <org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
-</properties>
-
-<dependencies>
-    <!-- MapStruct -->
-    <dependency>
-        <groupId>org.mapstruct</groupId>
-        <artifactId>mapstruct</artifactId>
-        <version>${org.mapstruct.version}</version>
-    </dependency>
-</dependencies>
-
-<build>
-    <plugins>
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.11.0</version>
-            <configuration>
-                <source>21</source>
-                <target>21</target>
-                <annotationProcessorPaths>
-                    <path>
-                        <groupId>org.projectlombok</groupId>
-                        <artifactId>lombok</artifactId>
-                        <version>${lombok.version}</version>
-                    </path>
-                    <path>
-                        <groupId>org.mapstruct</groupId>
-                        <artifactId>mapstruct-processor</artifactId>
-                        <version>${org.mapstruct.version}</version>
-                    </path>
-                </annotationProcessorPaths>
-            </configuration>
-        </plugin>
-    </plugins>
-</build>
+<if test="name != null and name != ''">
+    AND name LIKE CONCAT('%', #{name}, '%')
+</if>
 ```
 
-### 7-3. MapStructマッパーインターフェース
+- 条件が真の場合のみSQLに含まれる
+- `test`属性で条件を指定
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/mapper/UserMapperMapStruct.java`
+### 7.2 `<choose>`, `<when>`, `<otherwise>` (switch-case)
 
+```xml
+<choose>
+    <when test="sortBy == 'name'">name</when>
+    <when test="sortBy == 'price'">price</when>
+    <otherwise>id</otherwise>
+</choose>
+```
+
+- 複数条件から1つを選択
+- Javaの`switch`文に相当
+
+### 7.3 `<where>` 自動WHERE句生成
+
+```xml
+<where>
+    <if test="name != null">AND name = #{name}</if>
+    <if test="price != null">AND price = #{price}</if>
+</where>
+```
+
+- 最初の`AND`や`OR`を自動削除
+- 条件が1つもない場合、`WHERE`自体を出力しない
+
+### 7.4 `<foreach>` ループ処理
+
+```xml
+<foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+    #{id}
+</foreach>
+```
+
+- コレクションを繰り返し処理
+- `IN`句の生成に便利
+- 出力例: `(1, 2, 3)`
+
+### 7.5 `<set>` 自動SET句生成
+
+```xml
+<set>
+    <if test="name != null">name = #{name},</if>
+    <if test="price != null">price = #{price},</if>
+</set>
+```
+
+- UPDATE文で便利
+- 最後の`,`を自動削除
+
+---
+
+## 8. ResultMapの活用
+
+### 8.1 基本的なマッピング
+
+```xml
+<resultMap id="productResultMap" type="com.example.demo.entity.Product">
+    <id property="id" column="id"/>
+    <result property="name" column="name"/>
+</resultMap>
+```
+
+### 8.2 Association（1対1）
+
+```xml
+<association property="category" javaType="com.example.demo.entity.Category">
+    <id property="id" column="category_id"/>
+    <result property="name" column="category_name"/>
+</association>
+```
+
+### 8.3 Collection（1対多）
+
+```xml
+<collection property="products" ofType="com.example.demo.entity.Product">
+    <id property="id" column="product_id"/>
+    <result property="name" column="product_name"/>
+</collection>
+```
+
+---
+
+## 9. パフォーマンス最適化
+
+### 9.1 N+1問題の回避
+
+❌ **悪い例（N+1問題）**
 ```java
-package com.example.hellospringboot.mapper;
+// 商品を取得（1回）
+List<Product> products = productMapper.findAll();
 
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.MappingConstants;
-
-import java.util.List;
-
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
-public interface UserMapperMapStruct {
-
-    /**
-     * UserCreateRequest → User エンティティ
-     */
-    User toEntity(UserCreateRequest request);
-
-    /**
-     * User エンティティ → UserResponse
-     */
-    @Mapping(target = "postCount", expression = "java(user.getPosts() != null ? user.getPosts().size() : 0)")
-    UserResponse toResponse(User user);
-
-    /**
-     * User エンティティリスト → UserResponse リスト
-     */
-    List<UserResponse> toResponseList(List<User> users);
+// 各商品のカテゴリを取得（N回）
+for (Product product : products) {
+    Category category = categoryMapper.findById(product.getCategoryId());
+    product.setCategory(category);
 }
 ```
 
-### 7-4. 生成されたコード確認
-
-Maven Reloadすると、`target/generated-sources/annotations/`に実装クラスが生成されます。
-
----
-
-## 🎨 チャレンジ課題
-
-### チャレンジ 1: PostService/PostControllerのDTO化
-
-PostServiceとPostControllerをDTO対応にしてください。
-
-**要件**:
-- `PostCreateRequest`、`PostUpdateRequest`、`PostResponse`を使用
-- 循環参照が発生しないこと
-
-### チャレンジ 2: ページネーション対応DTO
-
-ページネーション情報を含むレスポンスDTOを作成してください。
-
-**ヒント**:
+✅ **良い例（JOIN使用）**
 ```java
-@Data
-public class PageResponse<T> {
-    private List<T> content;
-    private int page;
-    private int size;
-    private long totalElements;
-    private int totalPages;
-}
+// 1回のクエリで商品とカテゴリを取得
+List<Product> products = productMapper.findWithCategory();
 ```
 
-### チャレンジ 3: MapStructの高度な使い方
+### 9.2 必要なカラムだけ取得
 
-カスタムマッピングを実装してください。
-
-**例**: 名前を大文字に変換
-```java
-@Mapping(target = "name", expression = "java(user.getName().toUpperCase())")
-UserResponse toResponse(User user);
+```xml
+<select id="findNamesOnly" resultType="String">
+    SELECT name FROM products
+</select>
 ```
 
 ---
 
-## 🐛 トラブルシューティング
+## 10. まとめ
 
-### MapStructが動作しない
-
-**症状**: 実装クラスが生成されない
-
-**解決策**:
-1. Maven Reload
-2. `mvn clean compile`を実行
-3. IntelliJ IDEAの場合: Annotation Processingを有効化
-   - Settings → Build → Compiler → Annotation Processors
-   - "Enable annotation processing"にチェック
-
-### 循環参照エラー
-
-**エラー**: `StackOverflowError`または`JsonMappingException`
-
-**原因**: User → Posts → User → ...
-
-**解決策**: ネストしたDTOを使用
-```java
-public class PostResponse {
-    private UserSummary user;  // User全体ではなくサマリー
-}
-```
+### できるようになったこと
+✅ 動的SQLで柔軟な検索機能を実装  
+✅ JOINで複数テーブルのデータを効率的に取得  
+✅ ResultMapで複雑なマッピングを定義  
+✅ ページネーションで大量データを扱う  
+✅ MyBatisの主要な機能を理解
 
 ---
 
-## 📚 このステップで学んだこと
+## 🔄 Gitへのコミットとレビュー依頼
 
-- ✅ レイヤードアーキテクチャの概念
-- ✅ 各レイヤーの責任分離
-- ✅ DTOパターンの重要性
-- ✅ Request DTO（入力）とResponse DTO（出力）
-- ✅ マッパークラスによる変換
-- ✅ MapStructによる自動マッピング
-- ✅ 循環参照の回避方法
-
----
-
-## 💡 補足: DTOのベストプラクティス
-
-### 命名規則
-
-| 用途 | 命名パターン | 例 |
-|------|-------------|-----|
-| 作成リクエスト | `{Entity}CreateRequest` | `UserCreateRequest` |
-| 更新リクエスト | `{Entity}UpdateRequest` | `UserUpdateRequest` |
-| レスポンス | `{Entity}Response` | `UserResponse` |
-| サマリー | `{Entity}Summary` | `UserSummary` |
-| 検索条件 | `{Entity}SearchCriteria` | `UserSearchCriteria` |
-
-### DTO設計の原則
-
-1. **単一責任**: 1つのDTOは1つの目的
-2. **不変性**: 可能な限りイミュータブル（finalフィールド）
-3. **バリデーション**: 次のステップで追加
-4. **ドキュメント**: Javadocで説明
-
-### パフォーマンス考慮
-
-```java
-// ❌ 悪い例: N+1問題
-public List<UserResponse> getAllUsers() {
-    List<User> users = userRepository.findAll();
-    return users.stream()
-        .map(user -> {
-            user.getPosts().size();  // 各ユーザーでSQLが発行される
-            return mapper.toResponse(user);
-        })
-        .collect(Collectors.toList());
-}
-
-// ✅ 良い例: JOIN FETCHで一括取得
-@Query("SELECT u FROM User u LEFT JOIN FETCH u.posts")
-List<User> findAllWithPosts();
-```
-
----
-
-## 🔄 Gitへのコミット
-
-進捗を記録しましょう：
+進捗を記録してレビューを受けましょう：
 
 ```bash
 git add .
-git commit -m "Phase 3: STEP_13完了（レイヤードアーキテクチャとDTOパターン実装）"
+git commit -m "Step 13: MyBatisで複雑なクエリ完了"
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 14: バリデーション](STEP_14.md)へ進みましょう！
+レビューが完了したら、[Step 14: JPAとMyBatisの使い分け](STEP_14.md)へ進みましょう！
 
-入力検証を実装して、不正なデータをビジネスロジックに到達させない方法を学びます。
+次は **Step 14: JPAとMyBatisの使い分け** で、2つのORM技術を適材適所で使う方法を学びます。
 
 ---
 
-お疲れさまでした！ 🎉
+## 参考資料
+- [MyBatis Dynamic SQL](https://mybatis.org/mybatis-3/dynamic-sql.html)
+- [MyBatis XML Mapper](https://mybatis.org/mybatis-3/sqlmap-xml.html)
+- [MyBatis ResultMap](https://mybatis.org/mybatis-3/sqlmap-xml.html#Result_Maps)
 
-アーキテクチャとDTOパターンは、保守性の高いアプリケーションの基礎です。
-これからは、より実践的な機能を追加していきます！

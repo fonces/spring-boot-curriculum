@@ -1,9 +1,9 @@
-# Step 26: キャッシング（Redis）
+# Step 32: キャッシング
 
 ## 🎯 このステップの目標
 
 - Spring Cacheの仕組みを理解する
-- Redisをキャッシュストアとして使う
+- `@Cacheable`、`@CacheEvict`、`@CachePut`を使う
 - キャッシュ戦略を学ぶ
 - パフォーマンスを測定する
 
@@ -433,7 +433,7 @@ CacheManagerを使ってキャッシュヒット率を表示してください�
 
 ```bash
 git add .
-git commit -m "Phase 5: STEP_26完了（Redis キャッシング）"
+git commit -m "Step 32: キャッシュ完了"
 git push origin main
 ```
 
@@ -441,7 +441,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 27: 非同期処理](STEP_27.md)へ進みましょう！
+次は[Step 33: 非同期処理](STEP_33.md)へ進みましょう！
 
 ---
 

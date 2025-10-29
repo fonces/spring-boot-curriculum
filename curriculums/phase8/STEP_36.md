@@ -1,4 +1,4 @@
-# Step 30: サービスとAPI実装
+# Step 36: サービスとAPI実装
 
 ## 🎯 このステップの目標
 
@@ -316,7 +316,7 @@ http://localhost:8080/swagger-ui.html
 
 ```bash
 git add .
-git commit -m "Phase 6: STEP_30完了（サービスとAPI実装）"
+git commit -m "Step 36: サービスとAPI実装完了"
 git push origin main
 ```
 
@@ -324,7 +324,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 31: 高度な機能実装](STEP_31.md)へ進みましょう！
+次は[Step 37: 高度な機能実装](STEP_37.md)へ進みましょう！
 
 ---
 

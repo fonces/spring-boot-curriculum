@@ -1,4 +1,4 @@
-# Step 21: ユニットテスト
+# Step 27: ユニットテスト
 
 ## 🎯 このステップの目標
 
@@ -13,7 +13,7 @@
 
 ## 📋 事前準備
 
-- Phase 3までのレイヤードアーキテクチャが理解できていること
+- Phase 4までのレイヤードアーキテクチャが理解できていること
 - UserService、UserRepositoryが実装されていること
 
 ---
@@ -429,7 +429,7 @@ void testValidEmail(String email) {
 
 ```bash
 git add .
-git commit -m "Phase 4: STEP_21完了（ユニットテスト実装）"
+git commit -m "Step 27: ユニットテスト完了"
 git push origin main
 ```
 
@@ -437,7 +437,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 22: 統合テスト](STEP_22.md)へ進みましょう！
+次は[Step 28: 統合テスト](STEP_28.md)へ進みましょう！
 
 ---
 

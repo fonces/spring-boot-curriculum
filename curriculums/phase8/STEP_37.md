@@ -1,4 +1,4 @@
-# Step 31: 高度な機能実装
+# Step 37: 高度な機能実装
 
 ## 🎯 このステップの目標
 
@@ -304,7 +304,7 @@ Elasticsearchを使ってタスクの全文検索を実装してください。
 
 ```bash
 git add .
-git commit -m "Phase 6: STEP_31完了（高度な機能実装）"
+git commit -m "Step 37: 高度な機能実装完了"
 git push origin main
 ```
 
@@ -312,7 +312,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 32: 総合テストとデプロイ準備](STEP_32.md)へ進みましょう！
+次は[Step 38: 総合テストとデプロイ準備](STEP_38.md)へ進みましょう！
 
 ---
 

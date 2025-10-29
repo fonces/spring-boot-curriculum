@@ -1,4 +1,4 @@
-# Step 15: 例外ハンドリングとカスタム例外
+# Step 17: 例外ハンドリングとカスタム例外
 
 ## 🎯 このステップの目標
 
@@ -824,11 +824,11 @@ User user = userRepository.findById(id)
 
 ## 🔄 Gitへのコミット
 
-Phase 3の前半が完了です！
+進捗を記録しましょう：
 
 ```bash
 git add .
-git commit -m "Phase 3: STEP_13-15完了（アーキテクチャ、バリデーション、例外ハンドリング）"
+git commit -m "Step 17: 例外ハンドリング完了"
 git push origin main
 ```
 
@@ -836,7 +836,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 16: ロギング](STEP_16.md)へ進みましょう！
+次は[Step 18: バリデーション](STEP_18.md)へ進みましょう！
 
 効果的なログ出力と監視の基礎を学びます。
 

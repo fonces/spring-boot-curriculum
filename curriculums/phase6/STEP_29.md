@@ -1,333 +1,294 @@
-# Step 29: エンティティとリポジトリ実装
+# Step 29: OpenAPI/Swagger によるAPI仕様書
 
 ## 🎯 このステップの目標
 
-- 全エンティティクラスを実装する
-- Enumクラスを定義する
-- リポジトリインターフェースを作成する
-- カスタムクエリメソッドを実装する
+- OpenAPI 3.0を理解する
+- SpringDocを使ってAPI仕様書を自動生成する
+- Swagger UIでAPIドキュメントを提供する
+- カスタムアノテーションでドキュメントを充実させる
 
-**所要時間**: 約2時間30分
-
----
-
-## 📋 実装要件
-
-このステップでは、[STEP_28で設計したER図](STEP_28.md#er図entity-relationship-diagram)を基に、以下のクラスを実装してください。
-
-### 実装するクラス一覧
-
-#### Enumクラス (3つ)
-- `TaskStatus` - タスクのステータス（TODO, IN_PROGRESS, DONE）
-- `Priority` - タスクの優先度（LOW, MEDIUM, HIGH）
-- `ProjectRole` - プロジェクトメンバーの役割（OWNER, MEMBER）
-
-#### エンティティクラス (5つ)
-- `Project` - プロジェクト
-- `ProjectMember` - プロジェクトメンバー（中間テーブル）
-- `Task` - タスク
-- `Comment` - コメント
-- `Tag` - タグ
-
-#### リポジトリインターフェース (5つ)
-- `ProjectRepository`
-- `ProjectMemberRepository`
-- `TaskRepository`
-- `CommentRepository`
-- `TagRepository`
+**所要時間**: 約1時間30分
 
 ---
 
-## 🚀 ステップ1: Enumクラスの実装
+## 💡 OpenAPIとは？
 
-### 実装するEnum
+### API仕様書の重要性
 
-各Enumには以下を含めてください：
-- ステータス/優先度/役割の値
-- 日本語表示名（displayName）
-- getterメソッド
-
-**配置場所**: `src/main/java/com/example/hellospringboot/enums/`
-
-### 実装のヒント
-
-- `TaskStatus`: TODO（未着手）、IN_PROGRESS（進行中）、DONE（完了）
-- `Priority`: LOW（低）、MEDIUM（中）、HIGH（高）
-- `ProjectRole`: OWNER（オーナー）、MEMBER（メンバー）
+- ✅ APIの使い方が明確になる
+- ✅ フロントエンドとの連携がスムーズ
+- ✅ テストが容易になる
+- ✅ コードから自動生成できる
 
 ---
 
-## 🚀 ステップ2: エンティティクラスの実装
+## 🚀 ステップ1: SpringDoc依存関係の追加
 
-### 2-1. Projectエンティティ
+### 1-1. pom.xmlの更新
 
-**必須フィールド**:
-- `id` (Long) - 主キー、自動生成
-- `name` (String) - プロジェクト名、NOT NULL、最大100文字
-- `description` (String) - 説明、TEXT型
-- `owner` (User) - オーナー、ManyToOne、LAZY、NOT NULL
-- `tasks` (List<Task>) - タスクリスト、OneToMany、CASCADE、orphanRemoval
-- `members` (List<ProjectMember>) - メンバーリスト、OneToMany、CASCADE、orphanRemoval
-- `createdAt` (LocalDateTime) - 作成日時、@CreationTimestamp
-- `updatedAt` (LocalDateTime) - 更新日時、@UpdateTimestamp
+```xml
+<dependency>
+    <groupId>org.springdoc</groupId>
+    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+    <version>2.3.0</version>
+</dependency>
+```
 
-**アノテーション**:
-- `@Entity`, `@Table(name = "projects")`
-- Lombokアノテーション（@Getter, @Setter, @Builder等）
+### 1-2. アプリケーション起動
 
-### 2-2. ProjectMemberエンティティ
+依存関係を追加すると、自動的にSwagger UIが有効になります。
 
-**必須フィールド**:
-- `id` (Long) - 主キー
-- `project` (Project) - プロジェクト、ManyToOne、LAZY、NOT NULL
-- `user` (User) - ユーザー、ManyToOne、LAZY、NOT NULL
-- `role` (ProjectRole) - 役割、Enum、NOT NULL
-- `joinedAt` (LocalDateTime) - 参加日時、@CreationTimestamp
-
-**制約**:
-- プロジェクトIDとユーザーIDの組み合わせは一意（`@UniqueConstraint`）
-
-### 2-3. Taskエンティティ
-
-**必須フィールド**:
-- `id` (Long) - 主キー
-- `project` (Project) - プロジェクト、ManyToOne、LAZY、NOT NULL
-- `title` (String) - タイトル、NOT NULL、最大200文字
-- `description` (String) - 説明、TEXT型
-- `status` (TaskStatus) - ステータス、Enum、デフォルトTODO
-- `priority` (Priority) - 優先度、Enum、デフォルトMEDIUM
-- `assignee` (User) - 担当者、ManyToOne、LAZY、nullable
-- `dueDate` (LocalDate) - 期限、nullable
-- `comments` (List<Comment>) - コメントリスト、OneToMany、CASCADE
-- `tags` (Set<Tag>) - タグセット、ManyToMany
-- `createdAt`, `updatedAt` - 作成・更新日時
-
-**インデックス**:
-- `status`, `priority`, `dueDate`にインデックスを設定
-
-**多対多関係**:
-- `@JoinTable`で中間テーブル`task_tags`を定義
-
-### 2-4. Commentエンティティ
-
-**必須フィールド**:
-- `id`, `task` (ManyToOne), `user` (ManyToOne), `content` (TEXT)
-- `createdAt`, `updatedAt`
-
-### 2-5. Tagエンティティ
-
-**必須フィールド**:
-- `id` (Long)
-- `name` (String) - タグ名、UNIQUE、最大50文字
-- `color` (String) - HEXカラーコード（例: #FF5733）、7文字
-- `tasks` (Set<Task>) - ManyToMany（mappedBy）
-
-**配置場所**: `src/main/java/com/example/hellospringboot/entity/`
+**アクセス**:
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
 ---
 
-## 🚀 ステップ3: リポジトリインターフェースの実装
+## 🚀 ステップ2: OpenAPI設定
 
-### 3-1. ProjectRepository
+### 2-1. OpenAPIConfig
 
-**必須メソッド**:
+**ファイルパス**: `src/main/java/com/example/hellospringboot/config/OpenAPIConfig.java`
+
 ```java
-// オーナーIDでプロジェクトを検索
-List<Project> findByOwnerId(Long ownerId);
+package com.example.hellospringboot.config;
 
-// ユーザーが参加しているプロジェクトを取得（JPQL使用）
-@Query("SELECT DISTINCT p FROM Project p LEFT JOIN p.members m WHERE p.owner.id = :userId OR m.user.id = :userId")
-List<Project> findProjectsByUserId(@Param("userId") Long userId);
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Contact;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.Components;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-// プロジェクト名で検索（部分一致、大文字小文字区別なし）
-List<Project> findByNameContainingIgnoreCase(String name);
+/**
+ * OpenAPI設定
+ */
+@Configuration
+public class OpenAPIConfig {
+
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("Hello Spring Boot API")
+                        .version("1.0.0")
+                        .description("Spring Boot 3.5.7 カリキュラム用API")
+                        .contact(new Contact()
+                                .name("Your Name")
+                                .email("your.email@example.com")
+                                .url("https://example.com"))
+                        .license(new License()
+                                .name("Apache 2.0")
+                                .url("https://www.apache.org/licenses/LICENSE-2.0.html")))
+                .components(new Components()
+                        .addSecuritySchemes("bearerAuth", new SecurityScheme()
+                                .type(SecurityScheme.Type.HTTP)
+                                .scheme("bearer")
+                                .bearerFormat("JWT")))
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
+    }
+}
 ```
 
-### 3-2. TaskRepository
+---
 
-**必須メソッド**:
+## 🚀 ステップ3: コントローラーのドキュメント化
+
+### 3-1. UserControllerにアノテーション追加
+
 ```java
-// プロジェクトIDでタスクを検索（ページング）
-Page<Task> findByProjectId(Long projectId, Pageable pageable);
+package com.example.hellospringboot.controller;
 
-// 担当者IDでタスクを検索（ページング）
-Page<Task> findByAssigneeId(Long assigneeId, Pageable pageable);
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
-// ステータスで検索
-List<Task> findByStatus(TaskStatus status);
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+@Tag(name = "User", description = "ユーザー管理API")
+public class UserController {
 
-// 優先度で検索
-List<Task> findByPriority(Priority priority);
+    private final UserService userService;
 
-// 期限が指定日以前のタスクを検索
-List<Task> findByDueDateBefore(LocalDate date);
+    @Operation(summary = "ユーザー作成", description = "新しいユーザーを作成します")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "作成成功",
+                content = @Content(schema = @Schema(implementation = UserResponse.class))),
+        @ApiResponse(responseCode = "400", description = "バリデーションエラー"),
+        @ApiResponse(responseCode = "409", description = "メールアドレス重複")
+    })
+    @PostMapping
+    public ResponseEntity<UserResponse> createUser(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                description = "ユーザー作成リクエスト",
+                required = true,
+                content = @Content(schema = @Schema(implementation = UserCreateRequest.class)))
+            @Valid @RequestBody UserCreateRequest request) {
+        UserResponse response = userService.createUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
 
-// 複合条件検索（JPQL使用、すべての条件がoptional）
-@Query("SELECT t FROM Task t WHERE (:projectId IS NULL OR t.project.id = :projectId) AND ...")
-Page<Task> searchTasks(...);
+    @Operation(summary = "全ユーザー取得", description = "全ユーザーのリストを取得します")
+    @ApiResponse(responseCode = "200", description = "取得成功")
+    @GetMapping
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        List<UserResponse> users = userService.getAllUsers();
+        return ResponseEntity.ok(users);
+    }
 
-// プロジェクトのタスク統計（ステータスごとの件数）
-@Query("SELECT t.status, COUNT(t) FROM Task t WHERE t.project.id = :projectId GROUP BY t.status")
-List<Object[]> getTaskStatisticsByProject(@Param("projectId") Long projectId);
+    @Operation(summary = "ユーザー取得", description = "IDを指定してユーザーを取得します")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "取得成功"),
+        @ApiResponse(responseCode = "404", description = "ユーザーが見つかりません")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> getUserById(
+            @Parameter(description = "ユーザーID", required = true, example = "1")
+            @PathVariable Long id) {
+        UserResponse response = userService.getUserById(id);
+        return ResponseEntity.ok(response);
+    }
+}
 ```
 
-### 3-3. CommentRepository
+---
 
-**必須メソッド**:
+## 🚀 ステップ4: DTOのドキュメント化
+
+### 4-1. UserCreateRequestにスキーマ情報追加
+
 ```java
-// タスクIDでコメントを検索（作成日時の降順）
-List<Comment> findByTaskIdOrderByCreatedAtDesc(Long taskId);
+package com.example.hellospringboot.dto.request;
 
-// ユーザーIDでコメントを検索
-List<Comment> findByUserId(Long userId);
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@Schema(description = "ユーザー作成リクエスト")
+public class UserCreateRequest {
+
+    @Schema(description = "ユーザー名", example = "山田太郎", required = true)
+    @NotBlank(message = "ユーザー名は必須です")
+    @Size(min = 2, max = 100, message = "ユーザー名は2文字以上100文字以内で入力してください")
+    private String name;
+
+    @Schema(description = "メールアドレス", example = "taro@example.com", required = true)
+    @NotBlank(message = "メールアドレスは必須です")
+    @Email(message = "メールアドレスの形式が正しくありません")
+    private String email;
+
+    @Schema(description = "年齢", example = "30", minimum = "0", maximum = "150", required = true)
+    @NotNull(message = "年齢は必須です")
+    @Min(value = 0, message = "年齢は0以上で入力してください")
+    @Max(value = 150, message = "年齢は150以下で入力してください")
+    private Integer age;
+}
 ```
 
-### 3-4. TagRepository
+---
 
-**必須メソッド**:
-```java
-// タグ名で検索
-Optional<Tag> findByName(String name);
+## 🚀 ステップ5: application.ymlでカスタマイズ
 
-// タグ名の存在確認
-boolean existsByName(String name);
+### 5-1. SpringDoc設定
+
+**ファイルパス**: `src/main/resources/application.yml`
+
+```yaml
+# SpringDoc設定
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+  show-actuator: false
 ```
-
-### 3-5. ProjectMemberRepository
-
-**必須メソッド**:
-```java
-// プロジェクトIDでメンバーを検索
-List<ProjectMember> findByProjectId(Long projectId);
-
-// プロジェクトとユーザーでメンバーを検索
-Optional<ProjectMember> findByProjectIdAndUserId(Long projectId, Long userId);
-
-// プロジェクトとユーザーの組み合わせが存在するかチェック
-boolean existsByProjectIdAndUserId(Long projectId, Long userId);
-
-// プロジェクトとユーザーでメンバーを削除
-void deleteByProjectIdAndUserId(Long projectId, Long userId);
-```
-
-**配置場所**: `src/main/java/com/example/hellospringboot/repository/`
 
 ---
 
 ## ✅ 動作確認
 
-### データベーステーブルの確認
+### Swagger UIにアクセス
 
-アプリケーションを起動して、テーブルが作成されることを確認します。
+```
+http://localhost:8080/swagger-ui.html
+```
+
+**確認項目**:
+- ✅ API一覧が表示される
+- ✅ 各エンドポイントの説明が表示される
+- ✅ リクエスト/レスポンスのスキーマが表示される
+- ✅ 「Try it out」でAPIを直接テストできる
+
+### OpenAPI JSONダウンロード
 
 ```bash
-./mvnw spring-boot:run
+curl http://localhost:8080/v3/api-docs -o openapi.json
 ```
-
-H2コンソールにアクセス:
-```
-http://localhost:8080/h2-console
-```
-
-**確認するテーブル**:
-- projects
-- project_members
-- tasks
-- comments
-- tags
-- task_tags
-
-**確認ポイント**:
-- ✅ 全てのテーブルが作成されている
-- ✅ 外部キー制約が正しく設定されている
-- ✅ インデックスが設定されている
-- ✅ UNIQUE制約が設定されている
-
----
-
-## 💡 実装のポイント
-
-### Enumの定義
-- `@Enumerated(EnumType.STRING)`を使用（DBに文字列として保存）
-- 日本語の表示名を持たせる
-
-### エンティティのリレーション
-- **ManyToOne**: `fetch = FetchType.LAZY`を使用（N+1問題回避）
-- **OneToMany**: `cascade = CascadeType.ALL`と`orphanRemoval = true`を設定
-- **ManyToMany**: `@JoinTable`で中間テーブルを明示的に定義
-
-### インデックスの設定
-- 検索条件として使用するフィールドにインデックスを設定
-- `@Index`アノテーションを使用
-
-### Lombokの活用
-- `@Getter`, `@Setter`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`を使用
-- コンストラクタではなくBuilderパターンを推奨
-
-### タイムスタンプ
-- `@CreationTimestamp`: 作成時に自動設定
-- `@UpdateTimestamp`: 更新時に自動設定
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: 監査フィールドの共通化
+### チャレンジ 1: 認証の統合
 
-`@EntityListeners`と`@MappedSuperclass`を使って、`createdAt`と`updatedAt`を共通基底クラスに抽出してください。
+Swagger UIでJWTトークンを使えるようにしてください。
 
-**ヒント**:
-```java
-@MappedSuperclass
-@EntityListeners(AuditingEntityListener.class)
-public abstract class BaseEntity {
-    @CreatedDate
-    private LocalDateTime createdAt;
-    
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-}
-```
+### チャレンジ 2: グループ化
 
-### チャレンジ 2: ソフトデリート
+`@Tag`を使ってAPIをグループ化してください。
 
-物理削除ではなく論理削除（ソフトデリート）を実装してください。
+### チャレンジ 3: OpenAPIクライアント生成
 
-**ヒント**:
-- `deletedAt`フィールドを追加
-- `@Where(clause = "deleted_at IS NULL")`を使用
-
-### チャレンジ 3: Criteria APIによる動的検索
-
-`TaskRepository`に、Criteria APIを使った動的検索を実装してください。
+OpenAPI Generatorで自動的にクライアントコードを生成してください。
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ 複雑なエンティティ設計
-- ✅ Enumの活用
-- ✅ 多対多リレーションシップ
-- ✅ カスタムクエリメソッド
-- ✅ インデックスの設定
-- ✅ JPQL / Spring Data JPAクエリメソッド
+- ✅ SpringDocの導入
+- ✅ Swagger UIの使用
+- ✅ @Operationによるエンドポイント説明
+- ✅ @Schemaによるモデル説明
+- ✅ セキュリティスキームの設定
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Phase 6完了！
 
 ```bash
 git add .
-git commit -m "Phase 6: STEP_29完了（エンティティとリポジトリ実装）"
+git commit -m "Step 29: テストカバレッジ完了 - Phase 6完了"
 git push origin main
 ```
 
 ---
 
-## ➡️ 次のステップ
+## ➡️ 次のPhase
 
-次は[Step 30: サービスとAPI実装](STEP_30.md)へ進みましょう！
+Phase 6お疲れさまでした！次は**Phase 7: 実践的な機能**に進みます。
 
 ---
 
 お疲れさまでした！ 🎉
+
+Phase 6では、セキュリティ、テスト、API仕様書の作成方法を学びました。
+これで実務レベルのSpring Bootアプリケーション開発の基礎が身につきました！

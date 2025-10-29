@@ -1,11 +1,11 @@
-# Step 27: 非同期処理とスケジュール実行
+# Step 33: 非同期処理
 
 ## 🎯 このステップの目標
 
 - @Asyncで非同期処理を実装する
-- @Scheduledでスケジュール実行を設定する
 - ThreadPoolの設定を理解する
 - CompletableFutureを使いこなす
+- 非同期処理のエラーハンドリング
 
 **所要時間**: 約2時間
 
@@ -407,11 +407,11 @@ curl -X POST "http://localhost:8080/api/async/multiple-tasks"
 
 ---
 
-## 🔄 Phase 5完了！
+## 🔄 Phase 7完了！
 
 ```bash
 git add .
-git commit -m "Phase 5完了: STEP_24-27（ファイル、メール、キャッシュ、非同期）"
+git commit -m "Step 33: 非同期処理完了 - Phase 7完了"
 git push origin main
 ```
 
@@ -419,11 +419,11 @@ git push origin main
 
 ## ➡️ 次のPhase
 
-Phase 5お疲れさまでした！次は**Phase 6: 最終プロジェクト（タスク管理システム）**に進みます。
+Phase 7お疲れさまでした！次は**Phase 8: 総合演習（最終プロジェクト）**に進みます。
 
 ---
 
 お疲れさまでした！ 🎉
 
-Phase 5では、実践的な機能を多数実装しました。
+Phase 7では、実践的な機能を多数実装しました。
 これで本格的なWebアプリケーション開発の準備が整いました！

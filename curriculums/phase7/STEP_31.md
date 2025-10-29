@@ -1,11 +1,11 @@
-# Step 25: メール送信機能
+# Step 31: ページネーション
 
 ## 🎯 このステップの目標
 
-- Spring Boot Mailを使ったメール送信を学ぶ
-- HTMLメールを送信する
-- テンプレートエンジンを使う
-- 非同期メール送信を実装する
+- Spring Data JPAのページネーション機能を理解する
+- `Pageable`と`Page`を使いこなす
+- ソート機能を実装する
+- カスタムページネーションを作成する
 
 **所要時間**: 約1時間30分
 
@@ -462,7 +462,7 @@ SendGridを使ったメール送信を実装してください。
 
 ```bash
 git add .
-git commit -m "Phase 5: STEP_25完了（メール送信機能）"
+git commit -m "Step 31: ページネーション完了"
 git push origin main
 ```
 
@@ -470,7 +470,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 26: キャッシング](STEP_26.md)へ進みましょう！
+次は[Step 32: キャッシュ](STEP_32.md)へ進みましょう！
 
 ---
 

@@ -1,287 +1,322 @@
-# Step 20: JWT認証
+# Step 20: ロギング
 
 ## 🎯 このステップの目標
 
-- JWT（JSON Web Token）の仕組みを理解する
-- JWTベースの認証システムを実装する
-- ログイン・ログアウト機能を実装する
-- JWTフィルターを作成してリクエストを検証する
+- Phase 4で学んだことを振り返る
+- 実践的な演習を通じて知識を定着させる
+- アーキテクチャとベストプラクティスを統合する
 
-**所要時間**: 約2時間30分
-
----
-
-## 📋 事前準備
-
-- Step 19のSpring Security基礎が理解できていること
-- 認証と認可の違いを理解していること
-
-**Step 19をまだ完了していない場合**: [Step 19: Spring Security基礎](STEP_19.md)を先に進めてください。
+**所要時間**: 約2時間
 
 ---
 
-## 💡 JWTとは？
+## 📋 Phase 4の振り返り
 
-### JWT (JSON Web Token)
+### Step 15: レイヤードアーキテクチャとDTOパターン
 
-**構造**:
+**学んだこと**:
+- ✅ Presentation / Business Logic / Data Access レイヤー
+- ✅ DTOパターンでエンティティとAPIを分離
+- ✅ Request DTO / Response DTO
+- ✅ MapperクラスとMapStruct
+
+**重要ポイント**:
+```java
+Controller (UserResponse) → Service (Entity) → Repository (Entity) → DB
+         ←                 ←                  ←                    ←
 ```
-Header.Payload.Signature
 
-例:
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.
-eyJzdWIiOiJ1c2VyMTIzIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.
-SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
-```
+### Step 16: DI/IoCコンテナの深掘り
 
-**3つの部分**:
+**学んだこと**:
+- ✅ 依存性注入（DI）とは何か、なぜ必要か
+- ✅ `@Component`, `@Service`, `@Repository`の違いと使い分け
+- ✅ コンストラクタインジェクション vs フィールドインジェクション
+- ✅ Bean のスコープ（Singleton, Prototype, Request等）
 
-1. **Header（ヘッダー）**:
-```json
-{
-  "alg": "HS256",
-  "typ": "JWT"
+### Step 17: 例外ハンドリング
+
+**学んだこと**:
+- ✅ カスタム例外（BusinessException, ResourceNotFoundException）
+- ✅ GlobalExceptionHandler
+- ✅ HTTPステータスコードの使い分け
+- ✅ ユーザーフレンドリーなエラーレスポンス
+
+**重要ポイント**:
+```java
+public UserResponse getUserById(Long id) {
+    return userRepository.findById(id)
+            .map(userMapper::toResponse)
+            .orElseThrow(() -> new UserNotFoundException(id));  // 404
 }
 ```
 
-2. **Payload（ペイロード）**:
-```json
-{
-  "sub": "user123",
-  "name": "John Doe",
-  "role": "USER",
-  "iat": 1516239022,
-  "exp": 1516242622
+### Step 18: バリデーション
+
+**学んだこと**:
+- ✅ Bean Validation (`@Valid`, `@NotBlank`, `@Email`)
+- ✅ カスタムバリデーション
+- ✅ グループバリデーション
+- ✅ `@RestControllerAdvice`での例外ハンドリング
+
+**重要ポイント**:
+```java
+@PostMapping
+public ResponseEntity<UserResponse> createUser(
+        @Valid @RequestBody UserCreateRequest request) {  // @Validで自動検証
+    // ...
 }
 ```
 
-3. **Signature（署名）**:
-```
-HMACSHA256(
-  base64UrlEncode(header) + "." + base64UrlEncode(payload),
-  secret
-)
-```
+### Step 19: DTOとEntityの分離
 
-### JWTのメリット
-
-| 比較項目 | セッション認証 | JWT認証 |
-|----------|---------------|---------|
-| **ステート** | ステートフル | ステートレス |
-| **保存場所** | サーバー | クライアント |
-| **スケーラビリティ** | 低い | 高い |
-| **REST API** | 不向き | 最適 |
+**学んだこと**:
+- ✅ SOLID原則
+- ✅ コンストラクタインジェクション
+- ✅ トランザクション管理
+- ✅ N+1問題の回避
+- ✅ コーディング規約
 
 ---
 
-## 🚀 ステップ1: JWT依存関係の追加
+## 🚀 総合演習: ブログシステムの実装
 
-### 1-1. pom.xmlの更新
+### 演習の概要
 
-**ファイルパス**: `pom.xml`
+Phase 4で学んだすべての要素を統合して、簡単なブログシステムを実装します。
 
-```xml
-<dependencies>
-    <!-- 既存の依存関係 -->
-    
-    <!-- JWT Library -->
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-api</artifactId>
-        <version>0.12.3</version>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-impl</artifactId>
-        <version>0.12.3</version>
-        <scope>runtime</scope>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-jackson</artifactId>
-        <version>0.12.3</version>
-        <scope>runtime</scope>
-    </dependency>
-</dependencies>
-```
+### 要件
 
-### 1-2. application.ymlにJWT設定追加
+#### 機能要件
+1. **記事（Article）管理**
+   - 記事の作成・更新・削除・一覧取得・詳細取得
+   - タイトル、本文、カテゴリ、公開状態、著者
 
-**ファイルパス**: `src/main/resources/application.yml`
+2. **カテゴリ（Category）管理**
+   - カテゴリの作成・一覧取得
+   - 1つの記事は1つのカテゴリに属する
 
-```yaml
-# JWT設定
-jwt:
-  secret: mySecretKeyForJWT1234567890123456789012345678901234567890
-  expiration: 86400000  # 24時間（ミリ秒）
-```
+3. **コメント（Comment）管理**
+   - 記事へのコメント作成・削除
+   - 1つの記事に複数のコメント
 
-**注意**: 本番環境では環境変数を使用
-```yaml
-jwt:
-  secret: ${JWT_SECRET:defaultSecretKey}
-  expiration: ${JWT_EXPIRATION:86400000}
-```
+#### 非機能要件
+- ✅ レイヤードアーキテクチャ
+- ✅ DTOパターン
+- ✅ バリデーション
+- ✅ カスタム例外
+- ✅ ロギング
+- ✅ ベストプラクティス準拠
 
 ---
 
-## 🚀 ステップ2: JWTユーティリティクラスの作成
+## 🚀 演習1: エンティティ設計
 
-### 2-1. JwtUtil
+### 1-1. Articleエンティティ
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/JwtUtil.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Article.java`
 
 ```java
-package com.example.hellospringboot.security;
+package com.example.hellospringboot.entity;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
-
-/**
- * JWTトークンの生成・検証を行うユーティリティクラス
- */
-@Component
-@Slf4j
-public class JwtUtil {
-
-    @Value("${jwt.secret}")
-    private String secret;
-
-    @Value("${jwt.expiration}")
-    private Long expiration;
-
-    /**
-     * 秘密鍵を取得
-     */
-    private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        return Keys.hmacShaKeyFor(keyBytes);
-    }
-
-    /**
-     * ユーザー名を取得
-     */
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
-    }
-
-    /**
-     * 有効期限を取得
-     */
-    public Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
-    }
-
-    /**
-     * クレームを抽出
-     */
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    /**
-     * すべてのクレームを抽出
-     */
-    private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-
-    /**
-     * トークンが期限切れかチェック
-     */
-    private Boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
-
-    /**
-     * トークンを生成
-     */
-    public String generateToken(UserDetails userDetails) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("authorities", userDetails.getAuthorities());
-        return createToken(claims, userDetails.getUsername());
-    }
-
-    /**
-     * トークンを作成
-     */
-    private String createToken(Map<String, Object> claims, String subject) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + expiration);
-
-        return Jwts.builder()
-                .claims(claims)
-                .subject(subject)
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(getSigningKey())
-                .compact();
-    }
-
-    /**
-     * トークンを検証
-     */
-    public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
-    }
-}
-```
-
----
-
-## 🚀 ステップ3: 認証用DTOの作成
-
-### 3-1. LoginRequest
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/LoginRequest.java`
-
-```java
-package com.example.hellospringboot.dto.request;
-
-import jakarta.validation.constraints.NotBlank;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * ログインリクエストDTO
- */
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "articles")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LoginRequest {
+public class Article {
 
-    @NotBlank(message = "ユーザー名は必須です")
-    private String username;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    @NotBlank(message = "パスワードは必須です")
-    private String password;
+    @Column(nullable = false, length = 200)
+    private String title;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String content;
+
+    @Column(nullable = false)
+    private Boolean published;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column
+    private LocalDateTime updatedAt;
+
+    // 多対1: 記事 → ユーザー（著者）
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id", nullable = false)
+    private User author;
+
+    // 多対1: 記事 → カテゴリ
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
+
+    // 1対多: 記事 → コメント
+    @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Comment> comments = new ArrayList<>();
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
 }
 ```
 
-### 3-2. AuthResponse
+### 1-2. Categoryエンティティ
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/AuthResponse.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Category.java`
+
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "categories")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Category {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, length = 100)
+    private String name;
+
+    @Column(length = 500)
+    private String description;
+
+    // 1対多: カテゴリ → 記事
+    @OneToMany(mappedBy = "category")
+    @Builder.Default
+    private List<Article> articles = new ArrayList<>();
+}
+```
+
+### 1-3. Commentエンティティ
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Comment.java`
+
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "comments")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Comment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String content;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    // 多対1: コメント → 記事
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "article_id", nullable = false)
+    private Article article;
+
+    // 多対1: コメント → ユーザー
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
+}
+```
+
+---
+
+## 🚀 演習2: DTO作成
+
+### 2-1. ArticleCreateRequest
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/ArticleCreateRequest.java`
+
+```java
+package com.example.hellospringboot.dto.request;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ArticleCreateRequest {
+
+    @NotBlank(message = "タイトルは必須です")
+    @Size(max = 200, message = "タイトルは200文字以内で入力してください")
+    private String title;
+
+    @NotBlank(message = "本文は必須です")
+    private String content;
+
+    @NotNull(message = "カテゴリIDは必須です")
+    private Long categoryId;
+
+    @NotNull(message = "公開状態は必須です")
+    private Boolean published;
+}
+```
+
+### 2-2. ArticleResponse
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/ArticleResponse.java`
 
 ```java
 package com.example.hellospringboot.dto.response;
@@ -291,553 +326,422 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 認証レスポンスDTO
- */
+import java.time.LocalDateTime;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AuthResponse {
+public class ArticleResponse {
 
-    /**
-     * JWTトークン
-     */
-    private String token;
+    private Long id;
+    private String title;
+    private String content;
+    private Boolean published;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private AuthorSummary author;
+    private CategorySummary category;
+    private Integer commentCount;
 
-    /**
-     * トークンタイプ（通常は"Bearer"）
-     */
-    private String type;
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class AuthorSummary {
+        private Long id;
+        private String name;
+        private String email;
+    }
 
-    /**
-     * ユーザー名
-     */
-    private String username;
-
-    /**
-     * ロール
-     */
-    private String role;
-}
-```
-
----
-
-## 🚀 ステップ4: JWTフィルターの作成
-
-### 4-1. JwtAuthenticationFilter
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/JwtAuthenticationFilter.java`
-
-```java
-package com.example.hellospringboot.security;
-
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-
-/**
- * JWTトークンを検証するフィルター
- */
-@Component
-@RequiredArgsConstructor
-@Slf4j
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    private final JwtUtil jwtUtil;
-    private final UserDetailsService userDetailsService;
-
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
-
-        // Authorizationヘッダーを取得
-        final String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        try {
-            // トークンを抽出
-            final String jwt = authHeader.substring(7);
-            final String username = jwtUtil.extractUsername(jwt);
-
-            // ユーザーが未認証の場合
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-
-                // トークンを検証
-                if (jwtUtil.validateToken(jwt, userDetails)) {
-                    UsernamePasswordAuthenticationToken authToken = 
-                        new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                        );
-
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    
-                    // SecurityContextに認証情報を設定
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                    
-                    log.debug("User {} authenticated successfully", username);
-                }
-            }
-        } catch (Exception ex) {
-            log.error("JWT authentication failed: {}", ex.getMessage());
-        }
-
-        filterChain.doFilter(request, response);
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CategorySummary {
+        private Long id;
+        private String name;
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ5: AuthControllerの作成
+## 🚀 演習3: Repository作成
 
-### 5-1. AuthController
+### 3-1. ArticleRepository
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/AuthController.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/ArticleRepository.java`
+
+```java
+package com.example.hellospringboot.repository;
+
+import com.example.hellospringboot.entity.Article;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ArticleRepository extends JpaRepository<Article, Long> {
+
+    // 公開済み記事を取得（ページネーション対応）
+    Page<Article> findByPublishedTrue(Pageable pageable);
+
+    // カテゴリIDで記事を検索
+    List<Article> findByCategoryId(Long categoryId);
+
+    // 著者IDで記事を検索
+    List<Article> findByAuthorId(Long authorId);
+
+    // タイトルで部分一致検索
+    List<Article> findByTitleContaining(String keyword);
+
+    // N+1問題を避けるためJOIN FETCH
+    @Query("SELECT a FROM Article a " +
+           "JOIN FETCH a.author " +
+           "JOIN FETCH a.category " +
+           "WHERE a.id = :id")
+    Article findByIdWithDetails(@Param("id") Long id);
+
+    @Query("SELECT a FROM Article a " +
+           "JOIN FETCH a.author " +
+           "JOIN FETCH a.category " +
+           "WHERE a.published = true")
+    List<Article> findAllPublishedWithDetails();
+}
+```
+
+### 3-2. CategoryRepository
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/CategoryRepository.java`
+
+```java
+package com.example.hellospringboot.repository;
+
+import com.example.hellospringboot.entity.Category;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface CategoryRepository extends JpaRepository<Category, Long> {
+
+    Optional<Category> findByName(String name);
+
+    boolean existsByName(String name);
+}
+```
+
+---
+
+## 🚀 演習4: Service作成
+
+### 4-1. ArticleService
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/service/ArticleService.java`
+
+```java
+package com.example.hellospringboot.service;
+
+import com.example.hellospringboot.dto.request.ArticleCreateRequest;
+import com.example.hellospringboot.dto.response.ArticleResponse;
+import com.example.hellospringboot.entity.Article;
+import com.example.hellospringboot.entity.Category;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.mapper.ArticleMapper;
+import com.example.hellospringboot.repository.ArticleRepository;
+import com.example.hellospringboot.repository.CategoryRepository;
+import com.example.hellospringboot.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+@Slf4j
+public class ArticleService {
+
+    private final ArticleRepository articleRepository;
+    private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
+    private final ArticleMapper articleMapper;
+
+    /**
+     * 記事を作成
+     */
+    @Transactional
+    public ArticleResponse createArticle(Long authorId, ArticleCreateRequest request) {
+        log.info("Creating article by user {}: {}", authorId, request.getTitle());
+
+        User author = userRepository.findById(authorId)
+                .orElseThrow(() -> new ResourceNotFoundException("ユーザー", authorId));
+
+        Category category = categoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new ResourceNotFoundException("カテゴリ", request.getCategoryId()));
+
+        Article article = Article.builder()
+                .title(request.getTitle())
+                .content(request.getContent())
+                .published(request.getPublished())
+                .author(author)
+                .category(category)
+                .build();
+
+        Article savedArticle = articleRepository.save(article);
+        log.info("Article created successfully with ID: {}", savedArticle.getId());
+
+        return articleMapper.toResponse(savedArticle);
+    }
+
+    /**
+     * 公開済み記事を取得（ページネーション）
+     */
+    public Page<ArticleResponse> getPublishedArticles(Pageable pageable) {
+        log.debug("Fetching published articles - page: {}, size: {}", 
+                 pageable.getPageNumber(), pageable.getPageSize());
+        
+        Page<Article> articles = articleRepository.findByPublishedTrue(pageable);
+        return articles.map(articleMapper::toResponse);
+    }
+
+    /**
+     * 記事詳細を取得
+     */
+    public ArticleResponse getArticleById(Long id) {
+        log.debug("Fetching article with ID: {}", id);
+        
+        Article article = articleRepository.findByIdWithDetails(id);
+        if (article == null) {
+            throw new ResourceNotFoundException("記事", id);
+        }
+        
+        return articleMapper.toResponse(article);
+    }
+
+    /**
+     * 記事を更新
+     */
+    @Transactional
+    public ArticleResponse updateArticle(Long id, ArticleCreateRequest request) {
+        log.info("Updating article with ID: {}", id);
+
+        Article article = articleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("記事", id));
+
+        Category category = categoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new ResourceNotFoundException("カテゴリ", request.getCategoryId()));
+
+        article.setTitle(request.getTitle());
+        article.setContent(request.getContent());
+        article.setPublished(request.getPublished());
+        article.setCategory(category);
+
+        Article updatedArticle = articleRepository.save(article);
+        log.info("Article updated successfully with ID: {}", updatedArticle.getId());
+
+        return articleMapper.toResponse(updatedArticle);
+    }
+
+    /**
+     * 記事を削除
+     */
+    @Transactional
+    public void deleteArticle(Long id) {
+        log.info("Deleting article with ID: {}", id);
+
+        if (!articleRepository.existsById(id)) {
+            throw new ResourceNotFoundException("記事", id);
+        }
+
+        articleRepository.deleteById(id);
+        log.info("Article deleted successfully with ID: {}", id);
+    }
+}
+```
+
+---
+
+## 🚀 演習5: Controller作成
+
+### 5-1. ArticleController
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/ArticleController.java`
 
 ```java
 package com.example.hellospringboot.controller;
 
-import com.example.hellospringboot.dto.request.LoginRequest;
-import com.example.hellospringboot.dto.response.AuthResponse;
-import com.example.hellospringboot.security.JwtUtil;
+import com.example.hellospringboot.dto.request.ArticleCreateRequest;
+import com.example.hellospringboot.dto.response.ArticleResponse;
+import com.example.hellospringboot.service.ArticleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-/**
- * 認証コントローラー
- */
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/articles")
 @RequiredArgsConstructor
-@Slf4j
-public class AuthController {
+public class ArticleController {
 
-    private final AuthenticationManager authenticationManager;
-    private final JwtUtil jwtUtil;
+    private final ArticleService articleService;
 
     /**
-     * ログイン
-     * POST /api/auth/login
+     * 記事作成
+     * POST /api/articles
      */
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        log.info("Login attempt for user: {}", request.getUsername());
+    @PostMapping
+    public ResponseEntity<ArticleResponse> createArticle(
+            @RequestParam Long authorId,
+            @Valid @RequestBody ArticleCreateRequest request) {
+        ArticleResponse response = articleService.createArticle(authorId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
 
-        try {
-            // 認証
-            Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                    request.getUsername(),
-                    request.getPassword()
-                )
-            );
+    /**
+     * 公開済み記事一覧取得
+     * GET /api/articles
+     */
+    @GetMapping
+    public ResponseEntity<Page<ArticleResponse>> getPublishedArticles(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String[] sort) {
+        
+        Pageable pageable = PageRequest.of(page, size, 
+            Sort.by(Sort.Direction.fromString(sort[1]), sort[0]));
+        
+        Page<ArticleResponse> articles = articleService.getPublishedArticles(pageable);
+        return ResponseEntity.ok(articles);
+    }
 
-            // UserDetails取得
-            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+    /**
+     * 記事詳細取得
+     * GET /api/articles/{id}
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ArticleResponse> getArticleById(@PathVariable Long id) {
+        ArticleResponse response = articleService.getArticleById(id);
+        return ResponseEntity.ok(response);
+    }
 
-            // JWTトークン生成
-            String token = jwtUtil.generateToken(userDetails);
+    /**
+     * 記事更新
+     * PUT /api/articles/{id}
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<ArticleResponse> updateArticle(
+            @PathVariable Long id,
+            @Valid @RequestBody ArticleCreateRequest request) {
+        ArticleResponse response = articleService.updateArticle(id, request);
+        return ResponseEntity.ok(response);
+    }
 
-            // ロール取得（最初の1つ）
-            String role = userDetails.getAuthorities().stream()
-                    .findFirst()
-                    .map(GrantedAuthority::getAuthority)
-                    .orElse("ROLE_USER");
-
-            log.info("Login successful for user: {}", request.getUsername());
-
-            AuthResponse response = AuthResponse.builder()
-                    .token(token)
-                    .type("Bearer")
-                    .username(userDetails.getUsername())
-                    .role(role)
-                    .build();
-
-            return ResponseEntity.ok(response);
-
-        } catch (BadCredentialsException ex) {
-            log.warn("Login failed for user: {} - Bad credentials", request.getUsername());
-            throw new BadCredentialsException("ユーザー名またはパスワードが正しくありません");
-        }
+    /**
+     * 記事削除
+     * DELETE /api/articles/{id}
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteArticle(@PathVariable Long id) {
+        articleService.deleteArticle(id);
+        return ResponseEntity.noContent().build();
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ6: SecurityConfigの更新
+## ✅ 動作確認
 
-### 6-1. JWT用のSecurityConfig
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/SecurityConfig.java`
-
-```java
-package com.example.hellospringboot.config;
-
-import com.example.hellospringboot.security.JwtAuthenticationFilter;
-import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
-/**
- * Spring Securityの設定クラス（JWT対応）
- */
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
-@RequiredArgsConstructor
-public class SecurityConfig {
-
-    private final JwtAuthenticationFilter jwtAuthFilter;
-    private final UserDetailsService userDetailsService;
-
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            // CSRF無効化
-            .csrf(csrf -> csrf.disable())
-            
-            // エンドポイントのアクセス制御
-            .authorizeHttpRequests(auth -> auth
-                // 公開エンドポイント
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
-                
-                // 管理者のみ
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                
-                // 認証が必要
-                .anyRequest().authenticated()
-            )
-            
-            // セッションをステートレスに設定
-            .sessionManagement(session -> 
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            
-            // 認証プロバイダー
-            .authenticationProvider(authenticationProvider())
-            
-            // JWTフィルターを追加
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-        // H2 Consoleのフレーム表示を許可
-        http.headers(headers -> headers.frameOptions(frame -> frame.disable()));
-
-        return http.build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) 
-            throws Exception {
-        return config.getAuthenticationManager();
-    }
-}
-```
-
----
-
-## ✅ ステップ7: 動作確認
-
-### 7-1. ログイン
-
+### カテゴリ作成
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:8080/api/categories \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Technology", "description": "Tech articles"}'
+```
+
+### ユーザー作成
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John Doe", "email": "john@example.com", "age": 30}'
+```
+
+### 記事作成
+```bash
+curl -X POST "http://localhost:8080/api/articles?authorId=1" \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "user",
-    "password": "user123"
+    "title": "Introduction to Spring Boot",
+    "content": "Spring Boot makes it easy...",
+    "categoryId": 1,
+    "published": true
   }'
 ```
 
-**期待されるレスポンス**:
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJhdXRob3JpdGllcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9VU0VSIn1dLCJzdWIiOiJ1c2VyIiwiaWF0IjoxNjk4NDEyMzAwLCJleHAiOjE2OTg0OTg3MDB9.xxx",
-  "type": "Bearer",
-  "username": "user",
-  "role": "ROLE_USER"
-}
-```
-
-### 7-2. トークンを使ってAPIアクセス
-
+### 記事一覧取得
 ```bash
-# トークンを変数に保存
-TOKEN="eyJhbGciOiJIUzI1NiJ9.xxx..."
-
-# APIリクエスト
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/users
-```
-
-**期待される結果**: 200 OK
-
-### 7-3. 無効なトークンでアクセス
-
-```bash
-curl -H "Authorization: Bearer invalid-token" \
-  http://localhost:8080/api/users
-```
-
-**期待される結果**: 401 Unauthorized
-
-### 7-4. トークンなしでアクセス
-
-```bash
-curl http://localhost:8080/api/users
-```
-
-**期待される結果**: 401 Unauthorized
-
----
-
-## 🚀 ステップ8: データベースユーザー認証への移行
-
-### 8-1. UserDetailsServiceの実装
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/CustomUserDetailsService.java`
-
-```java
-package com.example.hellospringboot.security;
-
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-
-import java.util.Collections;
-
-/**
- * データベースからユーザー情報を取得するUserDetailsService
- */
-@Service
-@RequiredArgsConstructor
-public class CustomUserDetailsService implements UserDetailsService {
-
-    private final UserRepository userRepository;
-
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                    "ユーザーが見つかりません: " + email
-                ));
-
-        return org.springframework.security.core.userdetails.User.builder()
-                .username(user.getEmail())
-                .password(user.getPassword())  // 暗号化されたパスワード
-                .authorities(Collections.singletonList(
-                    new SimpleGrantedAuthority("ROLE_" + user.getRole())
-                ))
-                .build();
-    }
-}
-```
-
-### 8-2. Userエンティティの更新
-
-```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String name;
-
-    @Column(unique = true)
-    private String email;
-
-    private Integer age;
-
-    // パスワード追加
-    @Column(nullable = false)
-    private String password;
-
-    // ロール追加（USER, ADMIN）
-    @Column(nullable = false)
-    private String role = "USER";
-}
+curl "http://localhost:8080/api/articles?page=0&size=10"
 ```
 
 ---
 
-## 🎨 チャレンジ課題
+## 📚 Phase 3で学んだことの統合
 
-### チャレンジ 1: リフレッシュトークン
+この演習では以下をすべて使いました：
 
-アクセストークンの有効期限が切れた際に、リフレッシュトークンで再発行できるようにしてください。
-
-### チャレンジ 2: ログアウト機能
-
-トークンをブラックリストに追加してログアウトを実装してください。
-
-### チャレンジ 3: トークン情報取得API
-
-`/api/auth/me`エンドポイントでトークンからユーザー情報を取得できるようにしてください。
-
----
-
-## 🐛 トラブルシューティング
-
-### "SignatureException: JWT signature does not match"
-
-**原因**: 秘密鍵が異なる、またはトークンが改ざんされている
-
-**解決策**: `application.yml`の`jwt.secret`を確認
-
-### "ExpiredJwtException"
-
-**原因**: トークンの有効期限が切れている
-
-**解決策**: 再ログインしてトークンを再発行
-
-### 認証後もSecurityContextがnull
-
-**原因**: JwtAuthenticationFilterが実行されていない
-
-**解決策**: SecurityConfigでフィルターが登録されているか確認
-```java
-.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-```
-
----
-
-## 📚 このステップで学んだこと
-
-- ✅ JWTの構造と仕組み
-- ✅ JwtUtilによるトークン生成・検証
-- ✅ JwtAuthenticationFilterの実装
-- ✅ ログインAPIの実装
-- ✅ ステートレス認証
-- ✅ Bearerトークンの使用
-
----
-
-## 💡 補足: JWTのベストプラクティス
-
-### トークンの保存場所
-
-| 保存場所 | メリット | デメリット |
-|----------|---------|-----------|
-| **LocalStorage** | 簡単 | XSS攻撃に脆弱 |
-| **Cookie (HttpOnly)** | XSS対策 | CSRF対策が必要 |
-| **SessionStorage** | タブ閉じると消える | XSS攻撃に脆弱 |
-
-**推奨**: HttpOnly Cookieまたはメモリ内
-
-### トークンの有効期限
-
-```yaml
-jwt:
-  # アクセストークン: 15分〜1時間
-  expiration: 900000  # 15分
-
-  # リフレッシュトークン: 7日〜30日
-  refresh-expiration: 604800000  # 7日
-```
-
-### セキュリティ強化
-
-```java
-// ✅ 良い例: 強力な秘密鍵（256bit以上）
-jwt.secret=myVeryLongSecretKeyThatIsAtLeast256BitsLong12345678901234567890
-
-// ❌ 悪い例: 短い秘密鍵
-jwt.secret=secret
-```
+- ✅ **レイヤードアーキテクチャ**: Controller / Service / Repository
+- ✅ **DTOパターン**: Request/Response DTO
+- ✅ **バリデーション**: `@Valid`, `@NotBlank`
+- ✅ **例外ハンドリング**: ResourceNotFoundException
+- ✅ **ロギング**: `@Slf4j`, log.info/debug
+- ✅ **ベストプラクティス**: コンストラクタインジェクション、トランザクション
+- ✅ **パフォーマンス**: JOIN FETCH、ページネーション
 
 ---
 
 ## 🔄 Gitへのコミット
 
+Phase 4完了です！
+
 ```bash
 git add .
-git commit -m "Phase 4: STEP_20完了（JWT認証実装）"
+git commit -m "Step 20: ロギング完了 - Phase 4完了"
 git push origin main
 ```
 
 ---
 
-## ➡️ 次のステップ
+## ➡️ 次のPhase
 
-次は[Step 21: ユニットテスト](STEP_21.md)へ進みましょう！
+Phase 4お疲れさまでした！次は**Phase 5: Thymeleafでサーバーサイドレンダリング**に進みます。
 
-JUnit 5とMockitoを使ったテストコードの書き方を学びます。
+Phase 5では以下を学びます：
+- Thymeleafテンプレートエンジンの基礎
+- フォーム送信とバリデーション
+- レイアウトとフラグメント
+- Thymeleaf + REST API連携
 
 ---
 
 お疲れさまでした！ 🎉
 
-JWT認証を習得しました！これで本格的なRESTful APIの
-セキュリティが実装できるようになりました！
+Phase 4では、実務で必須のアーキテクチャとベストプラクティスを学びました。
+これらの知識は、どんなプロジェクトでも活用できる基礎となります！

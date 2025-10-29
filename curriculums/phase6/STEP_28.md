@@ -1,273 +1,379 @@
-# Step 28: プロジェクト設計
+# Step 28: 統合テストとAPI テスト
 
 ## 🎯 このステップの目標
 
-- タスク管理システムの要件を定義する
-- ER図とAPI設計を元に開発する
-- プロジェクト構造を整理する
+- `@SpringBootTest`を使った統合テストを理解する
+- MockMvcでAPIエンドポイントをテストする
+- TestContainersでデータベーステストを実行する
+- E2Eテストの基礎を学ぶ
 
-**所要時間**: 約1時間30分
-
----
-
-## 📋 要件定義
-
-### 機能要件
-
-#### 1. ユーザー管理
-- ユーザー登録・ログイン（JWT認証）
-- プロフィール編集
-- パスワード変更
-
-#### 2. プロジェクト管理
-- プロジェクト作成・編集・削除
-- プロジェクトメンバーの追加・削除
-- プロジェクト一覧・詳細
-
-#### 3. タスク管理
-- タスク作成・編集・削除
-- タスクのステータス管理（TODO, IN_PROGRESS, DONE）
-- 優先度設定（HIGH, MEDIUM, LOW）
-- 期限設定
-- 担当者割り当て
-- タグ付け
-
-#### 4. コメント機能
-- タスクへのコメント追加
-- コメント編集・削除
-
-#### 5. 通知機能
-- タスク割り当て時にメール通知
-- 期限間近のタスクをリマインド
-
-#### 6. 検索・フィルタ機能
-- タスク検索（キーワード、ステータス、優先度、担当者）
-- ソート（作成日、期限、優先度）
-- ページング
+**所要時間**: 約2時間
 
 ---
 
-## 🗂️ ER図（Entity Relationship Diagram）
+## 📋 事前準備
 
+- Step 27のユニットテストが理解できていること
+
+---
+
+## 🚀 ステップ1: Controller統合テスト
+
+### 1-1. UserControllerIntegrationTest
+
+**ファイルパス**: `src/test/java/com/example/hellospringboot/controller/UserControllerIntegrationTest.java`
+
+```java
+package com.example.hellospringboot.controller;
+
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/**
+ * UserController統合テスト
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("UserController Integration Tests")
+class UserControllerIntegrationTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @BeforeEach
+    void setUp() {
+        userRepository.deleteAll();
+    }
+
+    @Test
+    @DisplayName("ユーザーを作成できること")
+    void testCreateUser() throws Exception {
+        // Given
+        UserCreateRequest request = UserCreateRequest.builder()
+                .name("Test User")
+                .email("test@example.com")
+                .age(25)
+                .build();
+
+        // When & Then
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andDo(print())
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Test User"))
+                .andExpect(jsonPath("$.email").value("test@example.com"))
+                .andExpect(jsonPath("$.age").value(25));
+    }
+
+    @Test
+    @DisplayName("バリデーションエラーの場合は400を返すこと")
+    void testCreateUserValidationError() throws Exception {
+        // Given - 無効なリクエスト
+        UserCreateRequest request = UserCreateRequest.builder()
+                .name("")  // 空の名前
+                .email("invalid-email")  // 無効なメール
+                .age(-1)  // 無効な年齢
+                .build();
+
+        // When & Then
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").exists());
+    }
+
+    @Test
+    @DisplayName("全ユーザーを取得できること")
+    void testGetAllUsers() throws Exception {
+        // Given
+        userRepository.save(User.builder()
+                .name("User1")
+                .email("user1@example.com")
+                .age(20)
+                .build());
+        userRepository.save(User.builder()
+                .name("User2")
+                .email("user2@example.com")
+                .age(30)
+                .build());
+
+        // When & Then
+        mockMvc.perform(get("/api/users"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].name").value("User1"))
+                .andExpect(jsonPath("$[1].name").value("User2"));
+    }
+
+    @Test
+    @DisplayName("IDでユーザーを取得できること")
+    void testGetUserById() throws Exception {
+        // Given
+        User user = userRepository.save(User.builder()
+                .name("Test User")
+                .email("test@example.com")
+                .age(25)
+                .build());
+
+        // When & Then
+        mockMvc.perform(get("/api/users/{id}", user.getId()))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(user.getId()))
+                .andExpect(jsonPath("$.name").value("Test User"));
+    }
+
+    @Test
+    @DisplayName("存在しないIDの場合は404を返すこと")
+    void testGetUserByIdNotFound() throws Exception {
+        // When & Then
+        mockMvc.perform(get("/api/users/999"))
+                .andDo(print())
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("ユーザーを更新できること")
+    void testUpdateUser() throws Exception {
+        // Given
+        User user = userRepository.save(User.builder()
+                .name("Old Name")
+                .email("old@example.com")
+                .age(20)
+                .build());
+
+        UserCreateRequest updateRequest = UserCreateRequest.builder()
+                .name("New Name")
+                .email("new@example.com")
+                .age(30)
+                .build();
+
+        // When & Then
+        mockMvc.perform(put("/api/users/{id}", user.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("New Name"))
+                .andExpect(jsonPath("$.email").value("new@example.com"))
+                .andExpect(jsonPath("$.age").value(30));
+    }
+
+    @Test
+    @DisplayName("ユーザーを削除できること")
+    void testDeleteUser() throws Exception {
+        // Given
+        User user = userRepository.save(User.builder()
+                .name("Test User")
+                .email("test@example.com")
+                .age(25)
+                .build());
+
+        // When & Then
+        mockMvc.perform(delete("/api/users/{id}", user.getId()))
+                .andDo(print())
+                .andExpect(status().isNoContent());
+    }
+}
 ```
-┌─────────────┐
-│    User     │
-├─────────────┤
-│ id          │ PK
-│ username    │
-│ email       │ UNIQUE
-│ password    │
-│ role        │ (ADMIN, USER)
-│ createdAt   │
-│ updatedAt   │
-└─────────────┘
-       │
-       │ 1:N
-       ▼
-┌─────────────────┐
-│ ProjectMember   │
-├─────────────────┤
-│ id              │ PK
-│ projectId       │ FK
-│ userId          │ FK
-│ role            │ (OWNER, MEMBER)
-│ joinedAt        │
-└─────────────────┘
-       │
-       │ N:1
-       ▼
-┌─────────────┐
-│   Project   │
-├─────────────┤
-│ id          │ PK
-│ name        │
-│ description │
-│ ownerId     │ FK → User
-│ createdAt   │
-│ updatedAt   │
-└─────────────┘
-       │
-       │ 1:N
-       ▼
-┌─────────────┐
-│    Task     │
-├─────────────┤
-│ id          │ PK
-│ projectId   │ FK → Project
-│ title       │
-│ description │
-│ status      │ ENUM (TODO, IN_PROGRESS, DONE)
-│ priority    │ ENUM (LOW, MEDIUM, HIGH)
-│ assigneeId  │ FK → User
-│ dueDate     │
-│ createdAt   │
-│ updatedAt   │
-└─────────────┘
-       │                   ┌─────────────┐
-       │ 1:N               │     Tag     │
-       ▼                   ├─────────────┤
-┌─────────────┐            │ id          │ PK
-│   Comment   │            │ name        │ UNIQUE
-├─────────────┤            │ color       │
-│ id          │ PK         └─────────────┘
-│ taskId      │ FK                │
-│ userId      │ FK                │ N:N
-│ content     │                   ▼
-│ createdAt   │            ┌─────────────┐
-│ updatedAt   │            │  TaskTag    │
-└─────────────┘            ├─────────────┤
-                           │ taskId      │ FK
-                           │ tagId       │ FK
-                           └─────────────┘
+
+---
+
+## 🚀 ステップ2: テスト用設定ファイル
+
+### 2-1. application-test.yml
+
+**ファイルパス**: `src/test/resources/application-test.yml`
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  h2:
+    console:
+      enabled: false
+
+logging:
+  level:
+    com.example.hellospringboot: DEBUG
+    org.springframework.test: INFO
 ```
 
 ---
 
-## 🔌 API設計
+## 🚀 ステップ3: 認証付きAPIテスト
 
-### 認証API
+### 3-1. AuthControllerIntegrationTest
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| POST | `/api/auth/register` | ユーザー登録 |
-| POST | `/api/auth/login` | ログイン |
-| GET | `/api/auth/me` | 現在のユーザー情報 |
+**ファイルパス**: `src/test/java/com/example/hellospringboot/controller/AuthControllerIntegrationTest.java`
 
-### プロジェクトAPI
+```java
+package com.example.hellospringboot.controller;
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| GET | `/api/projects` | プロジェクト一覧 |
-| POST | `/api/projects` | プロジェクト作成 |
-| GET | `/api/projects/{id}` | プロジェクト詳細 |
-| PUT | `/api/projects/{id}` | プロジェクト更新 |
-| DELETE | `/api/projects/{id}` | プロジェクト削除 |
-| POST | `/api/projects/{id}/members` | メンバー追加 |
-| DELETE | `/api/projects/{id}/members/{userId}` | メンバー削除 |
+import com.example.hellospringboot.dto.request.LoginRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
 
-### タスクAPI
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| GET | `/api/projects/{projectId}/tasks` | タスク一覧 |
-| POST | `/api/projects/{projectId}/tasks` | タスク作成 |
-| GET | `/api/tasks/{id}` | タスク詳細 |
-| PUT | `/api/tasks/{id}` | タスク更新 |
-| DELETE | `/api/tasks/{id}` | タスク削除 |
-| PATCH | `/api/tasks/{id}/status` | ステータス変更 |
-| PATCH | `/api/tasks/{id}/assign` | 担当者割り当て |
-| GET | `/api/tasks/search` | タスク検索 |
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@DisplayName("AuthController Integration Tests")
+class AuthControllerIntegrationTest {
 
-### コメントAPI
+    @Autowired
+    private MockMvc mockMvc;
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| GET | `/api/tasks/{taskId}/comments` | コメント一覧 |
-| POST | `/api/tasks/{taskId}/comments` | コメント作成 |
-| PUT | `/api/comments/{id}` | コメント更新 |
-| DELETE | `/api/comments/{id}` | コメント削除 |
+    @Autowired
+    private ObjectMapper objectMapper;
 
-### タグAPI
+    @Test
+    @DisplayName("正しい認証情報でログインできること")
+    void testLoginSuccess() throws Exception {
+        // Given
+        LoginRequest request = LoginRequest.builder()
+                .username("user")
+                .password("user123")
+                .build();
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| GET | `/api/tags` | タグ一覧 |
-| POST | `/api/tags` | タグ作成 |
-| POST | `/api/tasks/{taskId}/tags/{tagId}` | タグ追加 |
-| DELETE | `/api/tasks/{taskId}/tags/{tagId}` | タグ削除 |
+        // When & Then
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(jsonPath("$.type").value("Bearer"))
+                .andExpect(jsonPath("$.username").value("user"));
+    }
+
+    @Test
+    @DisplayName("誤った認証情報の場合は401を返すこと")
+    void testLoginFailure() throws Exception {
+        // Given
+        LoginRequest request = LoginRequest.builder()
+                .username("user")
+                .password("wrongpassword")
+                .build();
+
+        // When & Then
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andDo(print())
+                .andExpect(status().isUnauthorized());
+    }
+}
+```
 
 ---
 
-## 📁 プロジェクト構造
+## 🚀 ステップ4: テスト実行とレポート
 
+### 4-1. すべてのテストを実行
+
+```bash
+./mvnw clean test
 ```
-src/main/java/com/example/hellospringboot/
-├── config/
-│   ├── AsyncConfig.java
-│   ├── CacheConfig.java
-│   ├── OpenAPIConfig.java
-│   └── SecurityConfig.java
-├── controller/
-│   ├── AuthController.java
-│   ├── ProjectController.java
-│   ├── TaskController.java
-│   ├── CommentController.java
-│   └── TagController.java
-├── dto/
-│   ├── request/
-│   │   ├── ProjectCreateRequest.java
-│   │   ├── TaskCreateRequest.java
-│   │   ├── TaskUpdateRequest.java
-│   │   ├── CommentCreateRequest.java
-│   │   └── ...
-│   └── response/
-│       ├── ProjectResponse.java
-│       ├── TaskResponse.java
-│       ├── CommentResponse.java
-│       └── ...
-├── entity/
-│   ├── User.java
-│   ├── Project.java
-│   ├── ProjectMember.java
-│   ├── Task.java
-│   ├── Comment.java
-│   ├── Tag.java
-│   └── TaskTag.java
-├── enums/
-│   ├── TaskStatus.java
-│   ├── Priority.java
-│   └── ProjectRole.java
-├── exception/
-│   ├── BusinessException.java
-│   ├── ResourceNotFoundException.java
-│   └── ...
-├── mapper/
-│   ├── ProjectMapper.java
-│   ├── TaskMapper.java
-│   └── ...
-├── repository/
-│   ├── UserRepository.java
-│   ├── ProjectRepository.java
-│   ├── TaskRepository.java
-│   ├── CommentRepository.java
-│   └── TagRepository.java
-├── service/
-│   ├── AuthService.java
-│   ├── ProjectService.java
-│   ├── TaskService.java
-│   ├── CommentService.java
-│   ├── TagService.java
-│   └── NotificationService.java
-└── security/
-    ├── JwtUtil.java
-    ├── JwtAuthenticationFilter.java
-    └── CustomUserDetailsService.java
+
+### 4-2. 特定のテストクラスのみ実行
+
+```bash
+./mvnw test -Dtest=UserControllerIntegrationTest
+```
+
+### 4-3. カバレッジレポート確認
+
+```bash
+./mvnw clean test jacoco:report
+open target/site/jacoco/index.html
 ```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: ワイヤーフレーム
+### チャレンジ 1: PostController統合テスト
 
-画面設計図（ワイヤーフレーム）を描いてください。
+PostControllerの統合テストを作成してください。
 
-### チャレンジ 2: ユースケース図
+### チャレンジ 2: TestContainersの導入
 
-ユーザーとシステムの相互作用を図示してください。
+本物のMySQLを使ったテストを実装してください。
 
-### チャレンジ 3: シーケンス図
+```xml
+<dependency>
+    <groupId>org.testcontainers</groupId>
+    <artifactId>mysql</artifactId>
+    <version>1.19.3</version>
+    <scope>test</scope>
+</dependency>
+```
 
-タスク作成フローのシーケンス図を作成してください。
+### チャレンジ 3: REST Assuredの使用
+
+REST Assuredライブラリを使ったテストを書いてください。
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ 要件定義
-- ✅ ER図の設計
-- ✅ RESTful API設計
-- ✅ プロジェクト構造の整理
+- ✅ @SpringBootTestによる統合テスト
+- ✅ MockMvcによるAPIテスト
+- ✅ JSONパスアサーション
+- ✅ テスト用設定ファイル
+- ✅ トランザクションロールバック
 
 ---
 
@@ -275,7 +381,7 @@ src/main/java/com/example/hellospringboot/
 
 ```bash
 git add .
-git commit -m "Phase 6: STEP_28完了（プロジェクト設計）"
+git commit -m "Step 28: 統合テスト完了"
 git push origin main
 ```
 
@@ -283,7 +389,7 @@ git push origin main
 
 ## ➡️ 次のステップ
 
-次は[Step 29: エンティティとリポジトリ](STEP_29.md)へ進みましょう！
+次は[Step 29: テストカバレッジ](STEP_29.md)へ進みましょう！
 
 ---
 
