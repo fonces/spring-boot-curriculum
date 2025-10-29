@@ -3,101 +3,74 @@
 ## 🎯 このステップの目標
 
 - 統計・ダッシュボード機能を実装する
-- ファイル添付機能を追加する
-- リマインダー機能を実装する
+- ファイル添付機能を追加する（オプション）
+- リマインダー機能を実装する（オプション）
 - キャッシュを活用したパフォーマンス最適化
 
 **所要時間**: 約2時間30分
 
----
-
-## 📋 実装要件
-
-このステップでは、タスク管理システムをより実用的にする高度な機能を実装します。
-
-### 実装する機能一覧
-
-1. **統計・ダッシュボード機能**
-   - プロジェクトの進捗率
-   - ステータス別タスク数
-   - 優先度別タスク数
-   - 期限切れタスク数
-
-2. **タスク添付ファイル機能**
-   - ファイルアップロード
-   - ファイル一覧取得
-   - ファイルダウンロード
-   - ファイル削除
-
-3. **リマインダー機能**
-   - 期限間近のタスクをメール通知
-   - 期限切れタスクをメール通知
-   - スケジュール実行
+> **このステップはチャレンジ課題です！**
+> 
+> 基本的なCRUD機能にプラスして、実用的な機能を追加しましょう。
+> できる範囲で実装してください。
 
 ---
 
-## 🚀 ステップ1: 統計・ダッシュボード機能
+## 📋 実装課題
 
-### 1-1. ProjectStatisticsResponse DTO
+### 課題1: 統計・ダッシュボード機能
 
-**必須フィールド**:
-- `projectId` (Long)
-- `projectName` (String)
-- `totalTasks` (Long) - 総タスク数
-- `todoTasks` (Long) - 未着手タスク数
-- `inProgressTasks` (Long) - 進行中タスク数
-- `doneTasks` (Long) - 完了タスク数
-- `completionRate` (Double) - 進捗率（%）
-- `tasksByPriority` (Map<String, Long>) - 優先度別タスク数
-- `overdueTasks` (Long) - 期限切れタスク数
+ダッシュボードで表示する統計情報を実装してください。
 
-### 1-2. StatisticsService
+**表示したい情報：**
+- プロジェクトの進捗率（完了タスク数 / 全タスク数）
+- ステータス別タスク数（TODO, IN_PROGRESS, DONE）
+- 優先度別タスク数（HIGH, MEDIUM, LOW）
+- 期限切れタスク数
 
-**必須メソッド**:
-```java
-@Cacheable(value = "statistics", key = "'project-' + #projectId")
-ProjectStatisticsResponse getProjectStatistics(Long projectId)
-```
+**考えてほしいこと：**
+- MyBatisでGROUP BYを使った集計クエリをどう書くか？
+- 統計データを効率的に取得するには？
+- キャッシュを使ってパフォーマンスを改善できないか？
 
-**実装のポイント**:
-- `TaskRepository.getTaskStatisticsByProject()`を使用
-- ステータスごとの件数をMapに変換
-- 進捗率を計算（完了タスク数 ÷ 総タスク数 × 100）
-- 優先度別タスク数を集計
-- 期限切れタスク数をカウント（dueDate < 今日 AND status != DONE）
-- キャッシュを使ってパフォーマンス向上
-
-### 1-3. StatisticsController
-
-**エンドポイント**:
-- `GET /api/statistics/projects/{projectId}` - プロジェクト統計
-
-**配置場所**:
-- DTO: `src/main/java/com/example/hellospringboot/dto/response/`
-- Service: `src/main/java/com/example/hellospringboot/service/`
-- Controller: `src/main/java/com/example/hellospringboot/controller/`
+> **💡 ヒント**: Spring Cacheの`@Cacheable`を使うと簡単にキャッシュできます
 
 ---
 
-## 🚀 ステップ2: タスク添付ファイル機能
+### 課題2: ファイル添付機能（オプション）
 
-### 2-1. TaskAttachment エンティティ
+タスクにファイルを添付できる機能を実装してください。
 
-**必須フィールド**:
-- `id` (Long)
-- `task` (Task) - ManyToOne
-- `filename` (String) - サーバー上のファイル名
-- `originalFilename` (String) - 元のファイル名
-- `contentType` (String) - MIMEタイプ
-- `fileSize` (Long) - ファイルサイズ（バイト）
-- `uploadedBy` (User) - ManyToOne
-- `uploadedAt` (LocalDateTime)
+**必要な機能：**
+- ファイルアップロード
+- ファイル一覧表示
+- ファイルダウンロード
+- ファイル削除
 
-### 2-2. TaskAttachmentRepository
+**考えてほしいこと：**
+- ファイルをどこに保存するか？（ローカル？データベース？）
+- ファイルサイズ制限をどう設定するか？
+- セキュリティ（不正なファイルアップロード対策）は？
 
-```java
-public interface TaskAttachmentRepository extends JpaRepository<TaskAttachment, Long> {
-    List<TaskAttachment> findByTaskId(Long taskId);
+> **💡 ヒント**: `MultipartFile`を使います
+
+---
+
+### 課題3: リマインダー機能（オプション）
+
+期限が近いタスクを通知する機能を実装してください。
+
+**必要な機能：**
+- 期限1日前のタスクをメール通知
+- 期限切れタスクをメール通知
+- 定期的に自動実行
+
+**考えてほしいこと：**
+- どうやって定期実行するか？（`@Scheduled`？）
+- メール送信の実装方法は？
+- 通知済みフラグをどう管理するか？
+
+> **💡 ヒント**: Spring Schedulingと`JavaMailSender`を使います
 }
 ```
 

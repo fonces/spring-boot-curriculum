@@ -20,42 +20,15 @@
 
 ### 課題1: MyBatis XML Mapper（動的SQL）
 
-複雑な検索クエリをXMLで実装してください。
+タスク検索など複雑なクエリはXMLで実装します。
 
-**TaskMapper.xml** (`src/main/resources/mapper/TaskMapper.xml`)
+**考えてほしいこと：**
+- どんな条件で検索できるようにするか？
+- プロジェクトID、ステータス、優先度、担当者、キーワード...
+- `<if>`タグを使った動的WHERE句の書き方
+- JOINでプロジェクト名や担当者名も取得するには？
 
-```xml
-<?xml version="1.0" encoding="UTF-8" ?>
-<!DOCTYPE mapper
-  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-
-<mapper namespace="com.example.taskapp.mapper.TaskMapper">
-
-    <!-- TODO: 動的検索クエリを実装してください -->
-    <select id="search" resultType="com.example.taskapp.entity.Task">
-        SELECT 
-            t.*,
-            p.name as project_name,
-            u.username as assignee_name
-        FROM tasks t
-        LEFT JOIN projects p ON t.project_id = p.id
-        LEFT JOIN users u ON t.assignee_id = u.id
-        WHERE 1=1
-        <!-- ヒント: <if>タグで条件分岐 -->
-        <!-- 実装してください -->
-    </select>
-
-</mapper>
-```
-
-**実装する動的条件**:
-- プロジェクトID指定
-- ステータス指定
-- 優先度指定
-- 担当者ID指定
-- キーワード検索（タイトル・説明）
-- 期限範囲指定
+`src/main/resources/mapper/TaskMapper.xml`を作成して実装してください。
 
 > **💡 ヒント**: `example/STEP_36_TaskMapper.xml`に完全な実装例があります
 
@@ -63,141 +36,54 @@
 
 ### 課題2: DTOクラスの実装
 
-**TaskSearchCriteria.java** (`src/main/java/com/example/taskapp/dto/`)
+検索条件やリクエストデータを扱うDTOを実装してください。
 
-```java
-package com.example.taskapp.dto;
+**必要なDTO：**
+- `TaskSearchCriteria` - 検索条件を保持
+- `TaskCreateRequest` - タスク作成リクエスト
+- `ProjectCreateRequest` - プロジェクト作成リクエスト
 
-import lombok.Data;
-import java.time.LocalDate;
+**考えてほしいこと：**
+- どんなフィールドが必要か？
+- バリデーション（`@NotBlank`, `@Size`など）をどう設定するか？
 
-@Data
-public class TaskSearchCriteria {
-    private Long projectId;
-    private String status;
-    private String priority;
-    private Long assigneeId;
-    private String keyword;
-    private LocalDate dueDateFrom;
-    private LocalDate dueDateTo;
-    private String sortBy = "createdAt";
-    // TODO: 必要なフィールドを追加
-}
-```
-
-**TaskCreateRequest.java**も実装してください（バリデーション付き）。
-
-> **💡 ヒント**: `example/STEP_36_dto_example.java`に実装例があります
+> **💡 ヒント**: `example/STEP_36_service_example.java`のDTO部分に実装例があります
 
 ---
 
 ### 課題3: Service層の実装
 
-**TaskService.java** (`src/main/java/com/example/taskapp/service/`)
+ビジネスロジックを実装してください。
 
-```java
-package com.example.taskapp.service;
+**実装するService：**
+- `TaskService` - タスクのCRUD、検索、ステータス更新
+- `ProjectService` - プロジェクトのCRUD
+- `CommentService` - コメントの追加・取得
 
-import com.example.taskapp.entity.Task;
-import com.example.taskapp.mapper.TaskMapper;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+**考えてほしいこと：**
+- どのメソッドに`@Transactional`が必要か？
+- エラー処理（存在しないIDなど）をどうするか？
+- Mapperからのデータをどう加工するか？
 
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class TaskService {
-
-    private final TaskMapper taskMapper;
-    
-    // TODO: 以下のメソッドを実装してください
-    
-    /**
-     * タスク作成
-     */
-    @Transactional
-    public Task createTask(TaskCreateRequest request) {
-        // 実装してください
-    }
-    
-    /**
-     * タスク取得
-     */
-    public Task getTaskById(Long id) {
-        // 実装してください
-    }
-    
-    /**
-     * タスク検索
-     */
-    public List<Task> searchTasks(TaskSearchCriteria criteria) {
-        // 実装してください
-    }
-    
-    /**
-     * ステータス更新
-     */
-    @Transactional
-    public void updateTaskStatus(Long id, String status) {
-        // 実装してください
-    }
-}
-```
-
-同様に`ProjectService`, `CommentService`も実装してください。
-
-> **💡 ヒント**: 
-> - `@Transactional`で更新系メソッドを管理
-> - 例外処理（ResourceNotFoundException）
-> - `example/STEP_36_service_example.java`に実装例があります
+> **💡 ヒント**: `example/STEP_36_service_example.java`に完全な実装例があります
 
 ---
 
 ### 課題4: Thymeleafコントローラーの実装
 
-**TaskController.java** (`src/main/java/com/example/taskapp/controller/`)
+画面制御を行うコントローラーを実装してください。
 
-```java
-package com.example.taskapp.controller;
+**実装するController：**
+- `TaskController` - タスク一覧、詳細、作成、更新
+- `ProjectController` - プロジェクト一覧、詳細、作成
+- `DashboardController` - ダッシュボード画面
 
-import com.example.taskapp.service.TaskService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
+**考えてほしいこと：**
+- どんなURLパスを設定するか？（`/tasks`, `/projects/{id}`など）
+- Modelにどんなデータを詰めて画面に渡すか？
+- フォーム送信後のリダイレクト先は？
 
-@Controller
-@RequestMapping("/tasks")
-@RequiredArgsConstructor
-public class TaskController {
-
-    private final TaskService taskService;
-    
-    // TODO: 以下のメソッドを実装してください
-    
-    /**
-     * タスク一覧画面
-     * GET /tasks
-     */
-    @GetMapping
-    public String listTasks(/* パラメータを追加 */) {
-        // 実装してください
-        return "tasks/list";
-    }
-    
-    /**
-     * タスク詳細画面
-     * GET /tasks/{id}
-     */
-    @GetMapping("/{id}")
-    public String taskDetail(@PathVariable Long id, Model model) {
-        // 実装してください
-        return "tasks/detail";
-    }
-    
-    /**
-     * タスク作成フォーム
+> **💡 ヒント**: `example/STEP_36_controller_example.java`に完全な実装例があります
      * GET /tasks/new
      */
     @GetMapping("/new")
