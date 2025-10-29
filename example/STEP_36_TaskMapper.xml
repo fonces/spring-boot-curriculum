@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- STEP_36 MyBatis XML実装例 - TaskMapper.xml -->
+
+<mapper namespace="com.example.taskapp.mapper.TaskMapper">
+
+    <!-- ResultMap定義 -->
+    <resultMap id="TaskResultMap" type="com.example.taskapp.entity.Task">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="title" column="title"/>
+        <result property="description" column="description"/>
+        <result property="status" column="status" typeHandler="org.apache.ibatis.type.EnumTypeHandler"/>
+        <result property="priority" column="priority" typeHandler="org.apache.ibatis.type.EnumTypeHandler"/>
+        <result property="assigneeId" column="assignee_id"/>
+        <result property="dueDate" column="due_date"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="projectName" column="project_name"/>
+        <result property="assigneeName" column="assignee_name"/>
+    </resultMap>
+
+    <!-- 動的検索クエリ -->
+    <select id="search" resultMap="TaskResultMap">
+        SELECT 
+            t.*,
+            p.name as project_name,
+            u.username as assignee_name
+        FROM tasks t
+        LEFT JOIN projects p ON t.project_id = p.id
+        LEFT JOIN users u ON t.assignee_id = u.id
+        WHERE 1=1
+        
+        <!-- プロジェクトID指定 -->
+        <if test="criteria.projectId != null">
+            AND t.project_id = #{criteria.projectId}
+        </if>
+        
+        <!-- ステータス指定 -->
+        <if test="criteria.status != null and criteria.status != ''">
+            AND t.status = #{criteria.status}
+        </if>
+        
+        <!-- 優先度指定 -->
+        <if test="criteria.priority != null and criteria.priority != ''">
+            AND t.priority = #{criteria.priority}
+        </if>
+        
+        <!-- 担当者ID指定 -->
+        <if test="criteria.assigneeId != null">
+            AND t.assignee_id = #{criteria.assigneeId}
+        </if>
+        
+        <!-- キーワード検索（タイトル・説明） -->
+        <if test="criteria.keyword != null and criteria.keyword != ''">
+            AND (
+                t.title LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR t.description LIKE CONCAT('%', #{criteria.keyword}, '%')
+            )
+        </if>
+        
+        <!-- 期限範囲指定 -->
+        <if test="criteria.dueDateFrom != null">
+            AND t.due_date &gt;= #{criteria.dueDateFrom}
+        </if>
+        <if test="criteria.dueDateTo != null">
+            AND t.due_date &lt;= #{criteria.dueDateTo}
+        </if>
+        
+        <!-- ソート条件 -->
+        ORDER BY 
+        <choose>
+            <when test="criteria.sortBy == 'priority'">
+                CASE t.priority
+                    WHEN 'HIGH' THEN 1
+                    WHEN 'MEDIUM' THEN 2
+                    WHEN 'LOW' THEN 3
+                END,
+                t.created_at DESC
+            </when>
+            <when test="criteria.sortBy == 'dueDate'">
+                t.due_date ASC NULLS LAST,
+                t.created_at DESC
+            </when>
+            <when test="criteria.sortBy == 'status'">
+                CASE t.status
+                    WHEN 'TODO' THEN 1
+                    WHEN 'IN_PROGRESS' THEN 2
+                    WHEN 'DONE' THEN 3
+                END,
+                t.created_at DESC
+            </when>
+            <otherwise>
+                t.created_at DESC
+            </otherwise>
+        </choose>
+        
+        <!-- ページング -->
+        <if test="criteria.limit != null">
+            LIMIT #{criteria.limit}
+        </if>
+        <if test="criteria.offset != null">
+            OFFSET #{criteria.offset}
+        </if>
+    </select>
+    
+    <!-- 期限切れタスク取得 -->
+    <select id="findOverdueTasks" resultMap="TaskResultMap">
+        SELECT 
+            t.*,
+            p.name as project_name,
+            u.username as assignee_name
+        FROM tasks t
+        LEFT JOIN projects p ON t.project_id = p.id
+        LEFT JOIN users u ON t.assignee_id = u.id
+        WHERE t.due_date &lt; CURDATE()
+          AND t.status != 'DONE'
+          AND (t.assignee_id = #{userId} OR p.owner_id = #{userId})
+        ORDER BY t.due_date ASC
+    </select>
+    
+    <!-- タスク統計（プロジェクト別） -->
+    <select id="getTaskStatisticsByProject" resultType="map">
+        SELECT 
+            COUNT(*) as total_tasks,
+            SUM(CASE WHEN status = 'TODO' THEN 1 ELSE 0 END) as todo_tasks,
+            SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as in_progress_tasks,
+            SUM(CASE WHEN status = 'DONE' THEN 1 ELSE 0 END) as done_tasks,
+            SUM(CASE WHEN priority = 'HIGH' THEN 1 ELSE 0 END) as high_priority,
+            SUM(CASE WHEN priority = 'MEDIUM' THEN 1 ELSE 0 END) as medium_priority,
+            SUM(CASE WHEN priority = 'LOW' THEN 1 ELSE 0 END) as low_priority
+        FROM tasks
+        WHERE project_id = #{projectId}
+    </select>
+
+</mapper>

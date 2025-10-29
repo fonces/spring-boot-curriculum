@@ -1,103 +1,316 @@
-# Step 35: エンティティとリポジトリ実装
+# Step 35: エンティティとMapper実装
 
 ## 🎯 このステップの目標
 
 - 全エンティティクラスを実装する
 - Enumクラスを定義する
-- リポジトリインターフェースを作成する
-- カスタムクエリメソッドを実装する
+- **MyBatis Mapperインターフェース**を作成する
+- 基本的なCRUD操作を実装する
 
-**所要時間**: 約2時間30分
+**所要時間**: 約3時間
 
----
-
-## 📋 実装要件
-
-このステップでは、[STEP_34で設計したER図](STEP_34.md#er図entity-relationship-diagram)を基に、以下のクラスを実装してください。
-
-### 実装するクラス一覧
-
-#### Enumクラス (3つ)
-- `TaskStatus` - タスクのステータス（TODO, IN_PROGRESS, DONE）
-- `Priority` - タスクの優先度（LOW, MEDIUM, HIGH）
-- `ProjectRole` - プロジェクトメンバーの役割（OWNER, MEMBER）
-
-#### エンティティクラス (5つ)
-- `Project` - プロジェクト
-- `ProjectMember` - プロジェクトメンバー（中間テーブル）
-- `Task` - タスク
-- `Comment` - コメント
-- `Tag` - タグ
-
-#### リポジトリインターフェース (5つ)
-- `ProjectRepository`
-- `ProjectMemberRepository`
-- `TaskRepository`
-- `CommentRepository`
-- `TagRepository`
+> **このステップはあなたが実装します！**
+> 
+> STEP_34で設計した内容をもとに、実際にコードを書いてください。
+> わからない場合は`example/STEP_35_*.java`の実装例を参考にしてください。
 
 ---
 
-## 🚀 ステップ1: Enumクラスの実装
+## 📋 実装課題
 
-### 実装するEnum
+### 課題1: Enumクラスの実装（3つ）
 
-各Enumには以下を含めてください：
-- ステータス/優先度/役割の値
-- 日本語表示名（displayName）
-- getterメソッド
+以下のEnumクラスを実装してください：
 
-**配置場所**: `src/main/java/com/example/hellospringboot/enums/`
+**TaskStatus.java** (`src/main/java/com/example/taskapp/entity/enums/`)
+```java
+package com.example.taskapp.entity.enums;
 
-### 実装のヒント
+public enum TaskStatus {
+    TODO("未着手"),
+    IN_PROGRESS("進行中"),
+    DONE("完了");
+    
+    private final String displayName;
+    
+    // TODO: コンストラクタとgetterを実装
+}
+```
 
-- `TaskStatus`: TODO（未着手）、IN_PROGRESS（進行中）、DONE（完了）
-- `Priority`: LOW（低）、MEDIUM（中）、HIGH（高）
-- `ProjectRole`: OWNER（オーナー）、MEMBER（メンバー）
+**Priority.java**
+```java
+package com.example.taskapp.entity.enums;
+
+public enum Priority {
+    LOW("低", "#6c757d"),
+    MEDIUM("中", "#ffc107"),
+    HIGH("高", "#dc3545");
+    
+    private final String displayName;
+    private final String color;
+    
+    // TODO: コンストラクタとgetterを実装
+}
+```
+
+**ProjectRole.java**
+```java
+package com.example.taskapp.entity.enums;
+
+public enum ProjectRole {
+    OWNER("オーナー"),
+    MEMBER("メンバー");
+    
+    // TODO: 実装
+}
+```
+
+> **💡 ヒント**: `example/STEP_35_enum_example.java`に完全な実装例があります
 
 ---
 
-## 🚀 ステップ2: エンティティクラスの実装
+### 課題2: エンティティクラスの実装（5つ）
 
-### 2-1. Projectエンティティ
+以下のエンティティクラスを実装してください：
 
-**必須フィールド**:
-- `id` (Long) - 主キー、自動生成
-- `name` (String) - プロジェクト名、NOT NULL、最大100文字
-- `description` (String) - 説明、TEXT型
-- `owner` (User) - オーナー、ManyToOne、LAZY、NOT NULL
-- `tasks` (List<Task>) - タスクリスト、OneToMany、CASCADE、orphanRemoval
-- `members` (List<ProjectMember>) - メンバーリスト、OneToMany、CASCADE、orphanRemoval
-- `createdAt` (LocalDateTime) - 作成日時、@CreationTimestamp
-- `updatedAt` (LocalDateTime) - 更新日時、@UpdateTimestamp
+**User.java** (`src/main/java/com/example/taskapp/entity/`)
+```java
+package com.example.taskapp.entity;
 
-**アノテーション**:
-- `@Entity`, `@Table(name = "projects")`
-- Lombokアノテーション（@Getter, @Setter, @Builder等）
+import lombok.Data;
+import java.time.LocalDateTime;
 
-### 2-2. ProjectMemberエンティティ
+@Data
+public class User {
+    private Long id;
+    private String username;
+    private String email;
+    private String password;
+    private String name;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
+```
 
-**必須フィールド**:
-- `id` (Long) - 主キー
-- `project` (Project) - プロジェクト、ManyToOne、LAZY、NOT NULL
-- `user` (User) - ユーザー、ManyToOne、LAZY、NOT NULL
-- `role` (ProjectRole) - 役割、Enum、NOT NULL
-- `joinedAt` (LocalDateTime) - 参加日時、@CreationTimestamp
+**Project.java**
+```java
+@Data
+public class Project {
+    private Long id;
+    private String name;
+    private String description;
+    private Long ownerId;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    
+    // MyBatis結果マッピング用（JOIN結果）
+    private String ownerName;
+}
+```
 
-**制約**:
-- プロジェクトIDとユーザーIDの組み合わせは一意（`@UniqueConstraint`）
+**Task.java**
+```java
+@Data
+public class Task {
+    private Long id;
+    private Long projectId;
+    private String title;
+    private String description;
+    private TaskStatus status;  // Enum
+    private Priority priority;   // Enum
+    private Long assigneeId;
+    private LocalDate dueDate;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    
+    // JOIN結果用
+    private String projectName;
+    private String assigneeName;
+}
+```
 
-### 2-3. Taskエンティティ
+**Comment.java**と**Tag.java**も同様に実装してください。
 
-**必須フィールド**:
-- `id` (Long) - 主キー
-- `project` (Project) - プロジェクト、ManyToOne、LAZY、NOT NULL
-- `title` (String) - タイトル、NOT NULL、最大200文字
-- `description` (String) - 説明、TEXT型
-- `status` (TaskStatus) - ステータス、Enum、デフォルトTODO
-- `priority` (Priority) - 優先度、Enum、デフォルトMEDIUM
-- `assignee` (User) - 担当者、ManyToOne、LAZY、nullable
-- `dueDate` (LocalDate) - 期限、nullable
+> **💡 ヒント**: 
+> - MyBatisではJPAのような`@Entity`アノテーションは不要
+> - POJOクラス（Plain Old Java Object）として実装
+> - `example/STEP_35_entity_example.java`に完全な実装例があります
+
+---
+
+### 課題3: MyBatis Mapperインターフェースの実装
+
+各エンティティに対応するMapperインターフェースを実装してください：
+
+**TaskMapper.java** (`src/main/java/com/example/taskapp/mapper/`)
+```java
+package com.example.taskapp.mapper;
+
+import com.example.taskapp.entity.Task;
+import org.apache.ibatis.annotations.*;
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface TaskMapper {
+    
+    // TODO: 以下のメソッドを実装してください
+    
+    /**
+     * タスク作成
+     * ヒント: @Insert, @Options(useGeneratedKeys = true)
+     */
+    void insert(Task task);
+    
+    /**
+     * ID検索
+     * ヒント: @Select
+     */
+    Optional<Task> findById(Long id);
+    
+    /**
+     * プロジェクトのタスク一覧
+     * ヒント: @Select, WHERE句
+     */
+    List<Task> findByProjectId(Long projectId);
+    
+    /**
+     * タスク更新
+     * ヒント: @Update
+     */
+    void update(Task task);
+    
+    /**
+     * タスク削除
+     * ヒント: @Delete
+     */
+    void deleteById(Long id);
+}
+```
+
+同様に以下のMapperも実装してください：
+- `ProjectMapper.java`
+- `CommentMapper.java`
+- `TagMapper.java`
+- `UserMapper.java`
+
+> **💡 ヒント**: `example/STEP_35_mapper_example.java`に完全な実装例があります
+
+---
+
+### 課題4: MyBatis設定ファイル
+
+**application.yml**にMyBatis設定を追加してください：
+
+```yaml
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.example.taskapp.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 30
+```
+
+**schema.sql**（STEP_34で作成したもの）を`src/main/resources/`に配置してください。
+
+---
+
+## ✅ チェックリスト
+
+実装が完了したら確認してください：
+
+- [ ] Enumクラス3つ（TaskStatus, Priority, ProjectRole）を実装
+- [ ] Entityクラス5つ（User, Project, Task, Comment, Tag）を実装
+- [ ] Mapperインターフェース5つを実装
+- [ ] 各MapperにCRUDメソッドを定義
+- [ ] application.ymlにMyBatis設定を追加
+- [ ] schema.sqlを配置
+
+---
+
+## 🧪 動作確認
+
+### テストコードで確認
+
+`src/test/java/com/example/taskapp/mapper/TaskMapperTest.java`を作成：
+
+```java
+@SpringBootTest
+@MybatisTest
+class TaskMapperTest {
+    
+    @Autowired
+    private TaskMapper taskMapper;
+    
+    @Test
+    void testInsertAndFind() {
+        Task task = new Task();
+        task.setProjectId(1L);
+        task.setTitle("テストタスク");
+        task.setStatus(TaskStatus.TODO);
+        task.setPriority(Priority.HIGH);
+        
+        taskMapper.insert(task);
+        assertThat(task.getId()).isNotNull();
+        
+        Optional<Task> found = taskMapper.findById(task.getId());
+        assertThat(found).isPresent();
+        assertThat(found.get().getTitle()).isEqualTo("テストタスク");
+    }
+}
+```
+
+### アプリケーション起動確認
+
+```bash
+./mvnw spring-boot:run
+```
+
+エラーなく起動すればOKです！
+
+---
+
+## 💡 参考実装例
+
+- `example/STEP_35_enum_example.java` - Enum完全実装
+- `example/STEP_35_entity_example.java` - Entity完全実装  
+- `example/STEP_35_mapper_example.java` - Mapper完全実装
+- `example/STEP_35_test_example.java` - テストコード例
+
+---
+
+## 📚 このステップで学んだこと
+
+- ✅ MyBatis用POJOエンティティの実装
+- ✅ Enumクラスの活用
+- ✅ MyBatis Mapperインターフェースの作成
+- ✅ アノテーションベースのSQL定義
+- ✅ MyBatisの設定方法
+
+---
+
+## 🔄 Gitへのコミット
+
+```bash
+git add .
+git commit -m "Step 35: エンティティとMapper実装完了
+
+- Enum: TaskStatus, Priority, ProjectRole
+- Entity: User, Project, Task, Comment, Tag
+- Mapper: 各エンティティのCRUD操作"
+git push origin main
+```
+
+---
+
+## ➡️ 次のステップ
+
+次は[Step 36: サービスとコントローラー実装](STEP_36.md)へ進みましょう！
+
+---
+
+お疲れさまでした！ 🎉
 - `comments` (List<Comment>) - コメントリスト、OneToMany、CASCADE
 - `tags` (Set<Tag>) - タグセット、ManyToMany
 - `createdAt`, `updatedAt` - 作成・更新日時

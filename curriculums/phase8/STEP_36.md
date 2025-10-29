@@ -2,82 +2,345 @@
 
 ## 🎯 このステップの目標
 
-- **MyBatis Mapper**でデータアクセス層を実装する
+- **MyBatis Mapper XML**で動的SQLを実装する
 - **Service層**でビジネスロジックを実装する
 - **Thymeleafコントローラー**で画面制御を実装する
 - DTOを使ったデータ変換を理解する
 
-**所要時間**: 約3時間
+**所要時間**: 約4時間
+
+> **このステップはあなたが実装します！**
+> 
+> STEP_35で作成したMapperを使って、実際のビジネスロジックと画面を実装してください。
+> `example/STEP_36_*.java`と`example/STEP_36_*.html`に実装例があります。
 
 ---
 
-## 📋 実装要件
+## 📋 実装課題
 
-このステップでは、タスク管理システムのコア機能を**Thymeleaf + MyBatis**で実装します。
+### 課題1: MyBatis XML Mapper（動的SQL）
 
-### 実装の流れ
+複雑な検索クエリをXMLで実装してください。
 
+**TaskMapper.xml** (`src/main/resources/mapper/TaskMapper.xml`)
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.taskapp.mapper.TaskMapper">
+
+    <!-- TODO: 動的検索クエリを実装してください -->
+    <select id="search" resultType="com.example.taskapp.entity.Task">
+        SELECT 
+            t.*,
+            p.name as project_name,
+            u.username as assignee_name
+        FROM tasks t
+        LEFT JOIN projects p ON t.project_id = p.id
+        LEFT JOIN users u ON t.assignee_id = u.id
+        WHERE 1=1
+        <!-- ヒント: <if>タグで条件分岐 -->
+        <!-- 実装してください -->
+    </select>
+
+</mapper>
 ```
-1. Entity定義 (POJOクラス)
-   ↓
-2. MyBatis Mapper作成 (Interface + XML)
-   ↓
-3. Service層実装 (ビジネスロジック)
-   ↓
-4. Thymeleafコントローラー実装 (画面制御)
-   ↓
-5. Thymeleafテンプレート作成 (HTML)
-```
+
+**実装する動的条件**:
+- プロジェクトID指定
+- ステータス指定
+- 優先度指定
+- 担当者ID指定
+- キーワード検索（タイトル・説明）
+- 期限範囲指定
+
+> **💡 ヒント**: `example/STEP_36_TaskMapper.xml`に完全な実装例があります
 
 ---
 
-## 🚀 ステップ1: Entityクラスの実装
+### 課題2: DTOクラスの実装
 
-### 1-1. Task Entity
-
-**ファイルパス**: `src/main/java/com/example/taskapp/entity/Task.java`
+**TaskSearchCriteria.java** (`src/main/java/com/example/taskapp/dto/`)
 
 ```java
-package com.example.taskapp.entity;
+package com.example.taskapp.dto;
 
 import lombok.Data;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Data
-public class Task {
-    private Long id;
+public class TaskSearchCriteria {
     private Long projectId;
-    private String title;
-    private String description;
-    private TaskStatus status;
-    private Priority priority;
+    private String status;
+    private String priority;
     private Long assigneeId;
-    private LocalDate dueDate;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    
-    // MyBatisのJOIN結果用（transient）
-    private String projectName;
-    private String assigneeName;
+    private String keyword;
+    private LocalDate dueDateFrom;
+    private LocalDate dueDateTo;
+    private String sortBy = "createdAt";
+    // TODO: 必要なフィールドを追加
 }
 ```
 
-### 1-2. Enum定義
+**TaskCreateRequest.java**も実装してください（バリデーション付き）。
 
-**TaskStatus.java**:
+> **💡 ヒント**: `example/STEP_36_dto_example.java`に実装例があります
+
+---
+
+### 課題3: Service層の実装
+
+**TaskService.java** (`src/main/java/com/example/taskapp/service/`)
+
 ```java
-package com.example.taskapp.entity.enums;
+package com.example.taskapp.service;
 
-public enum TaskStatus {
-    TODO("未着手"),
-    IN_PROGRESS("進行中"),
-    DONE("完了");
+import com.example.taskapp.entity.Task;
+import com.example.taskapp.mapper.TaskMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class TaskService {
+
+    private final TaskMapper taskMapper;
     
-    private final String displayName;
+    // TODO: 以下のメソッドを実装してください
     
-    TaskStatus(String displayName) {
-        this.displayName = displayName;
+    /**
+     * タスク作成
+     */
+    @Transactional
+    public Task createTask(TaskCreateRequest request) {
+        // 実装してください
+    }
+    
+    /**
+     * タスク取得
+     */
+    public Task getTaskById(Long id) {
+        // 実装してください
+    }
+    
+    /**
+     * タスク検索
+     */
+    public List<Task> searchTasks(TaskSearchCriteria criteria) {
+        // 実装してください
+    }
+    
+    /**
+     * ステータス更新
+     */
+    @Transactional
+    public void updateTaskStatus(Long id, String status) {
+        // 実装してください
+    }
+}
+```
+
+同様に`ProjectService`, `CommentService`も実装してください。
+
+> **💡 ヒント**: 
+> - `@Transactional`で更新系メソッドを管理
+> - 例外処理（ResourceNotFoundException）
+> - `example/STEP_36_service_example.java`に実装例があります
+
+---
+
+### 課題4: Thymeleafコントローラーの実装
+
+**TaskController.java** (`src/main/java/com/example/taskapp/controller/`)
+
+```java
+package com.example.taskapp.controller;
+
+import com.example.taskapp.service.TaskService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+
+@Controller
+@RequestMapping("/tasks")
+@RequiredArgsConstructor
+public class TaskController {
+
+    private final TaskService taskService;
+    
+    // TODO: 以下のメソッドを実装してください
+    
+    /**
+     * タスク一覧画面
+     * GET /tasks
+     */
+    @GetMapping
+    public String listTasks(/* パラメータを追加 */) {
+        // 実装してください
+        return "tasks/list";
+    }
+    
+    /**
+     * タスク詳細画面
+     * GET /tasks/{id}
+     */
+    @GetMapping("/{id}")
+    public String taskDetail(@PathVariable Long id, Model model) {
+        // 実装してください
+        return "tasks/detail";
+    }
+    
+    /**
+     * タスク作成フォーム
+     * GET /tasks/new
+     */
+    @GetMapping("/new")
+    public String newTaskForm(/* パラメータを追加 */) {
+        // 実装してください
+        return "tasks/form";
+    }
+    
+    /**
+     * タスク作成処理
+     * POST /tasks
+     */
+    @PostMapping
+    public String createTask(/* パラメータを追加 */) {
+        // 実装してください
+        return "redirect:/tasks/{id}";
+    }
+}
+```
+
+同様に`ProjectController`, `DashboardController`も実装してください。
+
+> **💡 ヒント**: `example/STEP_36_controller_example.java`に実装例があります
+
+---
+
+### 課題5: Thymeleafテンプレートの実装
+
+**タスク一覧画面** (`src/main/resources/templates/tasks/list.html`)
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>タスク一覧</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>タスク一覧</h1>
+        
+        <!-- TODO: 検索フォームを実装 -->
+        
+        <!-- TODO: タスク一覧を表示 -->
+        <div th:each="task : ${tasks}" class="card mb-3">
+            <!-- 実装してください -->
+        </div>
+    </div>
+</body>
+</html>
+```
+
+以下のテンプレートも実装してください：
+- `tasks/detail.html` - タスク詳細
+- `tasks/form.html` - タスク作成/編集フォーム
+- `tasks/kanban.html` - カンバンボード
+- `projects/list.html` - プロジェクト一覧
+- `dashboard/index.html` - ダッシュボード
+
+> **💡 ヒント**: `example/STEP_36_templates/`に実装例があります
+
+---
+
+## ✅ チェックリスト
+
+- [ ] TaskMapper.xmlで動的SQLを実装
+- [ ] DTOクラス（Request, Criteria）を実装
+- [ ] Service層（TaskService等）を実装
+- [ ] Controller層（TaskController等）を実装
+- [ ] Thymeleafテンプレート（6画面以上）を実装
+- [ ] バリデーション（@Valid, @NotBlank等）を追加
+- [ ] 例外ハンドリング（@ExceptionHandler）を実装
+
+---
+
+## 🧪 動作確認
+
+### 1. アプリケーション起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 2. ブラウザでアクセス
+
+```
+http://localhost:8080/dashboard
+```
+
+### 3. 動作確認項目
+
+- [ ] ログイン画面が表示される
+- [ ] ダッシュボードが表示される
+- [ ] プロジェクト作成ができる
+- [ ] タスク作成ができる
+- [ ] タスク検索ができる
+- [ ] カンバンボードでドラッグ&ドロップできる
+
+---
+
+## 💡 参考実装例
+
+- `example/STEP_36_TaskMapper.xml` - 動的SQL完全実装
+- `example/STEP_36_dto_example.java` - DTO実装例
+- `example/STEP_36_service_example.java` - Service実装例
+- `example/STEP_36_controller_example.java` - Controller実装例
+- `example/STEP_36_templates/` - Thymeleafテンプレート集
+
+---
+
+## 📚 このステップで学んだこと
+
+- ✅ MyBatis動的SQLの実践的な使い方
+- ✅ Service層でのビジネスロジック実装
+- ✅ Thymeleafコントローラーのパターン
+- ✅ DTOを使ったデータ変換
+- ✅ バリデーションと例外ハンドリング
+
+---
+
+## 🔄 Gitへのコミット
+
+```bash
+git add .
+git commit -m "Step 36: サービスとコントローラー実装完了
+
+- MyBatis動的SQL（TaskMapper.xml等）
+- Service層（TaskService, ProjectService等）
+- Controller層（Thymeleaf）
+- テンプレート（6画面）"
+git push origin main
+```
+
+---
+
+## ➡️ 次のステップ
+
+次は[Step 37: 高度な機能実装](STEP_37.md)へ進みましょう！
+
+---
+
+お疲れさまでした！ 🎉
     }
     
     public String getDisplayName() {
