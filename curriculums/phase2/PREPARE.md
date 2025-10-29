@@ -2,8 +2,8 @@
 
 ## 🎯 この準備の目標
 
-Phase 2では、データベース（H2、MySQL）を使ったアプリケーション開発を学びます。
-特にStep 12でMySQLに切り替える際に、Dockerを使用します。
+Phase 2では、データベース（MySQL）を使ったアプリケーション開発を学びます。
+DockerでMySQLやPostgreSQLを起動して、Spring BootアプリケーションからDB接続を行います。
 
 このガイドでは、以下の環境をセットアップします：
 
@@ -489,10 +489,9 @@ Phase 2を始める前に、以下を確認してください：
 
 Docker環境の準備が整ったら、Phase 2のStep 6へ進みましょう！
 
-[Step 6: H2データベース導入](STEP_6.md)
+[Step 6: MySQL環境構築](STEP_6.md)
 
-まずはインメモリデータベース（H2）から始めて、
-データベースの基本を学んでから、Step 12でMySQLに切り替えます。
+Docker ComposeでMySQLを起動して、Spring BootからDB接続する方法を学びます。
 
 ---
 

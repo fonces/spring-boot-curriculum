@@ -14,10 +14,10 @@
 
 ## 📋 事前準備
 
-- Step 6で構築したH2データベース環境
-- `spring-boot-starter-data-jpa`と`h2`の依存関係が追加済み
+- Step 6で構築したMySQLデータベース環境
+- `spring-boot-starter-data-jpa`と`mysql-connector-j`の依存関係が追加済み
 
-**Step 6をまだ完了していない場合**: [Step 6: H2データベース導入](STEP_6.md)を先に進めてください。
+**Step 6をまだ完了していない場合**: [Step 6: MySQL環境構築](STEP_6.md)を先に進めてください。
 
 ---
 
@@ -30,7 +30,7 @@
 **特徴**:
 - ✅ SQLを書かなくてもデータベース操作ができる
 - ✅ オブジェクト指向でデータを扱える（ORM）
-- ✅ データベースの種類を問わない（H2、MySQL、PostgreSQL等）
+- ✅ データベースの種類を問わない（MySQL、PostgreSQL等）
 
 ### ORM (Object-Relational Mapping)
 
@@ -156,10 +156,20 @@ Hibernate:
 
 **これで自動的にテーブルが作成されました！**
 
-H2 Consoleで確認：
-1. http://localhost:8080/h2-console にアクセス
-2. 左側のテーブル一覧に「USERS」が表示される
-3. クリックすると構造を確認できる
+**データベースの確認方法：**
+
+**DBeaver（プロフェッショナルなDBビューアー）**
+- 無料で多機能なデータベース管理ツール
+- [https://dbeaver.io/](https://dbeaver.io/)
+- MySQL、PostgreSQLなど多数のデータベースに対応
+- 接続情報: Host `localhost`, Port `3306`, Database `hellospringboot`, User `dbuser`, Password `dbpassword`
+
+**MySQL CLI**
+```bash
+docker exec -it spring-boot-mysql mysql -udbuser -pdbpassword hellospringboot
+```
+
+> **💡 ヒント**: 実務ではDBeaverなどの専用ツールを使うことが多いです
 
 ---
 
@@ -460,11 +470,12 @@ Hibernate:
         users u1_0
 ```
 
-### 5-5. H2 Consoleで確認
+### 5-5. データベースで確認
 
-1. http://localhost:8080/h2-console にアクセス
-2. ログイン
-3. 以下のSQLを実行：
+**DBeaverまたはMySQL CLIで確認:**
+
+1. ツールにアクセス/接続
+2. 以下のSQLを実行：
 
 ```sql
 SELECT * FROM users;
@@ -476,17 +487,16 @@ SELECT * FROM users;
 
 ## 🎨 データの永続性を確認
 
-### 実験: アプリケーションを再起動
+### 実験: データの永続化確認
 
 1. アプリケーションを**停止**
 2. 再度**起動**
 3. `curl http://localhost:8080/api/users`を実行
 
-**結果**: データが消えています（`[]`が返る）
+**結果**: データが残っています！
 
-**理由**: H2のインメモリモード（`jdbc:h2:mem:testdb`）を使用しているため
+**理由**: MySQLはディスクにデータを保存するため、再起動してもデータが永続化されます。
 
-**Step 12でMySQLに切り替えると、データは永続化されます。**
 
 ---
 
@@ -675,7 +685,7 @@ Service層（UserService）
     ↓ ビジネスロジックを実行
 Repository層（UserRepository）
     ↓ データベースアクセス
-Database（H2 / MySQL）
+Database（MySQL）
 ```
 
 ### メリット
