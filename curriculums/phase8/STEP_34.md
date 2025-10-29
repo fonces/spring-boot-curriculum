@@ -3,10 +3,63 @@
 ## 🎯 このステップの目標
 
 - タスク管理システムの要件を定義する
-- ER図とAPI設計を元に開発する
+- ER図とデータベース設計を元に開発する
 - プロジェクト構造を整理する
+- **ThymeleafとMyBatisを使った実装方針を決定する**
 
 **所要時間**: 約1時間30分
+
+---
+
+## 💡 このプロジェクトの技術選択
+
+Phase 8の最終プロジェクトでは、**Thymeleaf + MyBatis**の組み合わせで実装します。
+
+### なぜThymeleaf + MyBatisなのか？
+
+| 技術 | 選択理由 | 学習効果 |
+|------|---------|---------|
+| **Thymeleaf** | サーバーサイドレンダリング、Spring Boot統合 | フルスタック開発を1つのプロジェクトで完結 |
+| **MyBatis** | 複雑なクエリ、動的SQL、パフォーマンス最適化 | Phase 3で学んだ知識を実践で活用 |
+
+### Phase 3-5の復習
+
+- **Phase 3**: MyBatisの基礎（STEP_12-14）
+- **Phase 4**: レイヤードアーキテクチャ（STEP_15）でJPA/MyBatisの使い分けを学習
+- **Phase 5**: Thymeleafの基礎（STEP_21-24）
+
+### このプロジェクトでの実装方針
+
+```
+┌─────────────────────────────────────────┐
+│        フロントエンド層                  │
+│   Thymeleaf + Bootstrap 5               │
+│   (templates/*.html)                    │
+└─────────────────────────────────────────┘
+                  ↓↑
+┌─────────────────────────────────────────┐
+│        コントローラー層                  │
+│   @Controller (Web)                     │
+│   Model, RedirectAttributes             │
+└─────────────────────────────────────────┘
+                  ↓↑
+┌─────────────────────────────────────────┐
+│        サービス層                        │
+│   @Service                              │
+│   ビジネスロジック、トランザクション管理   │
+└─────────────────────────────────────────┘
+                  ↓↑
+┌─────────────────────────────────────────┐
+│        データアクセス層                  │
+│   MyBatis Mapper (@Mapper)              │
+│   XML/Annotationベースの動的SQL          │
+└─────────────────────────────────────────┘
+                  ↓↑
+┌─────────────────────────────────────────┐
+│        データベース                      │
+│   MySQL                                 │
+└─────────────────────────────────────────┘
+```
 
 ---
 
@@ -401,7 +454,365 @@ Phase 8の最終プロジェクトでは、以下のアプローチを推奨し�
 
 ---
 
-## 🎨 チャレンジ課題
+## � 画面設計（Thymeleaf）
+
+### 画面一覧
+
+| URL | 説明 | 主な機能 |
+|-----|------|---------|
+| `/login` | ログイン画面 | ユーザー認証 |
+| `/register` | ユーザー登録画面 | 新規ユーザー登録 |
+| `/dashboard` | ダッシュボード | 統計情報、期限間近のタスク表示 |
+| `/projects` | プロジェクト一覧 | プロジェクト一覧表示、新規作成 |
+| `/projects/{id}` | プロジェクト詳細 | タスクボード（カンバン形式）、タスク作成 |
+| `/projects/{id}/settings` | プロジェクト設定 | メンバー管理、プロジェクト編集 |
+| `/tasks/{id}` | タスク詳細 | タスク編集、コメント追加、ファイル添付 |
+| `/tasks/search` | タスク検索 | 条件検索、フィルタリング |
+| `/profile` | プロフィール | ユーザー情報編集 |
+
+### 主要画面のワイヤーフレーム
+
+#### ダッシュボード
+```
+┌────────────────────────────────────────────┐
+│ 📋 タスク管理システム    👤 ユーザー名 [ログアウト] │
+├────────────────────────────────────────────┤
+│ ナビゲーション: [ダッシュボード] [プロジェクト] [タスク] │
+├────────────────────────────────────────────┤
+│                                            │
+│  ⚠️ 期限切れタスク: 3件                      │
+│  📅 今日が期限のタスク: 2件                   │
+│                                            │
+│  ┌─────────────┐ ┌─────────────┐          │
+│  │プロジェクトA  │ │プロジェクトB  │          │
+│  │進捗率: 75%   │ │進捗率: 30%   │          │
+│  │[詳細を見る]  │ │[詳細を見る]  │          │
+│  └─────────────┘ └─────────────┘          │
+│                                            │
+│  📊 ステータス別タスク数（グラフ）              │
+│                                            │
+└────────────────────────────────────────────┘
+```
+
+#### プロジェクト詳細（カンバンボード）
+```
+┌────────────────────────────────────────────┐
+│ ← プロジェクト: Webサイトリニューアル          │
+│ [➕ 新規タスク] [⚙️ 設定]                    │
+├────────────────────────────────────────────┤
+│ TODO         │ 進行中        │ 完了         │
+│┌───────────┐ │┌───────────┐ │┌───────────┐│
+││タスク1     │ ││タスク4     │ ││タスク7     ││
+││🔴HIGH     │ ││🟡MEDIUM   │ ││🟢LOW      ││
+││📅 12/31   │ ││📅 12/25   │ ││✅ 完了     ││
+│└───────────┘ │└───────────┘ │└───────────┘│
+│┌───────────┐ │┌───────────┐ │              │
+││タスク2     │ ││タスク5     │ │              │
+││🟡MEDIUM   │ ││🔴HIGH     │ │              │
+│└───────────┘ │└───────────┘ │              │
+└────────────────────────────────────────────┘
+```
+
+---
+
+## 🗄️ データベース設計（MyBatis）
+
+### テーブル定義
+
+**users テーブル**:
+```sql
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'USER',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+**projects テーブル**:
+```sql
+CREATE TABLE projects (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    owner_id BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+**tasks テーブル**:
+```sql
+CREATE TABLE tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'TODO',
+    priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    assignee_id BIGINT,
+    due_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_project_status (project_id, status),
+    INDEX idx_assignee_status (assignee_id, status),
+    INDEX idx_due_date (due_date)
+);
+```
+
+**comments テーブル**:
+```sql
+CREATE TABLE comments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+**tags テーブル**:
+```sql
+CREATE TABLE tags (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    color VARCHAR(7) DEFAULT '#6c757d'
+);
+```
+
+**task_tags テーブル**（多対多の中間テーブル）:
+```sql
+CREATE TABLE task_tags (
+    task_id BIGINT NOT NULL,
+    tag_id BIGINT NOT NULL,
+    PRIMARY KEY (task_id, tag_id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+```
+
+**project_members テーブル**:
+```sql
+CREATE TABLE project_members (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_project_user (project_id, user_id)
+);
+```
+
+---
+
+## 📁 プロジェクト構造（Thymeleaf + MyBatis）
+
+```
+src/main/java/com/example/taskapp/
+├── config/
+│   ├── SecurityConfig.java
+│   ├── ThymeleafConfig.java
+│   └── MyBatisConfig.java
+├── controller/
+│   ├── web/                      ← Thymeleafコントローラー
+│   │   ├── DashboardController.java
+│   │   ├── ProjectWebController.java
+│   │   ├── TaskWebController.java
+│   │   └── AuthController.java
+│   └── (api/)                    ← オプション: REST API
+├── dto/
+│   ├── request/
+│   │   ├── ProjectCreateRequest.java
+│   │   ├── TaskCreateRequest.java
+│   │   └── CommentCreateRequest.java
+│   └── response/
+│       ├── ProjectResponse.java
+│       ├── TaskResponse.java
+│       └── TaskStatistics.java
+├── entity/
+│   ├── User.java
+│   ├── Project.java
+│   ├── Task.java
+│   ├── Comment.java
+│   ├── Tag.java
+│   └── enums/
+│       ├── TaskStatus.java
+│       └── Priority.java
+├── mapper/                       ← MyBatis Mapper
+│   ├── UserMapper.java
+│   ├── ProjectMapper.java
+│   ├── TaskMapper.java
+│   ├── CommentMapper.java
+│   └── TagMapper.java
+├── service/
+│   ├── UserService.java
+│   ├── ProjectService.java
+│   ├── TaskService.java
+│   ├── CommentService.java
+│   └── NotificationService.java
+├── security/
+│   ├── CustomUserDetailsService.java
+│   └── SecurityUtils.java
+└── exception/
+    ├── ResourceNotFoundException.java
+    └── GlobalExceptionHandler.java
+
+src/main/resources/
+├── application.yml
+├── mapper/                       ← MyBatis XML Mapper
+│   ├── UserMapper.xml
+│   ├── ProjectMapper.xml
+│   ├── TaskMapper.xml
+│   ├── CommentMapper.xml
+│   └── TagMapper.xml
+├── templates/                    ← Thymeleafテンプレート
+│   ├── layout/
+│   │   ├── main.html            ← 共通レイアウト
+│   │   └── fragments.html       ← 共通パーツ
+│   ├── auth/
+│   │   ├── login.html
+│   │   └── register.html
+│   ├── dashboard/
+│   │   └── index.html
+│   ├── projects/
+│   │   ├── list.html
+│   │   ├── detail.html
+│   │   ├── form.html
+│   │   └── settings.html
+│   ├── tasks/
+│   │   ├── detail.html
+│   │   ├── search.html
+│   │   └── components/
+│   │       └── task-card.html
+│   └── error/
+│       ├── 404.html
+│       └── 500.html
+└── static/
+    ├── css/
+    │   └── custom.css
+    ├── js/
+    │   └── app.js
+    └── images/
+```
+
+---
+
+## 💡 補足: Data Access層の技術選択
+
+Phase 3でMyBatisを、Phase 2でJPAを学習してきました。最終プロジェクトでは、**MyBatisを中心に使う**ことで、Phase 3の知識を実践で活用します。
+
+### MyBatisを選ぶ理由（このプロジェクト）
+
+| 機能 | MyBatisが適している理由 |
+|------|----------------------|
+| **タスク検索** | 複雑な条件検索、動的WHERE句が必要 |
+| **ダッシュボード集計** | 複数テーブルのJOIN、GROUP BY、集計関数 |
+| **パフォーマンス最適化** | 必要なカラムだけをSELECT、N+1問題の回避 |
+| **柔軟なクエリ** | プロジェクトごとのタスク統計、期限切れタスクの抽出など |
+
+### MyBatis実装の例
+
+**TaskMapper.java**:
+```java
+@Mapper
+public interface TaskMapper {
+    
+    // 基本CRUD
+    void insert(Task task);
+    Task findById(Long id);
+    List<Task> findAll();
+    void update(Task task);
+    void deleteById(Long id);
+    
+    // 複雑な検索（動的SQL）
+    List<Task> search(@Param("criteria") TaskSearchCriteria criteria);
+    
+    // 統計
+    TaskStatistics getProjectStatistics(@Param("projectId") Long projectId);
+    
+    // プロジェクトのタスク取得（JOIN）
+    List<Task> findByProjectIdWithDetails(@Param("projectId") Long projectId);
+    
+    // 期限切れタスク
+    List<Task> findOverdueTasks(@Param("userId") Long userId);
+}
+```
+
+**TaskMapper.xml** （動的SQL例）:
+```xml
+<select id="search" resultMap="TaskResultMap">
+    SELECT 
+        t.*, 
+        u.username as assignee_name,
+        p.name as project_name
+    FROM tasks t
+    LEFT JOIN users u ON t.assignee_id = u.id
+    LEFT JOIN projects p ON t.project_id = p.id
+    WHERE 1=1
+    <if test="criteria.projectId != null">
+        AND t.project_id = #{criteria.projectId}
+    </if>
+    <if test="criteria.status != null">
+        AND t.status = #{criteria.status}
+    </if>
+    <if test="criteria.priority != null">
+        AND t.priority = #{criteria.priority}
+    </if>
+    <if test="criteria.assigneeId != null">
+        AND t.assignee_id = #{criteria.assigneeId}
+    </if>
+    <if test="criteria.keyword != null and criteria.keyword != ''">
+        AND (t.title LIKE CONCAT('%', #{criteria.keyword}, '%')
+             OR t.description LIKE CONCAT('%', #{criteria.keyword}, '%'))
+    </if>
+    <if test="criteria.dueDateFrom != null">
+        AND t.due_date &gt;= #{criteria.dueDateFrom}
+    </if>
+    <if test="criteria.dueDateTo != null">
+        AND t.due_date &lt;= #{criteria.dueDateTo}
+    </if>
+    ORDER BY 
+    <choose>
+        <when test="criteria.sortBy == 'priority'">t.priority DESC, t.created_at DESC</when>
+        <when test="criteria.sortBy == 'dueDate'">t.due_date ASC NULLS LAST</when>
+        <when test="criteria.sortBy == 'status'">t.status ASC, t.created_at DESC</when>
+        <otherwise>t.created_at DESC</otherwise>
+    </choose>
+    LIMIT #{criteria.limit} OFFSET #{criteria.offset}
+</select>
+```
+
+### JPAとの比較
+
+| 観点 | MyBatis（このプロジェクト） | JPA |
+|------|---------------------------|-----|
+| **CRUD操作** | アノテーションで簡潔 | 自動生成で簡単 |
+| **複雑な検索** | XMLで柔軟に記述 ✅ | JPQLやSpecificationが煩雑 |
+| **動的クエリ** | `<if>`, `<choose>`で自然 ✅ | Criteria APIが複雑 |
+| **パフォーマンス** | 必要なカラムのみSELECT ✅ | N+1問題に注意が必要 |
+| **学習コスト** | SQLがわかれば使える ✅ | JPAの概念理解が必要 |
+
+> **💡 このプロジェクトの方針**: 
+> - **基本CRUD**: MyBatisアノテーション（`@Select`, `@Insert`等）
+> - **複雑な検索・集計**: MyBatis XML（動的SQL活用）
+> - **トランザクション**: `@Transactional`でSpring管理
+> 
+> Phase 3で学んだMyBatisの知識を最大限に活用し、実務で使える実装パターンを身につけます！
+
+---
+
+## �🎨 チャレンジ課題
 
 ### チャレンジ 1: ワイヤーフレーム
 

@@ -266,17 +266,135 @@ Scheduledメソッドを一時的にpublicにして、別のエンドポイン�
 
 ---
 
-## 💡 補足: Thymeleafでのダッシュボード実装
+## 💡 統計機能のMyBatis実装
 
-Phase 5でThymeleafを学習した場合、ダッシュボード画面もThymeleafで実装できます。
+Phase 3で学習したMyBatisを活用して、効率的な統計クエリを実装します。
 
-### Thymeleafダッシュボードコントローラー
+### MyBatis統計Mapper
+
+**ファイルパス**: `src/main/java/com/example/taskapp/mapper/StatisticsMapper.java`
+
+```java
+package com.example.taskapp.mapper;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import java.util.Map;
+
+@Mapper
+public interface StatisticsMapper {
+    
+    /**
+     * プロジェクト統計取得
+     */
+    @Select("""
+        SELECT 
+            COUNT(*) as total_tasks,
+            SUM(CASE WHEN status = 'TODO' THEN 1 ELSE 0 END) as todo_tasks,
+            SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as in_progress_tasks,
+            SUM(CASE WHEN status = 'DONE' THEN 1 ELSE 0 END) as done_tasks,
+            SUM(CASE WHEN priority = 'HIGH' THEN 1 ELSE 0 END) as high_priority,
+            SUM(CASE WHEN priority = 'MEDIUM' THEN 1 ELSE 0 END) as medium_priority,
+            SUM(CASE WHEN priority = 'LOW' THEN 1 ELSE 0 END) as low_priority,
+            SUM(CASE WHEN due_date < CURDATE() AND status != 'DONE' THEN 1 ELSE 0 END) as overdue_tasks
+        FROM tasks
+        WHERE project_id = #{projectId}
+    """)
+    Map<String, Long> getProjectStatistics(@Param("projectId") Long projectId);
+    
+    /**
+     * ユーザーの全プロジェクト統計
+     */
+    @Select("""
+        SELECT 
+            p.id as project_id,
+            p.name as project_name,
+            COUNT(t.id) as total_tasks,
+            SUM(CASE WHEN t.status = 'DONE' THEN 1 ELSE 0 END) as done_tasks
+        FROM projects p
+        LEFT JOIN tasks t ON p.id = t.project_id
+        WHERE p.owner_id = #{userId} OR p.id IN (
+            SELECT project_id FROM project_members WHERE user_id = #{userId}
+        )
+        GROUP BY p.id, p.name
+    """)
+    List<Map<String, Object>> getUserProjectsStatistics(@Param("userId") Long userId);
+    
+    /**
+     * 期限切れタスク数（ユーザー別）
+     */
+    @Select("""
+        SELECT COUNT(*) 
+        FROM tasks t
+        JOIN projects p ON t.project_id = p.id
+        WHERE t.due_date < CURDATE()
+          AND t.status != 'DONE'
+          AND (t.assignee_id = #{userId} OR p.owner_id = #{userId})
+    """)
+    long getOverdueTasksCount(@Param("userId") Long userId);
+}
+```
+
+### StatisticsService（MyBatis版）
+
+```java
+package com.example.taskapp.service;
+
+import com.example.taskapp.mapper.StatisticsMapper;
+import com.example.taskapp.dto.ProjectStatisticsResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class StatisticsService {
+
+    private final StatisticsMapper statisticsMapper;
+
+    /**
+     * プロジェクト統計取得（キャッシュ有効）
+     */
+    @Cacheable(value = "statistics", key = "'project-' + #projectId")
+    public ProjectStatisticsResponse getProjectStatistics(Long projectId) {
+        Map<String, Long> stats = statisticsMapper.getProjectStatistics(projectId);
+        
+        long totalTasks = stats.get("total_tasks");
+        long doneTasks = stats.get("done_tasks");
+        
+        double completionRate = totalTasks > 0 ? (doneTasks * 100.0 / totalTasks) : 0.0;
+        
+        ProjectStatisticsResponse response = new ProjectStatisticsResponse();
+        response.setProjectId(projectId);
+        response.setTotalTasks(totalTasks);
+        response.setTodoTasks(stats.get("todo_tasks"));
+        response.setInProgressTasks(stats.get("in_progress_tasks"));
+        response.setDoneTasks(doneTasks);
+        response.setCompletionRate(Math.round(completionRate * 10.0) / 10.0);
+        response.setHighPriority(stats.get("high_priority"));
+        response.setMediumPriority(stats.get("medium_priority"));
+        response.setLowPriority(stats.get("low_priority"));
+        response.setOverdueTasks(stats.get("overdue_tasks"));
+        
+        return response;
+    }
+}
+```
+
+### DashboardController（Thymeleaf + MyBatis）
 
 ```java
 @Controller
 @RequestMapping("/dashboard")
 @RequiredArgsConstructor
-public class DashboardWebController {
+public class DashboardController {
 
     private final StatisticsService statisticsService;
     private final ProjectService projectService;
@@ -288,9 +406,10 @@ public class DashboardWebController {
     @GetMapping
     public String dashboard(Model model, Authentication authentication) {
         String username = authentication.getName();
+        Long userId = userService.getUserIdByUsername(username);
         
         // ユーザーのプロジェクト一覧取得
-        List<ProjectResponse> projects = projectService.getUserProjects(username);
+        List<Project> projects = projectService.getUserProjects(username);
         
         // 各プロジェクトの統計情報取得
         List<ProjectStatisticsResponse> statistics = projects.stream()
@@ -298,38 +417,18 @@ public class DashboardWebController {
                 .toList();
         
         // 期限切れタスク取得
-        List<TaskResponse> overdueTasks = taskService.getOverdueTasks(username);
-        
-        // 今日が期限のタスク取得
-        List<TaskResponse> todayTasks = taskService.getTasksDueToday(username);
+        List<Task> overdueTasks = taskService.getOverdueTasks(userId);
         
         model.addAttribute("projects", projects);
         model.addAttribute("statistics", statistics);
         model.addAttribute("overdueTasks", overdueTasks);
-        model.addAttribute("todayTasks", todayTasks);
         
         return "dashboard/index";
-    }
-
-    /**
-     * プロジェクト詳細ダッシュボード
-     */
-    @GetMapping("/projects/{id}")
-    public String projectDashboard(@PathVariable Long id, Model model) {
-        ProjectResponse project = projectService.getProjectById(id);
-        ProjectStatisticsResponse statistics = statisticsService.getProjectStatistics(id);
-        List<TaskResponse> recentTasks = taskService.getRecentTasks(id, 10);
-        
-        model.addAttribute("project", project);
-        model.addAttribute("statistics", statistics);
-        model.addAttribute("recentTasks", recentTasks);
-        
-        return "dashboard/project-detail";
     }
 }
 ```
 
-### ダッシュボードテンプレート
+### ダッシュボードテンプレート（Chart.js統合）
 
 **ファイルパス**: `templates/dashboard/index.html`
 
