@@ -584,13 +584,15 @@ void testValidEmail(String email) {
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash
 git add .
 git commit -m "Step 27: ユニットテスト完了"
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 

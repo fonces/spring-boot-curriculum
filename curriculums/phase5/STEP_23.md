@@ -616,6 +616,19 @@ http://localhost:8080/users
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、Thymeleafレイアウトについて学びました：
+
+- ✅ Thymeleaf Layout Dialectの導入と設定
+- ✅ layout:decorator（またはlayout:decorate）で共通レイアウト適用
+- ✅ layout:fragmentで部分テンプレートを定義
+- ✅ th:replaceとth:insertでフラグメント挿入
+- ✅ 共通ヘッダー・フッター・ナビゲーションの作成
+- ✅ スタイルシート（CSS）と静的リソースの配置
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

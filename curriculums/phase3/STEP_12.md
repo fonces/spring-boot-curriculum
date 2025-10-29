@@ -513,6 +513,19 @@ curl -X DELETE http://localhost:8080/api/products/3
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、MyBatis基礎について学びました：
+
+- ✅ MyBatisとは何か、JPAとの違いを理解
+- ✅ MyBatisの依存関係追加とセットアップ
+- ✅ @Mapperアノテーションでマッパーインターフェース作成
+- ✅ @Select, @Insert, @Update, @Deleteアノテーションの基本
+- ✅ アノテーションベースとXMLベースの比較
+- ✅ MyBatis設定（mybatis.configuration）のカスタマイズ
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

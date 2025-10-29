@@ -969,6 +969,19 @@ List<Article> articles = articleRepository.findAll();
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、JPAとMyBatisの併用について学びました：
+
+- ✅ JPAとMyBatisの使い分け基準
+- ✅ JPAに適した場合（CRUD、シンプルな操作）
+- ✅ MyBatisに適した場合（複雑なクエリ、集計、JOIN）
+- ✅ 同一プロジェクトでのJPAとMyBatis共存設定
+- ✅ トランザクション管理の統一（@Transactional）
+- ✅ エンティティとDTOの使い分け
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

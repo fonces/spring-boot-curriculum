@@ -590,7 +590,7 @@ server:
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録しましょう：
 
@@ -599,6 +599,8 @@ git add .
 git commit -m "Step 25: Spring Securityの基礎完了"
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 

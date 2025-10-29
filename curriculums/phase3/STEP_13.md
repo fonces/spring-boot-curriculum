@@ -765,6 +765,19 @@ List<Product> products = productMapper.findWithCategory();
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、MyBatis動的SQLについて学びました：
+
+- ✅ XMLベースのマッパーファイルの作成
+- ✅ <if>, <where>, <set>タグで条件分岐
+- ✅ <foreach>タグで繰り返し処理（IN句など）
+- ✅ <choose><when><otherwise>で複数条件分岐
+- ✅ ResultMapを使った複雑なマッピング
+- ✅ 動的SQLでの検索条件の柔軟な組み立て
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

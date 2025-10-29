@@ -859,13 +859,15 @@ jwt.secret=secret
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash
 git add .
 git commit -m "Step 26: JWTトークン認証完了"
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 

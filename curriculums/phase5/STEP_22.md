@@ -666,6 +666,19 @@ private LocalDate birthDate;
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、Thymeleafフォーム連携について学びました：
+
+- ✅ th:objectとth:fieldでフォームオブジェクトをバインド
+- ✅ Jakarta Validation（@Valid）とThymeleafの連携
+- ✅ バリデーションエラーメッセージの表示（th:errors）
+- ✅ PRG（Post-Redirect-Get）パターンの実装
+- ✅ RedirectAttributesでフラッシュメッセージを渡す
+- ✅ CRUD操作のフォーム実装パターン
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

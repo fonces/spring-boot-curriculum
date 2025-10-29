@@ -637,6 +637,19 @@ src/main/resources/templates/users/list.html  ← Thymeleaf用（正解）
 
 ---
 
+## 📚 このステップで学んだこと
+
+このステップでは、Thymeleaf基礎について学びました：
+
+- ✅ Thymeleafの基本概念とSpring Bootでの統合
+- ✅ Thymeleafのテンプレート構文（th:text, th:attr等）
+- ✅ Controllerから@Modelでデータをビューに渡す
+- ✅ テンプレートファイルの配置場所（resources/templates）
+- ✅ 条件分岐（th:if）と繰り返し（th:each）
+- ✅ フォームとの連携（th:action, th:field）
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

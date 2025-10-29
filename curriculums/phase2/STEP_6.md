@@ -579,3 +579,52 @@ docker-compose logs mysql
 - [Spring Data JPA - Reference Documentation](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/)
 - [MySQL Docker Hub](https://hub.docker.com/_/mysql)
 - [Hibernate ORM Documentation](https://hibernate.org/orm/documentation/)
+
+---
+
+## 📚 このステップで学んだこと
+
+このステップでは、Spring BootアプリケーションからMySQLデータベースへの接続方法を学びました：
+
+- ✅ DockerでMySQLコンテナを起動する方法
+- ✅ Spring Bootの依存関係にMySQL DriverとJPAを追加
+- ✅ application.ymlでデータベース接続情報を設定
+- ✅ spring.jpa.hibernate.ddl-autoでテーブル自動生成
+- ✅ エンティティクラスの作成とテーブルマッピング
+- ✅ データベースツール（IntelliJ Database Tool）での接続確認
+- ✅ Dockerコンテナの基本操作（起動・停止・削除）
+
+**重要ポイント**:
+- `spring.jpa.hibernate.ddl-auto=update`: 開発環境用。本番環境では`none`または`validate`を使用
+- パスワードなどの機密情報は環境変数や外部設定ファイルで管理する
+- Dockerコンテナは`docker-compose`で管理すると便利
+
+---
+
+## 🔄 Gitへのコミットとレビュー依頼
+
+進捗を記録してレビューを受けましょう：
+
+```bash
+git add .
+git commit -m "Step 6: MySQLデータベース接続完了
+
+- DockerでMySQLコンテナをセットアップ
+- Spring BootアプリケーションからMySQLへ接続
+- テストエンティティで接続確認
+"
+git push origin main
+```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+
+---
+
+## ➡️ 次のステップ
+
+MySQL接続ができたので、次は [Step 7: JPAでCRUD操作](STEP_7.md) で実際にデータの登録・取得・更新・削除を学びましょう！
+
+JPAのRepositoryパターンを使って、シンプルにデータベース操作を行います。
+
+---
+

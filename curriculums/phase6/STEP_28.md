@@ -379,13 +379,15 @@ REST Assuredライブラリを使ったテストを書いてください。
 
 ---
 
-## 🔄 Gitへのコミット
+## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash
 git add .
 git commit -m "Step 28: 統合テスト完了"
 git push origin main
 ```
+
+コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
