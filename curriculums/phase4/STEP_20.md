@@ -733,6 +733,8 @@ git push origin main
 
 Phase 4お疲れさまでした！次は**Phase 5: Thymeleafでサーバーサイドレンダリング**に進みます。
 
+[Step 21: Thymeleafの基礎](../phase5/STEP_21.md)で、サーバーサイドレンダリングの基本を学びます。
+
 Phase 5では以下を学びます：
 - Thymeleafテンプレートエンジンの基礎
 - フォーム送信とバリデーション
