@@ -7,7 +7,7 @@
 - Service層とRepository層のテストを書く
 - テストカバレッジを意識する
 
-**所要時間**: 約2時間
+**所要時間**: 約1時間30分
 
 ---
 
@@ -584,7 +584,172 @@ void testValidEmail(String email) {
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## � トラブルシューティング
+
+### エラー1: "NoSuchBeanDefinitionException"
+
+```
+org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'UserRepository' available
+```
+
+**原因**: テストクラスで`@ExtendWith(MockitoExtension.class)`を使っているのに、モックを作成していない
+
+**解決策**:
+
+```java
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+    
+    @Mock  // ← これが必要
+    private UserRepository userRepository;
+    
+    @InjectMocks
+    private UserService userService;
+}
+```
+
+---
+
+### エラー2: "NullPointerException in test"
+
+```
+java.lang.NullPointerException: Cannot invoke "UserRepository.findById()" because "this.userRepository" is null
+```
+
+**原因**: `@InjectMocks`アノテーションをつけ忘れている
+
+**解決策**:
+
+```java
+@Mock
+private UserRepository userRepository;
+
+@InjectMocks  // ← これが必要
+private UserService userService;
+```
+
+---
+
+### エラー3: テストで期待した値が返ってこない
+
+```java
+@Test
+void testFindById() {
+    when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+    
+    User result = userService.findById(2L);  // ← 違うIDで呼び出している
+    
+    assertThat(result).isNotNull();  // ← テスト失敗
+}
+```
+
+**原因**: モックの設定と実際の呼び出しで引数が異なる
+
+**解決策**:
+
+```java
+@Test
+void testFindById() {
+    when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+    
+    User result = userService.findById(1L);  // ← 同じIDで呼び出す
+    
+    assertThat(result).isNotNull();
+}
+```
+
+---
+
+### エラー4: "UnnecessaryStubbingException"
+
+```
+org.mockito.exceptions.misusing.UnnecessaryStubbingException: Unnecessary stubbings detected.
+```
+
+**原因**: モックの設定をしたのに、テスト内でそのメソッドを呼び出していない
+
+**解決策**:
+
+```java
+@Test
+void testCreateUser() {
+    // when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));  // ← 使わないモックは削除
+    
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    
+    User result = userService.createUser(testUser);
+    assertThat(result).isNotNull();
+}
+```
+
+または、Mockitoの厳格性を下げる：
+
+```java
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)  // ← 追加
+class UserServiceTest {
+    // ...
+}
+```
+
+---
+
+### エラー5: "Wanted but not invoked" エラー
+
+```
+Wanted but not invoked:
+userRepository.save(<any>);
+```
+
+**原因**: `verify()`でメソッド呼び出しを検証しているが、実際には呼ばれていない
+
+**解決策**:
+
+```java
+@Test
+void testCreateUser() {
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    
+    userService.createUser(testUser);  // ← このメソッド内でsave()が呼ばれることを確認
+    
+    verify(userRepository).save(any(User.class));  // ← 検証
+}
+```
+
+デバッグ時は`verifyNoMoreInteractions()`で予期しない呼び出しを検出：
+
+```java
+verify(userRepository).save(any(User.class));
+verifyNoMoreInteractions(userRepository);  // ← 他のメソッドが呼ばれていないことを確認
+```
+
+---
+
+### エラー6: AssertJのアサーションが読みにくい
+
+```java
+// ❌ JUnitのアサーションは読みにくい
+assertEquals(expected, actual);
+assertTrue(result > 0);
+```
+
+**解決策**: AssertJの流暢なAPIを使う
+
+```java
+// ✅ AssertJは読みやすい
+assertThat(actual).isEqualTo(expected);
+assertThat(result).isGreaterThan(0);
+
+// 複数のアサーションをまとめて
+assertThat(user)
+    .isNotNull()
+    .extracting(User::getName, User::getEmail)
+    .containsExactly("Alice", "alice@example.com");
+```
+
+---
+
+## �🔄 Gitへのコミットとレビュー依頼
 
 ```bash
 git add .

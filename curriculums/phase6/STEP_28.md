@@ -5,9 +5,11 @@
 - `@SpringBootTest`を使った統合テストを理解する
 - MockMvcでAPIエンドポイントをテストする
 - TestContainersでデータベーステストを実行する
-- E2Eテストの基礎を学ぶ
+- ✅ E2Eテストの書き方
+- ✅ TestRestTemplateの使い方
+- ✅ データベースのテストデータ準備
 
-**所要時間**: 約2時間
+**所要時間**: 約1時間30分
 
 ---
 
@@ -379,7 +381,230 @@ REST Assuredライブラリを使ったテストを書いてください。
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## � トラブルシューティング
+
+### エラー1: "Failed to load ApplicationContext"
+
+```
+java.lang.IllegalStateException: Failed to load ApplicationContext
+Caused by: org.springframework.beans.factory.BeanCreationException
+```
+
+**原因**: テスト実行時にSpring Bootアプリケーションコンテキストの起動に失敗している（設定ミス、Bean定義エラーなど）
+
+**解決策**:
+
+1. `application-test.yml`の設定を確認：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/hello_db_test  # ← テスト用DBが存在するか確認
+    username: appuser
+    password: apppassword
+```
+
+2. テスト用データベースを作成：
+
+```sql
+CREATE DATABASE IF NOT EXISTS hello_db_test;
+```
+
+3. MySQLが起動しているか確認：
+
+```bash
+sudo systemctl status mysql
+```
+
+---
+
+### エラー2: "No qualifying bean of type 'MockMvc' available"
+
+```
+org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'org.springframework.test.web.servlet.MockMvc' available
+```
+
+**原因**: `@AutoConfigureMockMvc`アノテーションが不足している
+
+**解決策**:
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc  // ← これが必要
+class UserControllerIntegrationTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+}
+```
+
+---
+
+### エラー3: テスト実行時に "401 Unauthorized" が返る
+
+```
+MockHttpServletResponse:
+           Status = 401
+    Error message = Unauthorized
+```
+
+**原因**: Spring Securityが有効で、テストがトークンなしでAPIにアクセスしている
+
+**解決策1**: テスト用にセキュリティを無効化
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+@AutoConfigureTestDatabase
+@TestPropertySource(properties = {
+    "spring.security.enabled=false"  // ← セキュリティ無効化
+})
+class UserControllerIntegrationTest {
+    // ...
+}
+```
+
+**解決策2**: `@WithMockUser`を使う
+
+```java
+import org.springframework.security.test.context.support.WithMockUser;
+
+@Test
+@WithMockUser(username = "testuser", roles = {"USER"})  // ← モックユーザーでテスト
+void testGetAllUsers() throws Exception {
+    mockMvc.perform(get("/api/users"))
+            .andExpect(status().isOk());
+}
+```
+
+**解決策3**: JWTトークンを生成してヘッダーに含める
+
+```java
+@Test
+void testGetAllUsersWithToken() throws Exception {
+    // トークン生成（実際のログインAPIを呼ぶか、JwtUtilで直接生成）
+    String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+    
+    mockMvc.perform(get("/api/users")
+                    .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+}
+```
+
+---
+
+### エラー4: JSONパスアサーションが失敗する
+
+```
+java.lang.AssertionError: JSON path "$.name" expected:<Test User> but was:<null>
+```
+
+**原因**: レスポンスボディのJSONフィールド名が期待と異なる、またはnullが返っている
+
+**解決策**:
+
+1. レスポンスボディをデバッグ出力で確認：
+
+```java
+mockMvc.perform(get("/api/users/1"))
+        .andDo(print())  // ← レスポンス全体を出力
+        .andExpect(status().isOk());
+```
+
+2. 実際のJSONフィールド名を確認：
+
+```json
+{
+  "userId": 1,        // ← フィールド名が "name" ではなく "userId"
+  "userName": "Test"  // ← "name" ではなく "userName"
+}
+```
+
+3. JSONパスを修正：
+
+```java
+mockMvc.perform(get("/api/users/1"))
+        .andExpect(jsonPath("$.userId").value(1))
+        .andExpect(jsonPath("$.userName").value("Test"));  // ← 正しいフィールド名
+```
+
+---
+
+### エラー5: トランザクションロールバックされない
+
+```java
+@Test
+void testCreateUser() {
+    // テスト実行後もDBにデータが残っている
+}
+```
+
+**原因**: `@Transactional`アノテーションが不足しているか、テストメソッドがトランザクション外で実行されている
+
+**解決策**:
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional  // ← クラスレベルで追加（各テスト後に自動ロールバック）
+class UserControllerIntegrationTest {
+    
+    @BeforeEach
+    void setUp() {
+        userRepository.deleteAll();  // ← 念のため明示的にクリア
+    }
+    
+    @Test
+    void testCreateUser() {
+        // テスト実行
+    }
+}
+```
+
+**または**、各テスト前にDBをクリーンアップ：
+
+```java
+@BeforeEach
+void setUp() {
+    userRepository.deleteAll();
+}
+
+@AfterEach
+void tearDown() {
+    userRepository.deleteAll();
+}
+```
+
+---
+
+### エラー6: MockMvcでPOST/PUTリクエストが "415 Unsupported Media Type" になる
+
+```
+MockHttpServletResponse:
+           Status = 415
+    Error message = Unsupported Media Type
+```
+
+**原因**: リクエストに`Content-Type`ヘッダーが設定されていない
+
+**解決策**:
+
+```java
+// ❌ Content-Typeなし
+mockMvc.perform(post("/api/users")
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isCreated());
+
+// ✅ Content-Typeを指定
+mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)  // ← 必須
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isCreated());
+```
+
+---
+
+## �🔄 Gitへのコミットとレビュー依頼
 
 ```bash
 git add .
