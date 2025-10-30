@@ -465,7 +465,7 @@ tail -f logs/error.log
 grep "UserService" logs/application.log
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: 構造化ログ（JSON形式）
 
@@ -573,6 +573,120 @@ public class GlobalExceptionHandler {
 - 環境に応じてログレベルを調整
 - ファイルローテーションで容量を管理
 - 本番環境では構造化ログ（JSON）を検討
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: ログが出力されない
+
+**原因**: ログレベルが高すぎる、またはロガー名が間違っている
+
+**解決策**:
+```yaml
+# application.yml
+logging:
+  level:
+    # ✅ パッケージ名を正確に指定
+    com.example.demo: DEBUG  # プロジェクトのパッケージ
+    root: INFO  # デフォルトレベル
+```
+
+```java
+// ✅ @Slf4jを使う（推奨）
+@Slf4j
+@Service
+public class UserService {
+    public void method() {
+        log.debug("Debug message");  // logging.level.com.example.demo=DEBUG以上で出力
+    }
+}
+```
+
+### エラー: "SLF4J: Failed to load class org.slf4j.impl.StaticLoggerBinder"
+
+**原因**: SLF4Jの実装（Logback）が見つからない
+
+**解決策**:
+Spring Boot Starterを使っていれば自動的に含まれています。手動で追加した場合：
+```xml
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-classic</artifactId>
+</dependency>
+```
+
+### 問題: ログファイルが肥大化する
+
+**原因**: ログローテーションが設定されていない
+
+**解決策**:
+```yaml
+# application.yml
+logging:
+  file:
+    name: logs/app.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB  # ファイルサイズが10MBを超えたらローテーション
+      max-history: 30  # 30日分保持
+      total-size-cap: 1GB  # 合計1GBまで
+```
+
+### 問題: パスワードやトークンがログに出力されてしまう
+
+**原因**: オブジェクト全体をログ出力している
+
+**解決策**:
+```java
+// ❌ NG: オブジェクトをそのまま出力
+log.info("User created: {}", user);  // パスワードも出力される
+
+// ✅ OK: 必要な情報だけ出力
+log.info("User created: id={}, name={}", user.getId(), user.getName());
+
+// ✅ OK: DTOにtoString()をカスタマイズ（Lombokの場合）
+@ToString(exclude = {"password"})  // パスワードをtoString()から除外
+public class User {
+    private String name;
+    private String password;
+}
+```
+
+### 問題: 本番環境でDEBUGログが出すぎる
+
+**原因**: 環境別の設定がされていない
+
+**解決策**:
+```yaml
+# application-dev.yml（開発環境）
+logging:
+  level:
+    com.example.demo: DEBUG
+
+# application-prod.yml（本番環境）
+logging:
+  level:
+    com.example.demo: INFO  # 本番はINFO以上
+    root: WARN
+```
+
+### 問題: どのログレベルを使うべきかわからない
+
+**ログレベルの使い分け**:
+
+| レベル | 用途 | 例 |
+|--------|------|-----|
+| **ERROR** | エラー発生、処理継続不可 | `log.error("Failed to save user", e)` |
+| **WARN** | 警告、処理は継続可能 | `log.warn("Deprecated API called")` |
+| **INFO** | 重要な処理の記録 | `log.info("User registered: id={}", userId)` |
+| **DEBUG** | 開発時のデバッグ情報 | `log.debug("Query result: {}", result)` |
+| **TRACE** | 非常に詳細な情報 | `log.trace("Entering method with params: {}", params)` |
+
+**迷ったら**:
+- 本番環境で必要な情報 → INFO
+- 開発時のみ必要 → DEBUG
+- エラー → ERROR（例外も一緒にログ出力）
 
 ---
 

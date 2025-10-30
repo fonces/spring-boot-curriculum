@@ -416,7 +416,7 @@ curl http://localhost:8080/api/users/adults
 curl "http://localhost:8080/api/users/search?name=太郎"
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: 複数Repositoryの協調
 `Order`（注文）と`Product`（商品）のエンティティを作成し、注文時に在庫を減らすServiceを実装してください。
@@ -498,6 +498,86 @@ class UserServiceImplTest {
 - **テスト容易性**: Service層を独立してテスト可能
 - **再利用性**: Serviceを複数のControllerから利用可能
 - **保守性**: 変更の影響範囲を局所化
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "Could not autowire. No beans of 'UserService' type found."
+
+**原因**: Serviceクラスに`@Service`アノテーションが付いていない
+
+**解決策**:
+```java
+@Service  // ← これを忘れずに
+@RequiredArgsConstructor
+public class UserServiceImpl implements UserService {
+    // ...
+}
+```
+
+### エラー: "Field injection is not recommended"
+
+**原因**: フィールドインジェクションを使用している（IntelliJの警告）
+
+**解決策**:
+```java
+// ❌ フィールドインジェクション（非推奨）
+@Autowired
+private UserRepository userRepository;
+
+// ✅ コンストラクタインジェクション（推奨）
+private final UserRepository userRepository;
+
+public UserServiceImpl(UserRepository userRepository) {
+    this.userRepository = userRepository;
+}
+
+// ✅ Lombok使用でさらに簡潔
+@RequiredArgsConstructor
+public class UserServiceImpl {
+    private final UserRepository userRepository;
+}
+```
+
+### エラー: "org.springframework.dao.InvalidDataAccessApiUsageException: No EntityManager"
+
+**原因**: `@Transactional`が付いていないか、トランザクション外でLazy Fetchを実行
+
+**解決策**:
+1. Service層のメソッドに`@Transactional`を追加
+2. Lazy Fetchは避けるか、Eager Fetchに変更
+3. DTOに変換してからトランザクション外で使用
+
+### 問題: ビジネスロジックをどこに書くべきか迷う
+
+**判断基準**:
+
+**Controller層**:
+- リクエストのバリデーション
+- レスポンスの整形
+- HTTPステータスの決定
+- 薄く保つ（ビジネスロジックは書かない）
+
+**Service層**:
+- ビジネスロジック
+- トランザクション制御
+- 複数Repositoryの協調
+- ドメインルールの実装
+
+**Repository層**:
+- データベースアクセスのみ
+- CRUD操作
+- カスタムクエリ
+- ビジネスロジックは書かない
+
+### 問題: Service層が肥大化してしまう
+
+**解決策**:
+1. **1つのServiceクラスに1つのエンティティ**: `UserService`, `OrderService`など
+2. **共通処理はヘルパークラスに**: `EmailHelper`, `ValidationHelper`など
+3. **ドメインロジックはエンティティに**: リッチドメインモデル
+4. **大きいServiceは分割**: `UserRegistrationService`, `UserAuthenticationService`など
 
 ---
 

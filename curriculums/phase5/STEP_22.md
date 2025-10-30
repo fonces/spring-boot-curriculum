@@ -8,7 +8,7 @@
 - PRG（Post-Redirect-Get）パターンを理解する
 - フラッシュメッセージで成功通知を表示する
 
-**所要時間**: 約2時間30分
+**所要時間**: 約1時間30分
 
 ---
 
@@ -676,6 +676,143 @@ private LocalDate birthDate;
 - ✅ PRG（Post-Redirect-Get）パターンの実装
 - ✅ RedirectAttributesでフラッシュメッセージを渡す
 - ✅ CRUD操作のフォーム実装パターン
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "Neither BindingResult nor plain target object for bean name 'userForm' available"
+
+**原因**: `th:object`で指定したフォームオブジェクトがModelに存在しない
+
+**解決策**:
+```java
+// ❌ NG: フォーム表示時にオブジェクトを渡していない
+@GetMapping("/users/new")
+public String newUser() {
+    return "users/form";  // userFormがない
+}
+
+// ✅ OK: 空のオブジェクトをModelに追加
+@GetMapping("/users/new")
+public String newUser(Model model) {
+    model.addAttribute("userForm", new UserForm());  // 追加
+    return "users/form";
+}
+```
+
+### エラー: バリデーションエラーが表示されない
+
+**原因**: `@Valid`が付いていない、またはBindingResultの位置が間違っている
+
+**解決策**:
+```java
+// ❌ NG: @Validがない
+@PostMapping("/users")
+public String create(@ModelAttribute UserForm form, BindingResult result) {
+    // バリデーションされない
+}
+
+// ❌ NG: BindingResultの位置が間違い
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, Model model, BindingResult result) {
+    // BindingResultはフォームの直後に配置する必要がある
+}
+
+// ✅ OK: 正しい順序
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, BindingResult result, Model model) {
+    if (result.hasErrors()) {
+        return "users/form";
+    }
+    // 保存処理
+}
+```
+
+### 問題: POST後にリロードすると二重送信される
+
+**原因**: PRG（Post-Redirect-Get）パターンを使っていない
+
+**解決策**:
+```java
+// ❌ NG: POST後に直接ビューを返す
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, BindingResult result) {
+    userService.create(form);
+    return "users/list";  // リロードで再送信される
+}
+
+// ✅ OK: POST後はリダイレクト
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, BindingResult result, RedirectAttributes redirectAttributes) {
+    userService.create(form);
+    redirectAttributes.addFlashAttribute("message", "ユーザーを登録しました");
+    return "redirect:/users";  // GETにリダイレクト
+}
+```
+
+### 問題: フラッシュメッセージが表示されない
+
+**原因**: `addAttribute`を使っている（URLパラメータになる）
+
+**解決策**:
+```java
+// ❌ NG: addAttributeはURLパラメータになる
+redirectAttributes.addAttribute("message", "成功");  // /users?message=成功
+
+// ✅ OK: addFlashAttributeでセッションに保存
+redirectAttributes.addFlashAttribute("message", "成功");
+```
+
+```html
+<!-- テンプレート側 -->
+<div th:if="${message}" class="alert alert-success" th:text="${message}"></div>
+```
+
+### 問題: エラー時に入力値が消える
+
+**原因**: エラー時に新しいオブジェクトを渡している
+
+**解決策**:
+```java
+// ❌ NG: 新しいオブジェクトを渡すと入力値が消える
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, BindingResult result, Model model) {
+    if (result.hasErrors()) {
+        model.addAttribute("userForm", new UserForm());  // ❌ 入力値が消える
+        return "users/form";
+    }
+}
+
+// ✅ OK: そのままフォームオブジェクトを使う
+@PostMapping("/users")
+public String create(@Valid @ModelAttribute UserForm form, BindingResult result) {
+    if (result.hasErrors()) {
+        return "users/form";  // formが自動的にModelに追加される
+    }
+}
+```
+
+### 問題: th:fieldでエラーが出る
+
+**原因**: フィールド名が一致していない、またはgetterがない
+
+**解決策**:
+```java
+// フォームクラス
+@Data
+public class UserForm {
+    private String userName;  // フィールド名に注意
+}
+```
+
+```html
+<!-- ❌ NG: フィールド名が違う -->
+<input type="text" th:field="*{name}">
+
+<!-- ✅ OK: フィールド名を一致させる -->
+<input type="text" th:field="*{userName}">
+```
 
 ---
 

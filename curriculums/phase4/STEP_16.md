@@ -554,7 +554,7 @@ Creating shared instance of singleton bean 'userService'
 Creating shared instance of singleton bean 'userRepository'
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: Factory PatternとDI
 
@@ -629,6 +629,97 @@ public class ServiceB {
 - フィールドは`final`にして不変性を保つ
 - 複数実装がある場合は`@Primary`または`@Qualifier`で明示
 - デフォルトのsingletonスコープを基本とする
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "Parameter 0 of constructor required a bean of type 'XXX' that could not be found."
+
+**原因**: 依存するBeanが見つからない
+
+**解決策**:
+1. 依存先クラスに`@Component`、`@Service`などのアノテーションが付いているか確認
+2. パッケージがコンポーネントスキャン範囲内にあるか確認（通常は`@SpringBootApplication`と同じパッケージ以下）
+3. `@ComponentScan`でスキャン範囲を明示的に指定
+
+### エラー: "Field xxx required a single bean, but 2 were found"
+
+**原因**: 同じ型のBeanが複数存在する
+
+**解決策**:
+```java
+// 解決策1: @Primaryで優先Beanを指定
+@Service
+@Primary
+public class EmailNotificationService implements NotificationService { }
+
+// 解決策2: @Qualifierで使用するBeanを指定
+@Service
+public class NotificationController {
+    private final NotificationService notificationService;
+    
+    public NotificationController(@Qualifier("emailNotificationService") NotificationService service) {
+        this.notificationService = service;
+    }
+}
+```
+
+### エラー: "The dependencies of some of the beans in the application context form a cycle"
+
+**原因**: 循環依存（AがBに依存、BがAに依存）
+
+**解決策**:
+1. **設計を見直す**（推奨）: 共通のServiceを抽出して依存を解消
+2. `@Lazy`を使う（一時的な対処）:
+```java
+@Service
+public class ServiceA {
+    private final ServiceB serviceB;
+    
+    public ServiceA(@Lazy ServiceB serviceB) {
+        this.serviceB = serviceB;
+    }
+}
+```
+3. セッターインジェクションに変更（非推奨）
+
+### エラー: "@Autowired"が効かない
+
+**原因**: クラスがSpringコンテナで管理されていない
+
+**解決策**:
+```java
+// ❌ NG: newで生成したインスタンスにはDIされない
+UserService service = new UserServiceImpl();
+
+// ✅ OK: SpringコンテナからBean取得
+@Autowired
+private UserService service;
+
+// ✅ OK: コンストラクタインジェクション
+public UserController(UserService service) {
+    this.service = service;
+}
+```
+
+### 問題: Beanのスコープをいつ変更すべきか
+
+**デフォルト（singleton）で良いケース**:
+- ステートレスなService、Repository
+- 設定クラス
+- ほとんどの場合
+
+**prototypeが必要なケース**:
+- 状態を持つオブジェクト
+- スレッドセーフでないオブジェクト
+- 毎回異なるインスタンスが必要な場合
+
+**request/sessionが必要なケース**:
+- HTTPリクエスト/セッション固有の情報を保持
+- ユーザーごとに異なる状態を持つ
+
+**判断基準**: 迷ったらsingletonのまま、状態を持たない設計にする
 
 ---
 

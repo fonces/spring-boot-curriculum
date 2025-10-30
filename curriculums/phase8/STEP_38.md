@@ -1,8 +1,16 @@
 # Step 38: テスト実装とアプリケーションの完成
 
-## 🎯 目標
+## 🎯 このステップの目標
+
 これまで実装した機能に対するテストコードを書き、品質を確保します。
 また、最終的な調整とデプロイ準備を行い、ミニブログアプリケーションを完成させます。
+
+- ユニットテストと統合テストの実装
+- テストカバレッジ80%以上の達成
+- Testcontainersでのデータベーステスト
+- Docker化とデプロイ準備
+
+**所要時間**: 約1時間30分
 
 ## 📋 機能要件
 - ユニットテスト（Service層）
@@ -643,6 +651,345 @@ curl http://localhost:8080/api/posts
 ```bash
 # 80%以上のカバレッジを確認
 mvn verify
+```
+
+## 🐛 トラブルシューティング
+
+### エラー: "No tests found for given includes" (Maven)
+
+**原因**:
+- テストクラスの命名規則が間違っている
+- Surefire/Failsafeプラグインの設定が不足
+
+**解決策**:
+
+```xml
+<!-- pom.xml -->
+<build>
+    <plugins>
+        <!-- ユニットテスト用 -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.0.0-M9</version>
+            <configuration>
+                <includes>
+                    <include>**/*Test.java</include>      <!-- XxxTest.java -->
+                    <include>**/*Tests.java</include>     <!-- XxxTests.java -->
+                </includes>
+            </configuration>
+        </plugin>
+        
+        <!-- 統合テスト用 -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>3.0.0-M9</version>
+            <configuration>
+                <includes>
+                    <include>**/*IT.java</include>        <!-- XxxIT.java -->
+                    <include>**/*IntegrationTest.java</include>
+                </includes>
+            </configuration>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+```
+
+```java
+// テストクラスの命名規則を守る
+// ✅ ユニットテスト
+public class UserServiceTest { }
+public class PostMapperTest { }
+
+// ✅ 統合テスト
+public class PostControllerIT { }
+public class UserAuthenticationIntegrationTest { }
+```
+
+### エラー: "Failed to load ApplicationContext" (Spring Bootテスト起動失敗)
+
+**原因**:
+- テスト用の設定ファイルが不足
+- データベース接続情報が間違っている
+- Bean定義の問題
+
+**解決策**:
+
+```yaml
+# src/test/resources/application-test.yml を作成
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb  # H2インメモリDBを使用
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # テストごとにスキーマを再作成
+    show-sql: true
+    
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    
+jwt:
+  secret: test-secret-key-for-testing-purposes-only-minimum-256-bits
+  expiration: 3600000
+```
+
+```java
+// テストクラスでプロファイルを指定
+@SpringBootTest
+@ActiveProfiles("test")  // application-test.yml を読み込む
+class UserServiceTest {
+    // ...
+}
+```
+
+### エラー: "Testcontainers: Could not find a valid Docker environment"
+
+**原因**:
+- Dockerが起動していない
+- DockerのバージョンがTestcontainersに対応していない
+- Dockerソケットへのアクセス権限がない
+
+**解決策**:
+
+```bash
+# Dockerが起動しているか確認
+docker ps
+
+# Dockerが起動していない場合は起動
+sudo systemctl start docker
+
+# ユーザーをdockerグループに追加（Linux）
+sudo usermod -aG docker $USER
+newgrp docker
+
+# 権限を再確認
+docker ps
+```
+
+```java
+// Testcontainersの設定を確認
+@SpringBootTest
+@Testcontainers
+class PostMapperTest {
+    
+    @Container
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
+        .withDatabaseName("testdb")
+        .withUsername("test")
+        .withPassword("test")
+        .withReuse(true);  // コンテナを再利用してテスト高速化
+    
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", mysql::getJdbcUrl);
+        registry.add("spring.datasource.username", mysql::getUsername);
+        registry.add("spring.datasource.password", mysql::getPassword);
+    }
+}
+```
+
+### エラー: "MockHttpServletRequest cannot be cast to HttpServletRequest"
+
+**原因**:
+- MockMvcのセットアップが間違っている
+- `@WebMvcTest`と`@SpringBootTest`を併用している
+
+**解決策**:
+
+```java
+// コントローラーだけをテストする場合は @WebMvcTest
+@WebMvcTest(PostController.class)
+class PostControllerTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @MockBean  // サービス層はモック化
+    private PostService postService;
+    
+    @Test
+    void testGetPosts() throws Exception {
+        // モックの振る舞いを定義
+        when(postService.getPosts(0, 10))
+            .thenReturn(new Page<>(List.of(), 0, 10, 0));
+        
+        mockMvc.perform(get("/api/posts"))
+            .andExpect(status().isOk());
+    }
+}
+
+// 統合テストの場合は @SpringBootTest + @AutoConfigureMockMvc
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class PostControllerIntegrationTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    // サービス層は実際のBeanを使用
+    @Test
+    void testCreatePost() throws Exception {
+        String token = getAuthToken();  // 実際にログインしてトークン取得
+        
+        mockMvc.perform(post("/api/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\": \"Test\", \"content\": \"Test\"}"))
+            .andExpect(status().isCreated());
+    }
+}
+```
+
+### エラー: "JaCoCo coverage check failed: Line coverage is 45%, but expected minimum is 80%"
+
+**原因**:
+- テストカバレッジが目標値に達していない
+- テストケースが不足している
+
+**解決策**:
+
+```java
+// カバレッジを上げるために重要な箇所をテスト
+
+// ❌ カバレッジが低い例
+@Test
+void testCreatePost() {
+    postService.createPost(request, "user");
+    // アサーションがない、例外ケースがない
+}
+
+// ✅ カバレッジを上げる例
+@Test
+@DisplayName("正常な記事作成")
+void testCreatePost_Success() {
+    PostCreateRequest request = new PostCreateRequest();
+    request.setTitle("Test Title");
+    request.setContent("Test Content");
+    
+    assertDoesNotThrow(() -> {
+        postService.createPost(request, "testuser");
+    });
+    
+    verify(postMapper, times(1)).insertPost(any(Post.class));
+}
+
+@Test
+@DisplayName("タイトルが空の場合にエラー")
+void testCreatePost_EmptyTitle() {
+    PostCreateRequest request = new PostCreateRequest();
+    request.setTitle("");
+    request.setContent("Test Content");
+    
+    assertThrows(ValidationException.class, () -> {
+        postService.createPost(request, "testuser");
+    });
+}
+
+@Test
+@DisplayName("権限がない場合にエラー")
+void testCreatePost_Unauthorized() {
+    PostCreateRequest request = new PostCreateRequest();
+    request.setTitle("Test");
+    request.setContent("Test");
+    
+    when(userMapper.findByUsername("hacker")).thenReturn(Optional.empty());
+    
+    assertThrows(UnauthorizedException.class, () -> {
+        postService.createPost(request, "hacker");
+    });
+}
+```
+
+```xml
+<!-- カバレッジ目標を調整する場合（一時的に） -->
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <configuration>
+        <rules>
+            <rule>
+                <element>BUNDLE</element>
+                <limits>
+                    <limit>
+                        <counter>LINE</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>0.60</minimum>  <!-- 80% → 60% に一時的に緩和 -->
+                    </limit>
+                </limits>
+            </rule>
+        </rules>
+    </configuration>
+</plugin>
+```
+
+### エラー: "Port 8080 is already in use" (Dockerコンテナ起動時)
+
+**原因**:
+- ローカルでアプリケーションが既に起動している
+- 他のコンテナが8080ポートを使用している
+
+**解決策**:
+
+```bash
+# 8080ポートを使用しているプロセスを確認
+lsof -i :8080  # macOS/Linux
+netstat -ano | findstr :8080  # Windows
+
+# プロセスを停止
+kill -9 <PID>
+
+# または docker-compose.yml でポート番号を変更
+services:
+  app:
+    ports:
+      - "8081:8080"  # ホスト側のポートを8081に変更
+```
+
+```bash
+# 既存のコンテナを停止してから再起動
+docker-compose down
+docker-compose up --build
+```
+
+### エラー: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
+
+**原因**:
+- Dockerデーモンが起動していない
+- ソケットファイルへのアクセス権限がない
+
+**解決策**:
+
+```bash
+# Dockerデーモンを起動
+sudo systemctl start docker
+
+# 自動起動を有効化
+sudo systemctl enable docker
+
+# 現在のユーザーをdockerグループに追加
+sudo usermod -aG docker $USER
+
+# 再ログインまたは
+newgrp docker
+
+# 確認
+docker ps
 ```
 
 ## 🎓 学習ポイント

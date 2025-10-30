@@ -1,8 +1,16 @@
 # Step 35: 記事投稿機能と認可制御
 
-## 🎯 目標
+## 🎯 このステップの目標
+
 ブログの核となる記事（Post）の投稿・編集・削除機能を実装します。
 認証されたユーザーのみが記事を投稿でき、自分の記事のみ編集・削除できる認可制御を実装します。
+
+- 記事のCRUD機能の実装
+- 認可制御（自分の記事のみ編集可能）
+- ページネーション機能
+- MyBatisでのJOIN操作
+
+**所要時間**: 約1時間30分
 
 ## 📋 機能要件
 - 記事の新規投稿（認証必須）
@@ -370,6 +378,280 @@ curl -X PUT http://localhost:8080/api/posts/1 \
 # Expected: 403 Forbidden
 ```
 
+## 🐛 トラブルシューティング
+
+### エラー: "Access Denied: User is not the owner of this post"
+
+**原因**:
+- 認可制御が正しく動作している（他人の記事を編集しようとしている）
+- JWTトークンからユーザー情報が正しく取得できていない
+
+**解決策**:
+
+```java
+// Serviceレイヤーで所有者チェック
+@Service
+@RequiredArgsConstructor
+public class PostService {
+    private final PostMapper postMapper;
+    
+    public void updatePost(Long postId, PostUpdateRequest request, String username) {
+        Post post = postMapper.findById(postId)
+            .orElseThrow(() -> new ResourceNotFoundException("記事が見つかりません"));
+        
+        // 所有者チェック
+        if (!post.getAuthorUsername().equals(username)) {
+            throw new AccessDeniedException("この記事を編集する権限がありません");
+        }
+        
+        post.setTitle(request.getTitle());
+        post.setContent(request.getContent());
+        post.setStatus(request.getStatus());
+        postMapper.updatePost(post);
+    }
+}
+
+// Controllerでユーザー情報を取得
+@RestController
+@RequestMapping("/api/posts")
+@RequiredArgsConstructor
+public class PostController {
+    private final PostService postService;
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<PostResponse> updatePost(
+            @PathVariable Long id,
+            @RequestBody @Valid PostUpdateRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        postService.updatePost(id, request, userDetails.getUsername());
+        return ResponseEntity.ok().build();
+    }
+}
+```
+
+### エラー: "Cannot invoke 'User.getUsername()' because the return value of 'Post.getAuthor()' is null"
+
+**原因**:
+- MyBatisのJOIN結果がマッピングされていない
+- ResultMapの定義が間違っている
+- SQLのJOINが正しく動作していない
+
+**解決策**:
+
+```xml
+<!-- PostMapper.xml でResultMapを正しく定義 -->
+<resultMap id="PostWithAuthorMap" type="com.example.blog.entity.Post">
+    <id property="id" column="post_id"/>
+    <result property="title" column="title"/>
+    <result property="slug" column="slug"/>
+    <result property="content" column="content"/>
+    <result property="status" column="status"/>
+    <result property="viewCount" column="view_count"/>
+    <result property="createdAt" column="created_at"/>
+    <result property="updatedAt" column="updated_at"/>
+    <result property="publishedAt" column="published_at"/>
+    
+    <!-- ネストした Author オブジェクト -->
+    <association property="author" javaType="com.example.blog.entity.User">
+        <id property="id" column="user_id"/>
+        <result property="username" column="username"/>
+        <result property="displayName" column="display_name"/>
+        <result property="email" column="email"/>
+    </association>
+</resultMap>
+
+<select id="findById" resultMap="PostWithAuthorMap">
+    SELECT 
+        p.id AS post_id,
+        p.title,
+        p.slug,
+        p.content,
+        p.status,
+        p.view_count,
+        p.created_at,
+        p.updated_at,
+        p.published_at,
+        u.id AS user_id,
+        u.username,
+        u.display_name,
+        u.email
+    FROM posts p
+    INNER JOIN users u ON p.author_id = u.id
+    WHERE p.id = #{id}
+</select>
+```
+
+### エラー: "Duplicate entry 'my-blog-post' for key 'posts.slug'"
+
+**原因**:
+- 同じslugの記事が既に存在している
+- slug生成時に重複チェックをしていない
+
+**解決策**:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class PostService {
+    private final PostMapper postMapper;
+    
+    private String generateUniqueSlug(String title) {
+        String baseSlug = title.toLowerCase()
+            .replaceAll("[^a-z0-9\\s-]", "")  // 英数字とスペース、ハイフンのみ残す
+            .replaceAll("\\s+", "-")  // スペースをハイフンに
+            .replaceAll("-+", "-");  // 連続ハイフンを1つに
+        
+        String slug = baseSlug;
+        int counter = 1;
+        
+        // 重複チェック
+        while (postMapper.findBySlug(slug).isPresent()) {
+            slug = baseSlug + "-" + counter;
+            counter++;
+        }
+        
+        return slug;
+    }
+    
+    public void createPost(PostCreateRequest request, String username) {
+        Post post = new Post();
+        post.setTitle(request.getTitle());
+        post.setSlug(generateUniqueSlug(request.getTitle()));  // ユニークなslugを生成
+        post.setContent(request.getContent());
+        post.setStatus(request.getStatus());
+        post.setAuthorId(getUserIdByUsername(username));
+        
+        postMapper.insertPost(post);
+    }
+}
+```
+
+### エラー: "Invalid page request: page must be >= 0"
+
+**原因**:
+- ページ番号が負の値になっている
+- ページングパラメータのバリデーションが不足
+
+**解決策**:
+
+```java
+@RestController
+@RequestMapping("/api/posts")
+public class PostController {
+    
+    @GetMapping
+    public ResponseEntity<PageResponse<PostListResponse>> getPosts(
+            @RequestParam(defaultValue = "0") @Min(0) Integer page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) Integer size) {
+        
+        // pageとsizeのバリデーションは@Minと@Maxで自動的に行われる
+        Page<Post> postPage = postService.getPosts(page, size);
+        return ResponseEntity.ok(PageResponse.from(postPage));
+    }
+}
+
+// または手動でバリデーション
+public Page<Post> getPosts(Integer page, Integer size) {
+    if (page < 0) {
+        throw new IllegalArgumentException("ページ番号は0以上である必要があります");
+    }
+    if (size < 1 || size > 100) {
+        throw new IllegalArgumentException("ページサイズは1〜100の範囲で指定してください");
+    }
+    
+    int offset = page * size;
+    List<Post> posts = postMapper.findAllWithPagination(offset, size);
+    long total = postMapper.countAll();
+    
+    return new Page<>(posts, page, size, total);
+}
+```
+
+### エラー: "ステータスが 'PUBLISH' で登録されてしまう（'PUBLISHED'のはずが）"
+
+**原因**:
+- Enumのマッピングが正しく動作していない
+- MyBatisでEnumを文字列として扱う設定が不足
+
+**解決策**:
+
+```yaml
+# application.yml
+mybatis:
+  configuration:
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler  # Enumを名前で扱う
+```
+
+```java
+// Enumの定義
+public enum PostStatus {
+    DRAFT,      // 下書き
+    PUBLISHED,  // 公開済み
+    ARCHIVED    // アーカイブ
+}
+
+// Entity
+public class Post {
+    private PostStatus status;  // Enumとして定義
+}
+```
+
+```xml
+<!-- PostMapper.xml -->
+<insert id="insertPost" parameterType="Post" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO posts (title, slug, content, status, author_id, published_at)
+    VALUES (
+        #{title}, 
+        #{slug}, 
+        #{content}, 
+        #{status, typeHandler=org.apache.ibatis.type.EnumTypeHandler},  <!-- Enumハンドラを明示 -->
+        #{authorId}, 
+        #{publishedAt}
+    )
+</insert>
+```
+
+### エラー: "閲覧数が増えない（view_countが更新されない）"
+
+**原因**:
+- トランザクションが正しくコミットされていない
+- 閲覧数更新のSQLが実行されていない
+- キャッシュが効いている
+
+**解決策**:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class PostService {
+    private final PostMapper postMapper;
+    
+    @Transactional
+    public PostResponse getPostById(Long id) {
+        Post post = postMapper.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("記事が見つかりません"));
+        
+        // 閲覧数をインクリメント
+        postMapper.incrementViewCount(id);
+        
+        // 更新後の値を取得（同じトランザクション内なので反映される）
+        post.setViewCount(post.getViewCount() + 1);
+        
+        return PostResponse.from(post);
+    }
+}
+```
+
+```xml
+<!-- PostMapper.xml -->
+<update id="incrementViewCount">
+    UPDATE posts
+    SET view_count = view_count + 1
+    WHERE id = #{id}
+</update>
+```
+
 ## 🎓 学習ポイント
 
 1. **MyBatisでのJOIN**: ユーザー情報と記事情報の結合
@@ -387,5 +669,8 @@ curl -X PUT http://localhost:8080/api/posts/1 \
 4. 人気記事ランキング（閲覧数でソート）
 5. ユーザーごとの記事数カウント
 
-## 🚀 次のステップ
-Step 36では、コメント機能を実装し、記事とコメントの1対多リレーションシップを扱います。
+## ➡️ 次のステップ
+
+[Step 36: コメント機能とThymeleafでの画面実装](STEP_36.md)へ進みましょう！
+
+記事とコメントの1対多リレーションシップを実装し、Thymeleafで画面を作成します。

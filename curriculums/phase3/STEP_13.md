@@ -778,6 +778,74 @@ List<Product> products = productMapper.findWithCategory();
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Error parsing Mapper XML. The XML location is 'classpath:mapper/ProductMapper.xml'"
+
+**原因**: XMLファイルのパスが間違っているか、XML構文エラー
+
+**解決策**:
+1. XMLファイルが`src/main/resources/mapper/`に配置されているか確認
+2. `application.yml`の`mybatis.mapper-locations`が正しいか確認
+3. XML宣言とDOCTYPE宣言が正しいか確認
+4. タグの閉じ忘れがないかチェック
+
+### エラー: "Parameter 'xxx' not found. Available parameters are [param1, arg0]"
+
+**原因**: `@Param`アノテーションが付いていない
+
+**解決策**:
+```java
+// ❌ NG: @Paramなし
+List<Product> search(String name, Integer minPrice, Integer maxPrice);
+
+// ✅ OK: @Paramあり
+List<Product> search(
+    @Param("name") String name,
+    @Param("minPrice") Integer minPrice,
+    @Param("maxPrice") Integer maxPrice
+);
+```
+
+### エラー: "There is no getter for property named 'items' in 'class java.util.ArrayList'"
+
+**原因**: `<foreach>`のcollectionプロパティ名が間違っている
+
+**解決策**:
+```xml
+<!-- ❌ NG -->
+<foreach collection="items" item="id" separator=",">
+    #{id}
+</foreach>
+
+<!-- ✅ OK: @Param("ids")を使った場合 -->
+<foreach collection="ids" item="id" separator=",">
+    #{id}
+</foreach>
+```
+
+### エラー: ResultMapでネストしたオブジェクトがnull
+
+**原因**: `<association>`や`<collection>`の設定が不足
+
+**解決策**:
+1. `resultMap`のIDが正しく指定されているか確認
+2. `<association>`に`javaType`が指定されているか確認
+3. `<collection>`に`ofType`が指定されているか確認
+4. SQLでJOINしているか確認
+
+### エラー: 動的SQLが期待通りに動作しない
+
+**原因**: `<where>`や`<if>`の条件式が間違っている
+
+**解決策**:
+1. SQLログを有効化して実際のSQLを確認: `logging.level.com.example.demo.mapper=DEBUG`
+2. `test`属性の条件式を確認（`test="name != null and name != ''"`など）
+3. `<where>`タグを使うとANDやORの前置詞を自動削除してくれる
+4. MyBatisのOGNL式を理解する（`!= null`、`!= ''`など）
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

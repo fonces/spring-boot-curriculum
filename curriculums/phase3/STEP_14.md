@@ -982,6 +982,69 @@ List<Article> articles = articleRepository.findAll();
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Multiple DataSource found, expected single matching bean"
+
+**原因**: JPAとMyBatisで異なるデータソース設定がされている
+
+**解決策**:
+1. `application.yml`で単一のDataSource設定を使用
+2. 両方で同じ`spring.datasource.*`設定を共有
+3. カスタムDataSourceを定義している場合は`@Primary`を付ける
+
+### エラー: JPA Entityが見つからない（MyBatisでは動作する）
+
+**原因**: エンティティスキャンの範囲が限定されている
+
+**解決策**:
+```java
+@SpringBootApplication
+@EntityScan("com.example.demo.entity")  // エンティティのパッケージを明示
+@EnableJpaRepositories("com.example.demo.repository")  // JPAリポジトリ
+public class DemoApplication {
+    // ...
+}
+```
+
+### エラー: トランザクションが両方のデータアクセスに適用されない
+
+**原因**: トランザクションマネージャーが統一されていない
+
+**解決策**:
+1. Service層に`@Transactional`を付ける（推奨）
+2. Spring Bootが自動的にDataSourceTransactionManagerを設定してくれる
+3. カスタムトランザクションマネージャーは通常不要
+
+### エラー: MyBatisのSQLでJPAエンティティを直接使うとエラー
+
+**原因**: MyBatisはJPAのアノテーション（`@Column`など）を認識しない
+
+**解決策**:
+1. MyBatisではDTOやシンプルなPOJOを使用
+2. またはResultMapで明示的にマッピング
+3. エンティティをそのまま使う場合は、フィールド名とカラム名を一致させる
+
+### 問題: どちらを使うべきか判断できない
+
+**判断基準**:
+
+**JPAを使う場合**:
+- シンプルなCRUD操作
+- エンティティ間の関連が明確
+- オブジェクト指向的に扱いたい
+- 実装が早い
+
+**MyBatisを使う場合**:
+- 複雑なJOINや集計
+- パフォーマンスチューニングが必要
+- SQLを直接制御したい
+- レガシーDBとの連携
+
+**迷ったら**: まずJPAで実装し、パフォーマンスや複雑さが問題になったらMyBatisに切り替える
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

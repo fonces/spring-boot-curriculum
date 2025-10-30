@@ -8,7 +8,7 @@
 - BootstrapなどのCSSフレームワークを統合する
 - DRY原則に基づいたテンプレート設計を実践する
 
-**所要時間**: 約2時間30分
+**所要時間**: 約1時間30分
 
 ---
 
@@ -626,6 +626,154 @@ http://localhost:8080/users
 - ✅ th:replaceとth:insertでフラグメント挿入
 - ✅ 共通ヘッダー・フッター・ナビゲーションの作成
 - ✅ スタイルシート（CSS）と静的リソースの配置
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "Error resolving template [fragments/header]"
+
+**原因**: フラグメントファイルのパスが間違っている
+
+**解決策**:
+```html
+<!-- ファイル構成 -->
+<!-- templates/
+       fragments/
+         header.html
+       users/
+         list.html
+-->
+
+<!-- ❌ NG: パスが間違っている -->
+<div th:replace="header :: header"></div>
+
+<!-- ✅ OK: fragments/から始める -->
+<div th:replace="fragments/header :: header"></div>
+
+<!-- ✅ OK: ~{...}で明示的に -->
+<div th:replace="~{fragments/header :: header}"></div>
+```
+
+### エラー: "Fragment [header] not found in template"
+
+**原因**: フラグメント名が一致していない
+
+**解決策**:
+```html
+<!-- fragments/header.html -->
+<header th:fragment="headerContent">  <!-- フラグメント名: headerContent -->
+    ...
+</header>
+
+<!-- ❌ NG: フラグメント名が違う -->
+<div th:replace="fragments/header :: header"></div>
+
+<!-- ✅ OK: 正しいフラグメント名 -->
+<div th:replace="fragments/header :: headerContent"></div>
+```
+
+### 問題: layout:decorateが効かない
+
+**原因**: Thymeleaf Layout Dialectの依存関係がない、またはバージョンが古い
+
+**解決策**:
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>nz.net.ultraq.thymeleaf</groupId>
+    <artifactId>thymeleaf-layout-dialect</artifactId>
+</dependency>
+```
+
+```html
+<!-- ✅ 正しい名前空間を使用 -->
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layouts/default}">
+```
+
+### 問題: th:replaceとth:insertの違いがわからない
+
+**違いの説明**:
+
+```html
+<!-- フラグメント定義 -->
+<div th:fragment="content">
+    <p>コンテンツ</p>
+</div>
+
+<!-- th:replace: 要素ごと置き換え -->
+<div th:replace="fragments/content :: content"></div>
+<!-- 結果 -->
+<div>
+    <p>コンテンツ</p>
+</div>
+
+<!-- th:insert: 子要素として挿入 -->
+<div th:insert="fragments/content :: content"></div>
+<!-- 結果 -->
+<div>
+    <div>
+        <p>コンテンツ</p>
+    </div>
+</div>
+```
+
+**推奨**: 通常は`th:replace`を使用（余分なdivが増えない）
+
+### 問題: Bootstrapが適用されない
+
+**原因**: CSSファイルのパスが間違っている、またはWebjarsが設定されていない
+
+**解決策**:
+
+**方法1: Webjarsを使用（推奨）**
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>org.webjars</groupId>
+    <artifactId>bootstrap</artifactId>
+    <version>5.3.0</version>
+</dependency>
+```
+
+```html
+<!-- HTMLで使用 -->
+<link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}">
+```
+
+**方法2: CDNを使用**
+```html
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+```
+
+**方法3: ローカルファイル**
+```
+src/main/resources/static/css/bootstrap.min.css
+```
+
+```html
+<link rel="stylesheet" th:href="@{/css/bootstrap.min.css}">
+```
+
+### 問題: フラグメントにパラメータを渡せない
+
+**原因**: パラメータの渡し方が間違っている
+
+**解決策**:
+```html
+<!-- フラグメント定義（パラメータ付き） -->
+<div th:fragment="alert(type, message)">
+    <div th:class="'alert alert-' + ${type}" th:text="${message}"></div>
+</div>
+
+<!-- 呼び出し側 -->
+<div th:replace="fragments/alert :: alert('success', 'ユーザーを登録しました')"></div>
+
+<!-- 変数を渡す場合 -->
+<div th:replace="fragments/alert :: alert(${alertType}, ${alertMessage})"></div>
+```
 
 ---
 

@@ -650,6 +650,104 @@ src/main/resources/templates/users/list.html  ← Thymeleaf用（正解）
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Error resolving template [users/list], template might not exist"
+
+**原因**: テンプレートファイルが見つからない、またはパスが間違っている
+
+**解決策**:
+1. ファイルが`src/main/resources/templates/`以下にあるか確認
+2. Controllerの戻り値とファイル名が一致しているか確認
+```java
+// ❌ NG
+return "user/list";  // ファイル: templates/users/list.html
+
+// ✅ OK
+return "users/list";  // ファイル: templates/users/list.html
+```
+3. 拡張子`.html`はControllerの戻り値に含めない
+
+### エラー: "Exception evaluating SpringEL expression"
+
+**原因**: Thymeleaf式の構文エラー、またはnullオブジェクトへのアクセス
+
+**解決策**:
+```html
+<!-- ❌ NG: userがnullの場合エラー -->
+<p th:text="${user.name}"></p>
+
+<!-- ✅ OK: Safe Navigation Operator使用 -->
+<p th:text="${user?.name}"></p>
+
+<!-- ✅ OK: 条件分岐で回避 -->
+<p th:if="${user != null}" th:text="${user.name}"></p>
+
+<!-- ✅ OK: デフォルト値を設定 -->
+<p th:text="${user?.name ?: 'Unknown'}"></p>
+```
+
+### エラー: ブラウザに`${user.name}`がそのまま表示される
+
+**原因**: Thymeleafが動作していない、またはテンプレートエンジンの設定ミス
+
+**解決策**:
+1. `spring-boot-starter-thymeleaf`の依存関係を確認
+2. `@Controller`を使う（`@RestController`では動作しない）
+```java
+// ❌ NG: @RestControllerはJSON返却
+@RestController
+public class UserController {
+    @GetMapping("/users")
+    public String list() {
+        return "users/list";  // "users/list"という文字列が返る
+    }
+}
+
+// ✅ OK: @Controllerでビューを返す
+@Controller
+public class UserController {
+    @GetMapping("/users")
+    public String list() {
+        return "users/list";  // templates/users/list.htmlをレンダリング
+    }
+}
+```
+
+### 問題: 変更したHTMLが反映されない
+
+**原因**: Thymeleafのキャッシュが有効になっている
+
+**解決策**:
+```yaml
+# application.yml（開発環境）
+spring:
+  thymeleaf:
+    cache: false  # キャッシュを無効化
+```
+
+または、IntelliJ IDEAで`Build` → `Recompile 'filename.html'`を実行
+
+### 問題: CSSやJavaScriptが読み込まれない
+
+**原因**: 静的リソースのパスが間違っている
+
+**解決策**:
+```html
+<!-- ❌ NG: 絶対パス -->
+<link rel="stylesheet" href="/static/css/style.css">
+
+<!-- ✅ OK: Thymeleafのth:hrefを使用 -->
+<link rel="stylesheet" th:href="@{/css/style.css}">
+
+<!-- ✅ OK: Webjarsを使用 -->
+<link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}">
+```
+
+静的ファイルは`src/main/resources/static/`以下に配置
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

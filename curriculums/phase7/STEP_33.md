@@ -407,6 +407,228 @@ curl -X POST "http://localhost:8080/api/async/multiple-tasks"
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "@Asyncが効かない（同期的に実行される）"
+
+**原因**:
+- `@EnableAsync`を付け忘れている
+- 同じクラス内からメソッドを呼んでいる（プロキシが効かない）
+- メソッドが`public`でない
+
+**解決策**:
+
+```java
+// ❌ 同じクラス内から呼ぶと同期実行になる
+@Service
+public class BadAsyncService {
+    @Async
+    public void asyncMethod() {
+        // 非同期処理
+    }
+    
+    public void caller() {
+        this.asyncMethod();  // ❌ 同期実行される！
+    }
+}
+
+// ✅ 別のクラスから呼ぶ
+@Service
+public class AsyncService {
+    @Async
+    public void asyncMethod() {
+        // 非同期処理
+    }
+}
+
+@Service
+@RequiredArgsConstructor
+public class CallerService {
+    private final AsyncService asyncService;
+    
+    public void caller() {
+        asyncService.asyncMethod();  // ✅ 非同期実行される
+    }
+}
+```
+
+### エラー: "TaskRejectedException: Executor has been shut down"
+
+**原因**:
+- スレッドプールのキューが満杯
+- アプリケーションシャットダウン中にタスク実行
+
+**解決策**:
+
+```java
+@Configuration
+@EnableAsync
+public class AsyncConfig implements AsyncConfigurer {
+    
+    @Override
+    public Executor getAsyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);  // キュー容量を拡大
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());  // リジェクト時は呼び出し元で実行
+        executor.setWaitForTasksToCompleteOnShutdown(true);  // シャットダウン時にタスク完了を待つ
+        executor.setAwaitTerminationSeconds(60);  // 最大60秒待つ
+        executor.setThreadNamePrefix("async-");
+        executor.initialize();
+        return executor;
+    }
+}
+```
+
+### エラー: "非同期メソッドで発生した例外が握りつぶされる"
+
+**原因**:
+- 非同期メソッドの例外はデフォルトで呼び出し元に伝わらない
+- 戻り値が`void`の場合、例外ハンドラが必要
+
+**解決策**:
+
+```java
+// AsyncUncaughtExceptionHandlerを設定
+@Configuration
+@EnableAsync
+public class AsyncConfig implements AsyncConfigurer {
+    
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        return (ex, method, params) -> {
+            log.error("非同期処理でエラー発生: method={}, params={}", 
+                method.getName(), Arrays.toString(params), ex);
+            // エラー通知やアラート送信などの処理
+        };
+    }
+}
+
+// または CompletableFuture を使って例外をキャッチ
+@Async
+public CompletableFuture<String> asyncMethodWithException() {
+    try {
+        // 処理
+        return CompletableFuture.completedFuture("Success");
+    } catch (Exception e) {
+        return CompletableFuture.failedFuture(e);
+    }
+}
+
+// 呼び出し側
+asyncService.asyncMethodWithException()
+    .exceptionally(ex -> {
+        log.error("非同期処理エラー", ex);
+        return "Fallback value";
+    });
+```
+
+### エラー: "@Scheduledタスクが実行されない"
+
+**原因**:
+- `@EnableScheduling`を付け忘れている
+- Cron式の文法エラー
+- タイムゾーンの問題
+
+**解決策**:
+
+```java
+// @EnableScheduling を忘れずに
+@SpringBootApplication
+@EnableScheduling
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+
+// Cron式を確認（6つのフィールド）
+@Scheduled(cron = "0 0 9 * * *")  // ❌ 5フィールドしかない
+@Scheduled(cron = "0 0 9 * * ?")  // ✅ 6フィールド（秒 分 時 日 月 曜日）
+
+// タイムゾーンを明示
+@Scheduled(cron = "0 0 9 * * ?", zone = "Asia/Tokyo")
+public void scheduledTask() {
+    // 処理
+}
+```
+
+### エラー: "CompletableFuture.allOf()で結果を取得できない"
+
+**原因**:
+- `allOf()`は`CompletableFuture<Void>`を返すため、結果にアクセスできない
+- 各Futureから個別に結果を取得する必要がある
+
+**解決策**:
+
+```java
+// ❌ allOf() だけでは結果が取れない
+CompletableFuture<Void> allFutures = CompletableFuture.allOf(future1, future2, future3);
+allFutures.join();  // 結果が取れない
+
+// ✅ 各Futureから結果を取得
+CompletableFuture<String> future1 = asyncService.task1();
+CompletableFuture<String> future2 = asyncService.task2();
+CompletableFuture<String> future3 = asyncService.task3();
+
+// すべて完了を待つ
+CompletableFuture.allOf(future1, future2, future3).join();
+
+// 個別に結果を取得
+String result1 = future1.join();
+String result2 = future2.join();
+String result3 = future3.join();
+
+// または Stream で一気に取得
+List<CompletableFuture<String>> futures = List.of(future1, future2, future3);
+List<String> results = futures.stream()
+    .map(CompletableFuture::join)
+    .collect(Collectors.toList());
+```
+
+### エラー: "スレッドプールがリークして OOM (Out of Memory) が発生"
+
+**原因**:
+- `Executor`を毎回newしている
+- カスタムExecutorを`@Bean`登録していない
+- スレッドが終了しない
+
+**解決策**:
+
+```java
+// ❌ 毎回newすると古いスレッドプールが残り続ける
+public void badMethod() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.initialize();  // これを繰り返すとリークする
+}
+
+// ✅ @Bean で1つだけ作成
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+    
+    @Bean(name = "taskExecutor")
+    public Executor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("async-");
+        executor.initialize();
+        return executor;
+    }
+}
+
+// 使用時は@Bean名を指定
+@Async("taskExecutor")
+public void asyncMethod() {
+    // 処理
+}
+```
+
+---
+
 ## 📚 このステップで学んだこと
 
 - ✅ @Asyncによる非同期処理

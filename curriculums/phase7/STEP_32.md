@@ -578,6 +578,210 @@ CacheManagerを使ってキャッシュヒット率を表示してください�
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "@Cacheable"が効かない
+
+**原因**: `@EnableCaching`が付いていない、またはプロキシが機能していない
+
+**解決策**:
+```java
+// ✅ メインクラスに@EnableCachingを追加
+@SpringBootApplication
+@EnableCaching  // ← これを追加
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+
+// ❌ NG: 同じクラス内のメソッド呼び出しではキャッシュされない
+@Service
+public class UserService {
+    @Cacheable("users")
+    public User findById(Long id) { ... }
+    
+    public void someMethod() {
+        User user = this.findById(1L);  // キャッシュされない
+    }
+}
+
+// ✅ OK: 外部から呼び出す
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    private final UserService userService;
+    
+    public void someMethod() {
+        User user = userService.findById(1L);  // キャッシュされる
+    }
+}
+```
+
+### エラー: "Cannot connect to Redis"
+
+**原因**: Redisサーバーが起動していない、または接続設定が間違っている
+
+**解決策**:
+```bash
+# Redisが起動しているか確認
+docker ps | grep redis
+
+# 起動していなければ起動
+docker-compose up -d redis
+
+# Redisに接続できるか確認
+docker exec -it redis redis-cli ping
+# PONGが返ればOK
+```
+
+```yaml
+# application.yml の設定確認
+spring:
+  data:
+    redis:
+      host: localhost  # Dockerの場合は確認
+      port: 6379
+      password: # パスワード設定がある場合
+```
+
+### 問題: キャッシュが更新されない
+
+**原因**: `@CacheEvict`または`@CachePut`を使っていない
+
+**解決策**:
+```java
+@Service
+public class UserService {
+    @Cacheable(value = "users", key = "#id")
+    public User findById(Long id) {
+        return userRepository.findById(id).orElseThrow();
+    }
+    
+    // ✅ 更新時にキャッシュも更新
+    @CachePut(value = "users", key = "#user.id")
+    public User update(User user) {
+        return userRepository.save(user);
+    }
+    
+    // ✅ 削除時にキャッシュも削除
+    @CacheEvict(value = "users", key = "#id")
+    public void delete(Long id) {
+        userRepository.deleteById(id);
+    }
+    
+    // ✅ 全キャッシュをクリア
+    @CacheEvict(value = "users", allEntries = true)
+    public void deleteAll() {
+        userRepository.deleteAll();
+    }
+}
+```
+
+### 問題: シリアライズエラー
+
+**原因**: キャッシュするオブジェクトがシリアライズ可能でない
+
+**解決策**:
+```java
+// ❌ NG: Serializableを実装していない
+@Entity
+public class User {
+    private Long id;
+    private String name;
+}
+
+// ✅ OK: Serializableを実装
+@Entity
+public class User implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private Long id;
+    private String name;
+}
+```
+
+または、JSON シリアライザーを使用:
+```java
+@Configuration
+@EnableCaching
+public class CacheConfig {
+    @Bean
+    public RedisCacheConfiguration cacheConfiguration() {
+        return RedisCacheConfiguration.defaultCacheConfig()
+            .serializeValuesWith(
+                RedisSerializationContext.SerializationPair.fromSerializer(
+                    new GenericJackson2JsonRedisSerializer()  // JSONシリアライザー
+                )
+            );
+    }
+}
+```
+
+### 問題: キャッシュキーの衝突
+
+**原因**: 同じキーで異なるデータをキャッシュしている
+
+**解決策**:
+```java
+// ❌ NG: 複数のメソッドで同じキャッシュ名とキーを使用
+@Cacheable(value = "data", key = "#id")
+public User findUserById(Long id) { ... }
+
+@Cacheable(value = "data", key = "#id")
+public Product findProductById(Long id) { ... }
+// User(id=1) と Product(id=1) が衝突
+
+// ✅ OK: 異なるキャッシュ名を使用
+@Cacheable(value = "users", key = "#id")
+public User findUserById(Long id) { ... }
+
+@Cacheable(value = "products", key = "#id")
+public Product findProductById(Long id) { ... }
+
+// ✅ OK: プレフィックスを含める
+@Cacheable(value = "data", key = "'user:' + #id")
+public User findUserById(Long id) { ... }
+
+@Cacheable(value = "data", key = "'product:' + #id")
+public Product findProductById(Long id) { ... }
+```
+
+### 問題: メモリ不足
+
+**原因**: TTLが設定されておらず、キャッシュが無限に増える
+
+**解決策**:
+```java
+@Bean
+public RedisCacheConfiguration cacheConfiguration() {
+    return RedisCacheConfiguration.defaultCacheConfig()
+        .entryTtl(Duration.ofHours(1))  // 1時間でキャッシュ削除
+        .disableCachingNullValues();  // null値はキャッシュしない
+}
+
+// または、キャッシュごとにTTLを設定
+@Bean
+public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+    Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
+    
+    // usersキャッシュ: 1時間
+    cacheConfigurations.put("users", 
+        RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(Duration.ofHours(1)));
+    
+    // productsキャッシュ: 30分
+    cacheConfigurations.put("products", 
+        RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(Duration.ofMinutes(30)));
+    
+    return RedisCacheManager.builder(connectionFactory)
+        .withInitialCacheConfigurations(cacheConfigurations)
+        .build();
+}
+```
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash

@@ -1,8 +1,16 @@
 # Step 36: コメント機能とThymeleafでの画面実装
 
-## 🎯 目標
+## 🎯 このステップの目標
+
 記事に対するコメント機能を実装し、Thymeleafを使ってブログの画面を作成します。
 これにより、REST APIとサーバーサイドレンダリングの両方を体験します。
+
+- 1対多リレーション（記事とコメント）の実装
+- Thymeleafでのサーバーサイドレンダリング
+- REST APIとの連携
+- JavaScriptでの非同期通信
+
+**所要時間**: 約1時間30分
 
 ## 📋 機能要件
 
@@ -439,6 +447,292 @@ http://localhost:8080/
 2. 編集・削除ボタンが表示されることを確認
 3. 他のユーザーの記事ではボタンが表示されないことを確認
 
+## 🐛 トラブルシューティング
+
+### エラー: "Property 'user' not found on type 'Comment'"
+
+**原因**:
+- MyBatisのResultMapでネストしたオブジェクトがマッピングされていない
+- CommentエンティティにUserオブジェクトのフィールドがない
+
+**解決策**:
+
+```java
+// Commentエンティティにauthorフィールドを追加
+@Data
+public class Comment {
+    private Long id;
+    private Long postId;
+    private Long userId;
+    private String content;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    
+    // ネストしたユーザー情報
+    private User author;  // このフィールドを追加
+}
+```
+
+```xml
+<!-- CommentMapper.xml でResultMapを定義 -->
+<resultMap id="CommentWithAuthorMap" type="com.example.blog.entity.Comment">
+    <id property="id" column="comment_id"/>
+    <result property="postId" column="post_id"/>
+    <result property="userId" column="user_id"/>
+    <result property="content" column="content"/>
+    <result property="createdAt" column="created_at"/>
+    <result property="updatedAt" column="updated_at"/>
+    
+    <association property="author" javaType="com.example.blog.entity.User">
+        <id property="id" column="user_id"/>
+        <result property="username" column="username"/>
+        <result property="displayName" column="display_name"/>
+    </association>
+</resultMap>
+
+<select id="findByPostId" resultMap="CommentWithAuthorMap">
+    SELECT 
+        c.id AS comment_id,
+        c.post_id,
+        c.user_id,
+        c.content,
+        c.created_at,
+        c.updated_at,
+        u.username,
+        u.display_name
+    FROM comments c
+    INNER JOIN users u ON c.user_id = u.id
+    WHERE c.post_id = #{postId}
+    ORDER BY c.created_at ASC
+</select>
+```
+
+### エラー: "Thymeleafのth:ifで isAuthenticated が常にfalseになる"
+
+**原因**:
+- Controllerからmodelに`isAuthenticated`属性を渡していない
+- Spring SecurityのPrincipalがnullになっている
+
+**解決策**:
+
+```java
+@Controller
+@RequestMapping("/posts")
+@RequiredArgsConstructor
+public class PostViewController {
+    
+    @GetMapping("/{id}")
+    public String showPost(
+            @PathVariable Long id, 
+            Model model,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        // 認証状態を判定
+        boolean isAuthenticated = (userDetails != null);
+        model.addAttribute("isAuthenticated", isAuthenticated);
+        
+        // 記事の所有者チェック
+        Post post = postService.getPostById(id);
+        boolean isAuthor = false;
+        if (isAuthenticated) {
+            isAuthor = post.getAuthor().getUsername().equals(userDetails.getUsername());
+        }
+        model.addAttribute("isAuthor", isAuthor);
+        
+        model.addAttribute("post", post);
+        model.addAttribute("comments", commentService.getCommentsByPostId(id));
+        
+        return "post/detail";
+    }
+}
+```
+
+### エラー: "CORS policy: No 'Access-Control-Allow-Origin' header"
+
+**原因**:
+- ThymeleafからJavaScriptでREST APIを呼び出す際、CORS設定が必要
+- 同一オリジンでもAjaxリクエストにはCORS設定が必要な場合がある
+
+**解決策**:
+
+```java
+// REST API側でCORS設定
+@RestController
+@RequestMapping("/api/posts")
+@CrossOrigin(origins = "http://localhost:8080")  // Thymeleafと同じオリジン
+public class PostRestController {
+    // ...
+}
+
+// またはグローバル設定
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+            .allowedOrigins("http://localhost:8080")
+            .allowedMethods("GET", "POST", "PUT", "DELETE")
+            .allowedHeaders("*")
+            .allowCredentials(true);
+    }
+}
+```
+
+### エラー: "JavaScript fetch で 401 Unauthorized が返る"
+
+**原因**:
+- JWTトークンがリクエストヘッダーに含まれていない
+- トークンの有効期限が切れている
+- トークンの形式が間違っている
+
+**解決策**:
+
+```javascript
+// JavaScriptでREST API呼び出し時にトークンを含める
+async function postComment(postId, content) {
+    const token = localStorage.getItem('jwt_token');
+    
+    if (!token) {
+        alert('ログインしてください');
+        window.location.href = '/login';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`  // トークンを含める
+            },
+            body: JSON.stringify({ content })
+        });
+        
+        if (response.status === 401) {
+            alert('認証が切れました。再ログインしてください。');
+            localStorage.removeItem('jwt_token');
+            window.location.href = '/login';
+            return;
+        }
+        
+        if (!response.ok) {
+            throw new Error('コメント投稿に失敗しました');
+        }
+        
+        const comment = await response.json();
+        // コメントをDOMに追加
+        addCommentToDOM(comment);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('エラーが発生しました');
+    }
+}
+```
+
+### エラー: "コメント削除後にページがリロードされない"
+
+**原因**:
+- JavaScriptでDOMの更新処理が実装されていない
+- コメント削除APIの戻り値を受け取っていない
+
+**解決策**:
+
+```javascript
+async function deleteComment(commentId) {
+    if (!confirm('このコメントを削除しますか？')) {
+        return;
+    }
+    
+    const token = localStorage.getItem('jwt_token');
+    
+    try {
+        const response = await fetch(`/api/comments/${commentId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('削除に失敗しました');
+        }
+        
+        // DOMから削除
+        const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
+        if (commentElement) {
+            commentElement.closest('.card').remove();
+        }
+        
+        // コメント数を更新
+        const countElement = document.querySelector('#comments h3 span');
+        const currentCount = parseInt(countElement.textContent);
+        countElement.textContent = currentCount - 1;
+        
+        alert('コメントを削除しました');
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('削除に失敗しました');
+    }
+}
+```
+
+### エラー: "Thymeleaf Layout Dialectが見つからない"
+
+**原因**:
+- `thymeleaf-layout-dialect`の依存関係が不足
+- フラグメント定義が間違っている
+
+**解決策**:
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>nz.net.ultraq.thymeleaf</groupId>
+    <artifactId>thymeleaf-layout-dialect</artifactId>
+</dependency>
+```
+
+```html
+<!-- layout/base.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
+<head>
+    <title layout:title-pattern="$CONTENT_TITLE - $LAYOUT_TITLE">My Blog</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div th:replace="~{layout/header :: header}"></div>
+    
+    <main layout:fragment="content">
+        <!-- コンテンツがここに挿入される -->
+    </main>
+    
+    <div th:replace="~{layout/footer :: footer}"></div>
+</body>
+</html>
+```
+
+```html
+<!-- post/detail.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="${post.title}">記事タイトル</title>
+</head>
+<body>
+    <div layout:fragment="content">
+        <!-- 記事詳細の内容 -->
+    </div>
+</body>
+</html>
+```
+
 ## 🎓 学習ポイント
 
 1. **1対多リレーション**: 記事とコメントの関連
@@ -457,5 +751,8 @@ http://localhost:8080/
 5. リアルタイム更新（WebSocket使用）
 6. マークダウンエディタの導入
 
-## 🚀 次のステップ
-Step 37では、タグ機能と画像アップロード機能を実装します。
+## ➡️ 次のステップ
+
+[Step 37: タグ機能と画像アップロード](STEP_37.md)へ進みましょう！
+
+多対多リレーションシップとファイル管理を学びます。

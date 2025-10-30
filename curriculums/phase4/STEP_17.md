@@ -522,7 +522,7 @@ curl -X POST http://localhost:8080/api/users \
 }
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: 環境別のエラーメッセージ
 
@@ -639,6 +639,109 @@ public class GlobalExceptionHandler {
 - エラーレスポンス形式が統一される
 - クライアント側でのエラー処理が容易
 - デバッグとトラブルシューティングが効率化
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "@RestControllerAdvice"が効かない
+
+**原因**: パッケージがコンポーネントスキャン範囲外
+
+**解決策**:
+1. `@RestControllerAdvice`クラスをメインクラスと同じパッケージ以下に配置
+2. または`@ComponentScan`でスキャン範囲を明示
+```java
+@RestControllerAdvice  // これだけでOK（通常）
+public class GlobalExceptionHandler {
+    // ...
+}
+```
+
+### エラー: カスタム例外が`@ExceptionHandler`で捕捉されない
+
+**原因**: 例外の継承関係が正しくない、またはメソッドの引数型が一致しない
+
+**解決策**:
+```java
+// ✅ OK: 具体的な例外クラスを指定
+@ExceptionHandler(ResourceNotFoundException.class)
+public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException e) {
+    // ...
+}
+
+// ✅ OK: 親クラスで複数まとめて処理
+@ExceptionHandler({ResourceNotFoundException.class, BusinessException.class})
+public ResponseEntity<ErrorResponse> handleCustomExceptions(RuntimeException e) {
+    // ...
+}
+```
+
+### 問題: HTTPステータスコードの使い分けがわからない
+
+**よく使うステータスコード**:
+
+| コード | 名前 | 使用例 |
+|--------|------|--------|
+| 200 | OK | 成功 |
+| 201 | Created | 作成成功 |
+| 204 | No Content | 削除成功（レスポンスボディなし） |
+| 400 | Bad Request | バリデーションエラー |
+| 401 | Unauthorized | 認証エラー（未ログイン） |
+| 403 | Forbidden | 認可エラー（権限なし） |
+| 404 | Not Found | リソースが見つからない |
+| 409 | Conflict | データ競合（重複など） |
+| 500 | Internal Server Error | サーバー内部エラー |
+
+### 問題: 本番環境でスタックトレースが漏洩する
+
+**原因**: すべての環境で詳細なエラー情報を返している
+
+**解決策**:
+```java
+@ExceptionHandler(Exception.class)
+public ResponseEntity<ErrorResponse> handleException(Exception e) {
+    log.error("Unexpected error", e);
+    
+    ErrorResponse response = ErrorResponse.builder()
+        .message("予期しないエラーが発生しました")
+        // 本番環境ではスタックトレースを含めない
+        .details(isProductionEnvironment() ? null : e.getMessage())
+        .build();
+    
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+}
+
+private boolean isProductionEnvironment() {
+    return Arrays.asList(environment.getActiveProfiles()).contains("prod");
+}
+```
+
+### 問題: バリデーションエラーのメッセージが分かりにくい
+
+**原因**: デフォルトのエラーメッセージが英語または技術的
+
+**解決策**:
+```java
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
+    Map<String, String> errors = new HashMap<>();
+    
+    e.getBindingResult().getFieldErrors().forEach(error -> {
+        String fieldName = error.getField();
+        // カスタムメッセージを使用（@NotBlankのmessage属性など）
+        String errorMessage = error.getDefaultMessage();
+        errors.put(fieldName, errorMessage);
+    });
+    
+    ErrorResponse response = ErrorResponse.builder()
+        .message("入力値に誤りがあります")
+        .errors(errors)
+        .build();
+    
+    return ResponseEntity.badRequest().body(response);
+}
+```
 
 ---
 

@@ -526,6 +526,57 @@ curl -X DELETE http://localhost:8080/api/products/3
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Invalid bound statement (not found)"
+
+**原因**: Mapperインターフェースのメソッドとマッピングが見つからない
+
+**解決策**:
+1. `@Mapper`アノテーションが付いているか確認
+2. `@MapperScan`のパッケージパスが正しいか確認
+3. メソッド名とアノテーション内のSQLが対応しているか確認
+4. プロジェクトをクリーンビルド: `mvn clean install`
+
+### エラー: "There is no getter for property named 'xxx'"
+
+**原因**: エンティティクラスにgetterがない、またはプロパティ名が一致しない
+
+**解決策**:
+1. エンティティクラスに`@Data`または`@Getter`を追加（Lombok使用時）
+2. プロパティ名とSQL内の`#{propertyName}`が一致しているか確認
+3. キャメルケース変換が有効か確認: `mybatis.configuration.map-underscore-to-camel-case=true`
+
+### エラー: "Error updating database. Cause: java.sql.SQLSyntaxErrorException"
+
+**原因**: SQLの構文エラー
+
+**解決策**:
+1. `logging.level.com.example.demo.mapper=DEBUG`でSQLログを確認
+2. SQLをMySQLクライアントで直接実行してみる
+3. テーブル名、カラム名のスペルミスを確認
+4. `#{}`と`${}`を間違えていないか確認（基本は`#{}`を使用）
+
+### エラー: "MyBatis configuration error: Property 'sqlSessionFactory' or 'sqlSessionTemplate' are required"
+
+**原因**: MyBatisの自動設定が正しく動作していない
+
+**解決策**:
+1. `mybatis-spring-boot-starter`の依存関係が正しく追加されているか確認
+2. `application.yml`のデータソース設定を確認
+3. Spring Bootのバージョンとの互換性を確認
+
+### エラー: トランザクションがロールバックされない
+
+**原因**: `@Transactional`がないか、スコープが間違っている
+
+**解決策**:
+1. Service層のメソッドに`@Transactional`を追加
+2. `@Transactional`はpublicメソッドに付ける（privateは効かない）
+3. 例外がRuntimeException継承でない場合は`@Transactional(rollbackFor = Exception.class)`を指定
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 進捗を記録してレビューを受けましょう：

@@ -632,7 +632,7 @@ curl http://localhost:8080/api/users/1
 }
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: 複数テーブルの結合レスポンス
 
@@ -711,6 +711,130 @@ response.addLink("posts", "/api/users/1/posts");
 - 柔軟なAPI設計（必要な情報だけ返せる）
 - バージョン管理の容易さ
 - バリデーションルールの分離
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "No property xxx found for type Entity"
+
+**原因**: DTOとEntityのフィールド名が一致しない、またはgetterがない
+
+**解決策**:
+```java
+// ✅ フィールド名を一致させる
+// Entity
+public class User {
+    private String name;  // ← フィールド名
+    // getter/setterが必要
+}
+
+// DTO
+public class UserResponse {
+    private String name;  // ← 同じフィールド名
+}
+
+// または MapStructで明示的にマッピング
+@Mapping(source = "fullName", target = "name")
+UserResponse toResponse(User user);
+```
+
+### エラー: MapStructが動作しない（メソッドが空実装）
+
+**原因**: アノテーションプロセッサが有効になっていない
+
+**解決策**:
+1. IntelliJ IDEA: `Settings` → `Build, Execution, Deployment` → `Compiler` → `Annotation Processors` → `Enable annotation processing`をON
+2. `mvn clean compile`でビルド
+3. `target/generated-sources/annotations`に生成されたコードを確認
+
+### エラー: パスワードがハッシュ化されずに保存される
+
+**原因**: `PasswordEncoder`が設定されていない、または呼び出していない
+
+**解決策**:
+```java
+// ✅ ConfigクラスでPasswordEncoderをBean登録
+@Configuration
+public class SecurityConfig {
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+
+// ✅ ServiceでPasswordEncoderを使用
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final PasswordEncoder passwordEncoder;
+    
+    public User create(UserCreateRequest request) {
+        User user = new User();
+        user.setPassword(passwordEncoder.encode(request.getPassword()));  // ← ハッシュ化
+        return userRepository.save(user);
+    }
+}
+```
+
+### 問題: レスポンスにnullフィールドが多すぎる
+
+**原因**: すべてのフィールドを含む汎用DTOを使っている
+
+**解決策**:
+```java
+// ✅ 用途別にDTOを分ける
+// 一覧表示用（最小限の情報）
+public class UserListResponse {
+    private Long id;
+    private String name;
+    // 必要最小限のフィールドのみ
+}
+
+// 詳細表示用（すべての情報）
+public class UserDetailResponse {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    // すべてのフィールド
+}
+```
+
+### 問題: DTOとEntityの相互変換が煩雑
+
+**原因**: 手動でマッピングコードを書いている
+
+**解決策**:
+```java
+// ❌ 手動マッピング（フィールドが多いと大変）
+public UserResponse toResponse(User user) {
+    UserResponse response = new UserResponse();
+    response.setId(user.getId());
+    response.setName(user.getName());
+    response.setEmail(user.getEmail());
+    // ...フィールドが増えると大変
+    return response;
+}
+
+// ✅ MapStructで自動化
+@Mapper(componentModel = "spring")
+public interface UserMapper {
+    UserResponse toResponse(User user);
+    List<UserResponse> toResponseList(List<User> users);
+}
+```
+
+### 問題: Entityを直接返すとJSONシリアライズエラー
+
+**原因**: LazyロードやCircular Referenceの問題
+
+**解決策**:
+1. **DTOを使う**（推奨）: LazyロードやCircular Referenceの問題を回避
+2. `@JsonIgnore`でシリアライズ対象外にする（一時的な対処）
+3. `@JsonManagedReference`/`@JsonBackReference`で循環参照を解決（非推奨）
 
 ---
 

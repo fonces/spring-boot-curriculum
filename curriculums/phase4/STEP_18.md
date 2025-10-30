@@ -489,7 +489,7 @@ public ResponseEntity<ErrorResponse> handleConstraintViolation(
 }
 ```
 
-## 🚀 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: 日付バリデーション
 
@@ -562,6 +562,133 @@ public class UserCreateRequest {
 - セキュリティリスクの軽減
 - 不正なデータによるエラーを事前に防ぐ
 - クライアント側へ明確なエラーメッセージを返せる
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: バリデーションが動作しない
+
+**原因**: `@Valid`または`@Validated`が付いていない
+
+**解決策**:
+```java
+// ❌ NG: アノテーションなし
+@PostMapping
+public ResponseEntity<User> create(@RequestBody UserCreateRequest request) {
+    // バリデーションされない
+}
+
+// ✅ OK: @Validを付ける
+@PostMapping
+public ResponseEntity<User> create(@Valid @RequestBody UserCreateRequest request) {
+    // バリデーションされる
+}
+```
+
+### エラー: "HV000030: No validator could be found for constraint"
+
+**原因**: カスタムバリデーターの実装クラスが見つからない、またはジェネリクス型が一致しない
+
+**解決策**:
+```java
+// ✅ アノテーションとバリデーターのジェネリクス型を一致させる
+@Target({ElementType.FIELD})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = AdultValidator.class)  // ← ここを指定
+public @interface Adult {
+    // ...
+}
+
+// ✅ バリデーターのジェネリクス型をStringに
+public class AdultValidator implements ConstraintValidator<Adult, Integer> {
+    //                                                      ↑アノテーション ↑検証対象の型
+}
+```
+
+### エラー: パスパラメータのバリデーションが効かない
+
+**原因**: コントローラークラスに`@Validated`が付いていない
+
+**解決策**:
+```java
+@RestController
+@RequestMapping("/api/users")
+@Validated  // ← クラスレベルに必須
+public class UserController {
+    
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable @Min(1) Long id) {
+        // これでバリデーションが効く
+    }
+}
+```
+
+### 問題: エラーメッセージが英語で表示される
+
+**原因**: デフォルトメッセージが使用されている
+
+**解決策**:
+```java
+// ✅ message属性で日本語メッセージを指定
+@NotBlank(message = "名前は必須です")
+@Size(min = 2, max = 50, message = "名前は2文字以上50文字以内で入力してください")
+private String name;
+
+@Email(message = "メールアドレスの形式が正しくありません")
+private String email;
+
+@Min(value = 0, message = "年齢は0以上で入力してください")
+@Max(value = 150, message = "年齢は150以下で入力してください")
+private Integer age;
+```
+
+### 問題: 複数のバリデーションエラーが1つしか表示されない
+
+**原因**: エラーハンドラーが最初のエラーだけ返している
+
+**解決策**:
+```java
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
+    // ✅ すべてのフィールドエラーを収集
+    Map<String, String> errors = new HashMap<>();
+    e.getBindingResult().getFieldErrors().forEach(error -> {
+        errors.put(error.getField(), error.getDefaultMessage());
+    });
+    
+    ErrorResponse response = ErrorResponse.builder()
+        .message("入力値に誤りがあります")
+        .errors(errors)  // すべてのエラーを返す
+        .build();
+    
+    return ResponseEntity.badRequest().body(response);
+}
+```
+
+### 問題: ネストしたオブジェクトのバリデーションが効かない
+
+**原因**: ネストしたフィールドに`@Valid`が付いていない
+
+**解決策**:
+```java
+public class OrderRequest {
+    @NotBlank
+    private String orderNumber;
+    
+    @Valid  // ← ネストしたオブジェクトにも@Validが必要
+    @NotNull
+    private AddressRequest address;
+}
+
+public class AddressRequest {
+    @NotBlank
+    private String street;
+    
+    @NotBlank
+    private String city;
+}
+```
 
 ---
 

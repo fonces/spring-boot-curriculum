@@ -1,8 +1,16 @@
 # Step 37: タグ機能と画像アップロード
 
-## 🎯 目標
+## 🎯 このステップの目標
+
 記事のタグ付け機能と、画像アップロード機能を実装します。
 多対多のリレーションシップとファイル管理を学びます。
+
+- 多対多リレーション（タグと記事）の実装
+- ファイルアップロード機能
+- 中間テーブルの操作
+- 画像のバリデーションとセキュリティ
+
+**所要時間**: 約1時間30分
 
 ## 📋 機能要件
 
@@ -541,6 +549,266 @@ curl -X POST http://localhost:8080/api/images \
 ### 4. 画像付き記事の投稿
 ブラウザで記事作成フォームから画像を選択して投稿
 
+## 🐛 トラブルシューティング
+
+### エラー: "Maximum upload size exceeded"
+
+**原因**:
+- アップロードファイルサイズが設定値を超えている
+- `spring.servlet.multipart.max-file-size`の設定が不足
+
+**解決策**:
+
+```yaml
+# application.yml
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB       # 1ファイルの最大サイズ
+      max-request-size: 20MB    # リクエスト全体の最大サイズ
+      file-size-threshold: 2MB  # メモリに保持する閾値
+```
+
+```java
+// Controllerでエラーハンドリング
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxSizeException(MaxUploadSizeExceededException e) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.PAYLOAD_TOO_LARGE.value(),
+            "ファイルサイズが大きすぎます。10MB以下のファイルをアップロードしてください。"
+        );
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(error);
+    }
+}
+```
+
+### エラー: "java.nio.file.NoSuchFileException: ディレクトリが存在しません"
+
+**原因**:
+- アップロード先ディレクトリが作成されていない
+- パスの権限が不足している
+
+**解決策**:
+
+```java
+@Service
+public class ImageService {
+    
+    @Value("${blog.upload.directory}")
+    private String uploadDirectory;
+    
+    @PostConstruct
+    public void init() {
+        try {
+            Path uploadPath = Paths.get(uploadDirectory);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+                log.info("アップロードディレクトリを作成しました: {}", uploadPath);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("アップロードディレクトリの作成に失敗しました", e);
+        }
+    }
+    
+    public ImageUploadResponse uploadImage(MultipartFile file, Long userId) {
+        Path filePath = Paths.get(uploadDirectory, filename);
+        
+        // 親ディレクトリが存在しない場合は作成
+        Files.createDirectories(filePath.getParent());
+        
+        file.transferTo(filePath.toFile());
+        // ...
+    }
+}
+```
+
+### エラー: "The requested resource is not available"（画像が404）
+
+**原因**:
+- 静的リソースの公開設定が不足
+- ファイルパスが間違っている
+- セキュリティ設定でブロックされている
+
+**解決策**:
+
+```java
+// 静的リソースの設定
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    
+    @Value("${blog.upload.directory}")
+    private String uploadDirectory;
+    
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/uploads/**")
+            .addResourceLocations("file:" + uploadDirectory + "/")
+            .setCachePeriod(3600);  // 1時間キャッシュ
+    }
+}
+
+// Spring Securityで許可
+@Bean
+public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    http
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/uploads/**").permitAll()  // 画像は認証不要
+            .requestMatchers("/api/auth/**").permitAll()
+            .anyRequest().authenticated()
+        );
+    return http.build();
+}
+```
+
+### エラー: "Duplicate entry for key 'post_tags.PRIMARY'"
+
+**原因**:
+- 同じタグを複数回追加しようとしている
+- タグの重複チェックが不足
+
+**解決策**:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class PostService {
+    private final PostMapper postMapper;
+    private final TagMapper tagMapper;
+    private final PostTagMapper postTagMapper;
+    
+    @Transactional
+    public void createPost(PostCreateRequest request, String username) {
+        // 記事を保存
+        Post post = new Post();
+        post.setTitle(request.getTitle());
+        post.setContent(request.getContent());
+        postMapper.insertPost(post);
+        
+        // タグを処理（重複を除去）
+        Set<String> uniqueTags = new HashSet<>(request.getTags());
+        
+        for (String tagName : uniqueTags) {
+            // タグが既に存在するか確認
+            Tag tag = tagMapper.findByName(tagName)
+                .orElseGet(() -> {
+                    Tag newTag = new Tag();
+                    newTag.setName(tagName);
+                    newTag.setSlug(generateSlug(tagName));
+                    tagMapper.insertTag(newTag);
+                    return newTag;
+                });
+            
+            // 記事とタグを関連付け（重複チェック）
+            if (!postTagMapper.existsByPostIdAndTagId(post.getId(), tag.getId())) {
+                postTagMapper.insertPostTag(post.getId(), tag.getId());
+            }
+        }
+    }
+}
+```
+
+### エラー: "Unsupported Media Type" (画像アップロード時)
+
+**原因**:
+- Content-Typeが`multipart/form-data`でない
+- Controllerの`@RequestParam`の型が間違っている
+
+**解決策**:
+
+```java
+// Controllerで MultipartFile を受け取る
+@RestController
+@RequestMapping("/api/images")
+@RequiredArgsConstructor
+public class ImageController {
+    private final ImageService imageService;
+    
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ImageUploadResponse> uploadImage(
+            @RequestParam("file") MultipartFile file,  // "file" パラメータ名を明示
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("ファイルが選択されていません");
+        }
+        
+        ImageUploadResponse response = imageService.uploadImage(file, getUserId(userDetails));
+        return ResponseEntity.ok(response);
+    }
+}
+```
+
+```javascript
+// JavaScriptでのファイル送信
+async function uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);  // パラメータ名は "file"
+    
+    const token = localStorage.getItem('jwt_token');
+    
+    const response = await fetch('/api/images', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`
+            // Content-Type は自動設定されるので指定しない
+        },
+        body: formData
+    });
+    
+    return await response.json();
+}
+```
+
+### エラー: "タグの検索結果が0件（実際はデータがある）"
+
+**原因**:
+- タグのslugが正しく生成されていない
+- 検索時のslugと保存時のslugが一致していない
+- 大文字小文字の問題
+
+**解決策**:
+
+```java
+// Tag生成時のslugを統一
+public String generateSlug(String tagName) {
+    return tagName.toLowerCase()
+        .replaceAll("[^a-z0-9\\s-]", "")  // 英数字とスペース、ハイフンのみ
+        .replaceAll("\\s+", "-")  // スペースをハイフンに
+        .replaceAll("-+", "-")  // 連続ハイフンを1つに
+        .replaceAll("^-|-$", "");  // 先頭と末尾のハイフンを削除
+}
+
+// 検索時も同じロジックでslugを生成
+@GetMapping("/tags/{slug}/posts")
+public ResponseEntity<PageResponse<PostListResponse>> getPostsByTag(
+        @PathVariable String slug,
+        @RequestParam(defaultValue = "0") Integer page,
+        @RequestParam(defaultValue = "10") Integer size) {
+    
+    // slugを正規化してから検索
+    String normalizedSlug = generateSlug(slug);
+    
+    Tag tag = tagMapper.findBySlug(normalizedSlug)
+        .orElseThrow(() -> new ResourceNotFoundException("タグが見つかりません"));
+    
+    Page<Post> posts = postService.getPostsByTagId(tag.getId(), page, size);
+    return ResponseEntity.ok(PageResponse.from(posts));
+}
+```
+
+```xml
+<!-- TagMapper.xml で大文字小文字を区別しない検索 -->
+<select id="findBySlug" resultType="Tag">
+    SELECT id, name, slug, post_count, created_at
+    FROM tags
+    WHERE LOWER(slug) = LOWER(#{slug})
+</select>
+```
+
 ## 🎓 学習ポイント
 
 1. **多対多リレーション**: タグと記事の関連（中間テーブル）
@@ -559,5 +827,8 @@ curl -X POST http://localhost:8080/api/images \
 5. 画像の遅延読み込み（Lazy Loading）
 6. タグの編集・削除機能
 
-## 🚀 次のステップ
-Step 38では、テスト実装とデプロイ準備を行い、アプリケーションを完成させます。
+## ➡️ 次のステップ
+
+[Step 38: テスト実装とアプリケーションの完成](STEP_38.md)へ進みましょう！
+
+テスト実装とデプロイ準備を行い、ミニブログアプリケーションを完成させます。

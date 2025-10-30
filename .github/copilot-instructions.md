@@ -60,8 +60,6 @@ spring-boot-curriculum/
 │       ├── STEP_36.md                 # 記事とコメント機能の実装
 │       ├── STEP_37.md                 # 画像アップロードと検索機能
 │       └── STEP_38.md                 # テストとデプロイ準備
-├── examples/                          # サンプルコード（将来追加予定）
-│   └── (未作成)
 └── .github/
     └── copilot-instructions.md                # このファイル
 ```

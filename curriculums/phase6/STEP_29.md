@@ -618,7 +618,7 @@ open target/site/jacoco/index.html
 
 ---
 
-## 🎨 発展課題
+## 🎨 チャレンジ課題
 
 ### 課題1: Branch Coverageの改善
 

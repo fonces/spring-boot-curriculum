@@ -424,6 +424,134 @@ Thumbnailatorライブラリを使って画像をリサイズしてください�
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Maximum upload size exceeded"
+
+**原因**: アップロードファイルサイズが制限を超えている
+
+**解決策**:
+```yaml
+# application.yml
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB  # 1ファイルの最大サイズ
+      max-request-size: 50MB  # リクエスト全体の最大サイズ
+```
+
+### エラー: "Required request part 'file' is not present"
+
+**原因**: フォームのenctypeが間違っている、またはname属性が一致していない
+
+**解決策**:
+```html
+<!-- ❌ NG: enctypeがない -->
+<form action="/upload" method="post">
+    <input type="file" name="file">
+</form>
+
+<!-- ✅ OK: enctype指定 -->
+<form action="/upload" method="post" enctype="multipart/form-data">
+    <input type="file" name="file">
+</form>
+```
+
+```java
+// name属性と@RequestParamの値を一致させる
+@PostMapping("/upload")
+public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file) {
+    // ...
+}
+```
+
+### エラー: ファイルが保存されない
+
+**原因**: 保存先ディレクトリが存在しない、または書き込み権限がない
+
+**解決策**:
+```java
+@PostConstruct
+public void init() {
+    try {
+        // アプリ起動時にディレクトリを作成
+        Files.createDirectories(Paths.get(uploadDir));
+    } catch (IOException e) {
+        throw new RuntimeException("Could not create upload directory", e);
+    }
+}
+```
+
+### 問題: セキュリティ脆弱性（パストラバーサル攻撃）
+
+**原因**: ファイル名を検証せずにそのまま使用
+
+**解決策**:
+```java
+// ❌ NG: 危険なコード
+String fileName = file.getOriginalFilename();
+Path filePath = Paths.get(uploadDir, fileName);  // ../../../etc/passwd のような攻撃が可能
+
+// ✅ OK: ファイル名をサニタイズ
+String fileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
+// UUIDで一意な名前に変換
+String safeFileName = UUID.randomUUID().toString() + "_" + fileName;
+Path filePath = uploadPath.resolve(safeFileName);
+```
+
+### 問題: 許可されていないファイルタイプがアップロードされる
+
+**原因**: ファイルタイプの検証がない
+
+**解決策**:
+```java
+private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "gif");
+private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList(
+    "image/jpeg", "image/png", "image/gif"
+);
+
+private void validateFile(MultipartFile file) {
+    // 拡張子チェック
+    String extension = getFileExtension(file.getOriginalFilename());
+    if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+        throw new IllegalArgumentException("許可されていないファイル形式です");
+    }
+    
+    // Content-Typeチェック
+    if (!ALLOWED_CONTENT_TYPES.contains(file.getContentType())) {
+        throw new IllegalArgumentException("許可されていないファイルタイプです");
+    }
+    
+    // ファイルサイズチェック
+    if (file.getSize() > MAX_FILE_SIZE) {
+        throw new IllegalArgumentException("ファイルサイズが大きすぎます");
+    }
+}
+```
+
+### 問題: ダウンロード時にファイル名が文字化けする
+
+**原因**: ファイル名のエンコーディングが正しくない
+
+**解決策**:
+```java
+@GetMapping("/files/{fileId}")
+public ResponseEntity<Resource> download(@PathVariable String fileId) throws IOException {
+    // ファイル取得処理...
+    
+    // ✅ ファイル名をURLエンコード
+    String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8.toString())
+        .replaceAll("\\+", "%20");
+    
+    return ResponseEntity.ok()
+        .header(HttpHeaders.CONTENT_DISPOSITION, 
+            "attachment; filename=\"" + encodedFileName + "\"")
+        .body(resource);
+}
+```
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash

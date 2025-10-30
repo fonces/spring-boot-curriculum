@@ -792,6 +792,174 @@ SendGridを使ったメール送信を実装してください。
 
 ---
 
+## 🐛 トラブルシューティング
+
+### エラー: "Page index must not be less than zero"
+
+**原因**: ページ番号が0未満になっている
+
+**解決策**:
+```java
+// ❌ NG: ユーザー入力をそのまま使用
+@GetMapping("/users")
+public String list(@RequestParam(defaultValue = "1") int page, Model model) {
+    Page<User> users = userService.findAll(PageRequest.of(page, 10));  // page=0でもエラー
+}
+
+// ✅ OK: ページ番号を調整（1始まり→0始まり）
+@GetMapping("/users")
+public String list(@RequestParam(defaultValue = "1") int page, Model model) {
+    int pageIndex = Math.max(0, page - 1);  // 1ページ目 → インデックス0
+    Page<User> users = userService.findAll(PageRequest.of(pageIndex, 10));
+    model.addAttribute("currentPage", page);  // ビューには1始まりで渡す
+}
+```
+
+### エラー: ページネーションリンクが正しく動作しない
+
+**原因**: URLパラメータが正しく生成されていない
+
+**解決策**:
+```html
+<!-- ❌ NG: page番号だけ -->
+<a th:href="@{/users(page=${page.number})}">次へ</a>
+
+<!-- ✅ OK: 他のパラメータも保持 -->
+<a th:href="@{/users(
+    page=${page.number + 1},
+    size=${page.size},
+    sort=${sortParam}
+)}">次へ</a>
+
+<!-- ✅ OK: 1始まりに変換 -->
+<a th:href="@{/users(page=${page.number + 2})}">次へ</a>
+<!-- page.numberは0始まりなので、次ページは+2 -->
+```
+
+### 問題: ソート機能が効かない
+
+**原因**: ソートパラメータの形式が間違っている
+
+**解決策**:
+```java
+// ❌ NG: 文字列のソート指定
+@GetMapping("/users")
+public String list(@RequestParam(defaultValue = "id") String sort) {
+    Sort sortBy = Sort.by(sort);  // 昇順のみ
+}
+
+// ✅ OK: 昇順・降順を指定
+@GetMapping("/users")
+public String list(
+    @RequestParam(defaultValue = "id") String sort,
+    @RequestParam(defaultValue = "asc") String direction) {
+    
+    Sort.Direction dir = "desc".equalsIgnoreCase(direction) 
+        ? Sort.Direction.DESC 
+        : Sort.Direction.ASC;
+    Sort sortBy = Sort.by(dir, sort);
+    
+    Pageable pageable = PageRequest.of(page, size, sortBy);
+}
+```
+
+### 問題: 大量データでページネーションが遅い
+
+**原因**: COUNT クエリが重い、またはインデックスがない
+
+**解決策**:
+
+**1. インデックスを追加**
+```sql
+CREATE INDEX idx_users_created_at ON users(created_at);
+CREATE INDEX idx_users_name ON users(name);
+```
+
+**2. COUNTクエリを最適化**
+```java
+// MyBatisの場合
+@Select("SELECT * FROM users ORDER BY id LIMIT #{offset}, #{limit}")
+List<User> findWithOffset(@Param("offset") int offset, @Param("limit") int limit);
+
+// 総件数はキャッシュ
+@Cacheable("userCount")
+@Select("SELECT COUNT(*) FROM users")
+long count();
+```
+
+**3. Cursorベースのページネーション（無限スクロール）**
+```java
+@GetMapping("/api/users")
+public List<User> list(@RequestParam(required = false) Long cursor, 
+                       @RequestParam(defaultValue = "20") int size) {
+    if (cursor == null) {
+        return userRepository.findTop(size);
+    } else {
+        return userRepository.findByIdGreaterThan(cursor, PageRequest.of(0, size));
+    }
+}
+```
+
+### 問題: Thymeleafテンプレートでページネーション情報が取得できない
+
+**原因**: Pageオブジェクトをそのまま渡していない
+
+**解決策**:
+```java
+// ✅ PageオブジェクトをModelに追加
+@GetMapping("/users")
+public String list(Pageable pageable, Model model) {
+    Page<User> page = userService.findAll(pageable);
+    model.addAttribute("page", page);  // Pageオブジェクト全体
+    model.addAttribute("users", page.getContent());  // リストのみ
+    return "users/list";
+}
+```
+
+```html
+<!-- Thymeleafで利用可能なプロパティ -->
+<p>全 <span th:text="${page.totalElements}"></span> 件</p>
+<p>ページ <span th:text="${page.number + 1}"></span> / <span th:text="${page.totalPages}"></span></p>
+
+<!-- 前へ/次へボタン -->
+<a th:if="${!page.first}" th:href="@{/users(page=${page.number})}">前へ</a>
+<a th:if="${!page.last}" th:href="@{/users(page=${page.number + 2})}">次へ</a>
+```
+
+### 問題: REST APIでページネーションのメタ情報を返したい
+
+**原因**: Contentのみ返している
+
+**解決策**:
+```java
+// ❌ NG: リストのみ返す
+@GetMapping("/api/users")
+public List<User> list(Pageable pageable) {
+    return userService.findAll(pageable).getContent();  // メタ情報がない
+}
+
+// ✅ OK: Pageオブジェクトをそのまま返す
+@GetMapping("/api/users")
+public Page<User> list(Pageable pageable) {
+    return userService.findAll(pageable);  // メタ情報も含まれる
+}
+
+// ✅ OK: カスタムレスポンスDTOで返す
+@GetMapping("/api/users")
+public PageResponse<UserDto> list(Pageable pageable) {
+    Page<User> page = userService.findAll(pageable);
+    return new PageResponse<>(
+        page.getContent().stream().map(this::toDto).toList(),
+        page.getNumber(),
+        page.getSize(),
+        page.getTotalElements(),
+        page.getTotalPages()
+    );
+}
+```
+
+---
+
 ## 🔄 Gitへのコミットとレビュー依頼
 
 ```bash
