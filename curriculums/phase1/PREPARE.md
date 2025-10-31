@@ -125,8 +125,29 @@ Spring Bootプロジェクトでは、ライブラリの管理やアプリケー
 
 2. `C:\Program Files\Apache\maven`に解凍
 
+#### 💡 補足: 解凍後のディレクトリ構造
+
+解凍したフォルダの中に`apache-maven-3.9.x`というフォルダがあります。
+正しいパスは以下のようになります：
+
+```
+C:\Program Files\Apache\
+└── maven\
+    └── apache-maven-3.9.x\
+        ├── bin\
+        │   ├── mvn.cmd
+        │   └── mvnDebug.cmd
+        ├── boot\
+        ├── conf\
+        └── lib\
+```
+
+**重要**: 環境変数には`apache-maven-3.9.x`フォルダまでのパスを設定します：
+- ❌ `C:\Program Files\Apache\maven`（解凍先フォルダ）
+- ✅ `C:\Program Files\Apache\maven\apache-maven-3.9.x`（実際のMavenフォルダ）
+
 3. 環境変数を設定：
-   - システム環境変数に`MAVEN_HOME`を追加: `C:\Program Files\Apache\maven`
+   - システム環境変数に`MAVEN_HOME`を追加: `C:\Program Files\Apache\maven\apache-maven-3.9.x`
    - システム環境変数の`Path`に追加: `%MAVEN_HOME%\bin`
 
 4. コマンドプロンプトを**再起動**して確認
