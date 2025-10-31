@@ -320,6 +320,36 @@ public Map<String, String> info() {
 2. ログで `Started HelloSpringBootApplication` が表示されているか確認
 3. ポート番号が正しいか確認
 
+### 変更した内容が適用されない場合
+
+**症状**: コードを修正したのに、APIの動作が変わらない
+
+**原因**: アプリケーションが再起動されていない
+
+**解決策**:
+
+#### 方法1: アプリケーションを停止して再起動
+1. 実行中のアプリケーションを停止（`Ctrl + C` または VSCodeの停止ボタン）
+2. 再度実行（`main`メソッドの「Run」をクリック）
+
+#### 方法2: Spring Boot DevToolsを導入（推奨）
+`pom.xml`に以下の依存関係を追加すると、コード変更時に自動再起動されます：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-devtools</artifactId>
+    <scope>runtime</scope>
+    <optional>true</optional>
+</dependency>
+```
+
+追加後、ファイルを保存するだけで自動的にアプリケーションが再起動されます。
+
+**注意**: 
+- ブラウザのキャッシュが原因の場合は、`Ctrl + Shift + R`（macOSは`⌘⇧R`）で強制リロード
+- `pom.xml`を変更した場合は、Mavenプロジェクトの更新も必要
+
 ---
 
 ## 📚 このステップで学んだこと

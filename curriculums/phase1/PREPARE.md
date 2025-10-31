@@ -280,9 +280,28 @@ VSCodeでOpenJDK 21が認識されているか確認します。
 2. 検索ボックスに「java.jdt.ls.java.home」と入力
 
 3. 設定が空の場合、以下のパスを設定：
-   - **Windows**: `C:\Program Files\Java\jdk-21`
-   - **macOS (Homebrew)**: `/opt/homebrew/opt/openjdk@21`
-   - **Linux**: `/usr/lib/jvm/java-21-openjdk`
+
+#### 💡 パスの確認方法
+
+**Windows**:
+```cmd
+# 環境変数JAVA_HOMEが設定されている場合
+echo %JAVA_HOME%
+
+# Javaの実際のパスを確認
+where java
+```
+
+**macOS/Linux**:
+```bash
+# 環境変数JAVA_HOMEが設定されている場合
+echo $JAVA_HOME
+
+# Javaの実際のパスを確認
+which java
+# または
+/usr/libexec/java_home -V  # macOSのみ
+```
 
 または、`settings.json`に直接追加：
 
