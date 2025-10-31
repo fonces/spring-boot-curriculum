@@ -226,7 +226,7 @@ Expected output
 このカリキュラムでは以下の技術スタックを採用しています：
 
 - **ビルドツール**: Maven（Gradleは扱いません）
-- **IDE**: IntelliJ IDEA Community Edition（Eclipse、VS Codeは扱いません）
+- **IDE**: VSCode
 - **JDK**: OpenJDK 21
 
 **Mavenに関する記述の注意点**:

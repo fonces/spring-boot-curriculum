@@ -30,7 +30,7 @@ Phase 2を始める前に、Phase 1（Step 1〜5）を完了していること�
 Phase 1で構築した環境：
 - OpenJDK 21
 - Maven 3.8+
-- IntelliJ IDEA Community Edition
+- Visual Studio Code (VSCode)
 
 ---
 

@@ -726,7 +726,7 @@ spring:
     cache: false  # キャッシュを無効化
 ```
 
-または、IntelliJ IDEAで`Build` → `Recompile 'filename.html'`を実行
+または、アプリケーションを再起動してブラウザのキャッシュをクリア（`Ctrl + Shift + R`）
 
 ### 問題: CSSやJavaScriptが読み込まれない
 

@@ -155,10 +155,11 @@ abc123def456   mysql:8.0   "docker-entrypoint.s…"   10 seconds ago  Up 9 secon
 
 ### 2-2. Mavenの依存関係を更新
 
-IntelliJ IDEAで、`pom.xml`を開いた状態で：
+VSCodeで、`pom.xml`を保存すると：
 
-1. エディタ右上の **🔄 Load Maven Changes** アイコンをクリック
-2. または、`pom.xml`を右クリック → **Maven** → **Reload project**
+1. 右下に「A build file was modified. Do you want to synchronize the Java classpath/configuration?」と表示されます
+2. **Always** をクリックして自動更新を有効化
+3. または、コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
 
 ---
 
@@ -246,10 +247,10 @@ app:
 
 Spring Bootアプリケーションを起動します。
 
-**IntelliJ IDEA**:
+**VSCode**:
 1. `HelloSpringBootApplication.java`を開く
-2. クラス名の横の▶️アイコンをクリック
-3. **Run 'HelloSpringBootApplication'** を選択
+2. `main`メソッド上の「Run」リンクをクリック
+3. または、Spring Boot Dashboardから起動
 
 **または、Mavenコマンド**:
 ```bash
@@ -591,7 +592,7 @@ docker-compose logs mysql
 - ✅ application.ymlでデータベース接続情報を設定
 - ✅ spring.jpa.hibernate.ddl-autoでテーブル自動生成
 - ✅ エンティティクラスの作成とテーブルマッピング
-- ✅ データベースツール（IntelliJ Database Tool）での接続確認
+- ✅ データベースツール（VSCode拡張機能やMySQL Workbench）での接続確認
 - ✅ Dockerコンテナの基本操作（起動・停止・削除）
 
 **重要ポイント**:

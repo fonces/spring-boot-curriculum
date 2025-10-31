@@ -306,7 +306,7 @@
 ## 🛠️ 推奨開発環境
 
 - **JDK**: OpenJDK 21
-- **IDE**: IntelliJ IDEA Community Edition
+- **IDE**: Visual Studio Code (VSCode)
 - **ビルドツール**: Maven 3.8+
 - **データベース**: Docker Desktop（MySQL用）
 - **APIテスト**: Postman / curl

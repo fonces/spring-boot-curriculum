@@ -332,10 +332,11 @@ class UserServiceTest {
 ./mvnw test
 ```
 
-### 4-2. IntelliJ IDEAでテスト実行
+### 4-2. VSCodeでテスト実行
 
-1. テストクラスを右クリック
-2. 「Run 'UserServiceTest'」を選択
+1. テストクラスを開く
+2. クラス名やメソッド名の左側に表示される「Run Test」アイコンをクリック
+3. または、Testing サイドバー（フラスコアイコン）からテストを実行
 
 ### 4-3. テスト結果
 

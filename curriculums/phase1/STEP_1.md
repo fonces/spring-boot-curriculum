@@ -17,7 +17,7 @@
 
 - **OpenJDK 21** (確認: `java -version`)
 - **Maven 3.8+** (確認: `mvn -v`)
-- **IntelliJ IDEA Community Edition**
+- **Visual Studio Code (VSCode)**
 - **curl** (確認: `curl --version`)
 
 **まだインストールしていない場合**: [Phase 1 事前準備ガイド](PREPARE.md)を参照してセットアップしてください。
@@ -47,16 +47,29 @@
 
 4. 「GENERATE」ボタンをクリックしてZIPファイルをダウンロード
 
-5. ZIPを解凍してIDEで開く
+5. ZIPを解凍して任意のフォルダに配置
 
-### 方法B: IntelliJ IDEAから作成
+6. VSCodeで `File` → `Open Folder` からプロジェクトフォルダを開く
 
-1. IntelliJ IDEAを起動
-2. `File` → `New` → `Project`
-3. 左側で「Spring Initializr」を選択
-4. 上記と同じ設定を入力
-5. Next → Dependencies で「Spring Web」を追加
-6. Create
+### 方法B: VSCodeのSpring Initializr拡張機能から作成
+
+1. VSCodeでコマンドパレット（`Ctrl + Shift + P` / `⌘⇧P`）を開く
+
+2. 「Spring Initializr: Create a Maven Project」と入力して選択
+
+3. 以下の設定を入力：
+   - Spring Boot version: `3.5.7`
+   - Language: `Java`
+   - Group Id: `com.example`
+   - Artifact Id: `hello-spring-boot`
+   - Packaging type: `Jar`
+   - Java version: `21`
+
+4. Dependencies: `Spring Web`を選択
+
+5. プロジェクトの保存先フォルダを選択
+
+6. 新しいウィンドウでプロジェクトを開く
 
 ---
 
@@ -134,17 +147,11 @@ public class HelloController {
 
 ## ▶️ ステップ3: アプリケーションの起動
 
-### 3-1. IDEから起動
+### 3-1. VSCodeから起動
 
-**IntelliJ IDEA / Eclipse**:
 1. `HelloSpringBootApplication.java` を開く
-2. `main` メソッドの左側にある緑の再生ボタンをクリック
-3. または右クリック → `Run 'HelloSpringBootApplication'`
-
-**VS Code**:
-1. 拡張機能「Extension Pack for Java」をインストール
-2. `HelloSpringBootApplication.java` を開く
-3. `main` メソッド上の「Run」リンクをクリック
+2. `main` メソッド上に表示される「Run」または「Debug」リンクをクリック
+3. または、Spring Boot Dashboard（サイドバーのSpringアイコン）から起動
 
 ### 3-2. コマンドラインから起動
 
@@ -154,8 +161,8 @@ public class HelloController {
 # Mavenの場合
 ./mvnw spring-boot:run
 
-# Gradleの場合
-./gradlew bootRun
+# Windowsの場合
+mvnw.cmd spring-boot:run
 ```
 
 ### 3-3. 起動確認

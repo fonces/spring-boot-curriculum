@@ -20,7 +20,7 @@ Phase 1では以下のツールを使用します：
 
 - ✅ **OpenJDK 21**: Javaの実行環境
 - ✅ **Maven 3.8+**: ビルドツール
-- ✅ **IntelliJ IDEA Community Edition**: 統合開発環境
+- ✅ **Visual Studio Code (VSCode)**: 統合開発環境
 - ✅ **curl**: APIテスト用コマンドラインツール
 - ✅ **Git**: バージョン管理（オプションだが推奨）
 
@@ -204,120 +204,136 @@ OS name: "mac os x", version: "14.x", arch: "aarch64", family: "mac"
 
 ---
 
-## 💻 IntelliJ IDEA Community Editionのインストール
+## 💻 Visual Studio Code (VSCode) のインストール
 
-IntelliJ IDEA Community Editionは、Spring Boot開発に最適な統合開発環境（IDE）です。
-無料で使用でき、Spring Bootの開発に必要な機能がすべて揃っています。
+Visual Studio Code（VSCode）は、軽量で拡張性の高い統合開発環境（IDE）です。
+無料で使用でき、豊富な拡張機能によりSpring Boot開発に最適な環境を構築できます。
 
 ### インストール手順
 
 #### Windows/macOS/Linux共通
 
-1. [IntelliJ IDEA公式サイト](https://www.jetbrains.com/idea/download/)にアクセス
+1. [VSCode公式サイト](https://code.visualstudio.com/)にアクセス
 
-2. **Community Edition**（無料版）の「Download」ボタンをクリック
-   - ⚠️ Ultimate版（有料）ではなく、Community版を選んでください
+2. 「Download」ボタンをクリックしてインストーラーをダウンロード
 
 3. ダウンロードしたインストーラーを実行
 
 4. インストールウィザードの指示に従う
-   - **Windows**: デフォルト設定でOK
+   - **Windows**: デフォルト設定でOK（「PATHへの追加」にチェック推奨）
    - **macOS**: Applicationsフォルダにドラッグアンドドロップ
-   - **Linux**: 解凍して`bin/idea.sh`を実行
+   - **Linux**: `.deb`または`.rpm`パッケージをインストール、またはSnapを使用
 
 ### 初回起動設定
 
-1. IntelliJ IDEAを起動
+1. VSCodeを起動
 
-2. **データ共有**: お好みで選択（「Don't Send」でもOK）
+2. **言語設定**（日本語化する場合）:
+   - `Ctrl + Shift + P`（macOSは`⌘⇧P`）でコマンドパレットを開く
+   - 「Configure Display Language」と入力
+   - 「日本語」を選択してVSCodeを再起動
 
-3. **テーマ選択**: IntelliJ Light または Darcula（ダークテーマ）を選択
+3. **テーマ選択**: お好みのテーマを選択（Light/Dark）
 
-4. **プラグイン**: デフォルトのままで「Start using IntelliJ IDEA」をクリック
+### 必須拡張機能のインストール
 
-### Spring Bootプラグインの確認
+VSCodeでSpring Boot開発を行うために、以下の拡張機能をインストールします。
 
-IntelliJ IDEA Community Editionには、Spring Boot開発に必要なプラグインが標準で含まれています。
+#### 1. Extension Pack for Java
 
-#### 確認手順
+**インストール手順**:
+1. 左サイドバーの拡張機能アイコン（四角が4つ）をクリック
+2. 検索ボックスに「Extension Pack for Java」と入力
+3. Microsoftが提供する拡張機能を選択して「Install」
 
-1. メニューから `File` → `Settings`（macOSは`IntelliJ IDEA` → `Preferences`）を開く
+この拡張パックには以下が含まれます：
+- **Language Support for Java**: Java言語サポート
+- **Debugger for Java**: Javaデバッガ
+- **Test Runner for Java**: テスト実行
+- **Maven for Java**: Maven統合
+- **Project Manager for Java**: プロジェクト管理
+- **IntelliCode**: AI支援コード補完
 
-2. 左側で `Plugins` を選択
+#### 2. Spring Boot Extension Pack
 
-3. 検索ボックスに「Spring」と入力
+**インストール手順**:
+1. 拡張機能で「Spring Boot Extension Pack」を検索
+2. Pivotalが提供する拡張機能をインストール
 
-4. 以下のプラグインがインストール済み（Enabled）であることを確認：
-   - **Spring Boot**
-   - **Spring Core**
-   - **Spring MVC**
+この拡張パックには以下が含まれます：
+- **Spring Boot Tools**: Spring Boot専用ツール
+- **Spring Initializr Java Support**: プロジェクト作成支援
+- **Spring Boot Dashboard**: アプリケーション管理ダッシュボード
 
-すべて標準でインストールされているので、追加作業は不要です！
+#### 3. その他の推奨拡張機能
+
+- **Lombok Annotations Support for VS Code**: Lombokサポート
+- **Rest Client**: APIテスト（curl代替）
+- **YAML**: application.yml編集支援
 
 ### JDKの設定確認
 
-IntelliJ IDEAでOpenJDK 21が認識されているか確認します。
+VSCodeでOpenJDK 21が認識されているか確認します。
 
-1. `File` → `Project Structure`（macOSは`⌘;`）を開く
+1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
 
-2. `Platform Settings` → `SDKs`を確認
+2. 検索ボックスに「java.jdt.ls.java.home」と入力
 
-3. OpenJDK 21が表示されていればOK
-
-#### 表示されていない場合
-
-1. `+` ボタンをクリック → `Add JDK`
-
-2. OpenJDK 21をインストールしたディレクトリを選択
+3. 設定が空の場合、以下のパスを設定：
    - **Windows**: `C:\Program Files\Java\jdk-21`
    - **macOS (Homebrew)**: `/opt/homebrew/opt/openjdk@21`
    - **Linux**: `/usr/lib/jvm/java-21-openjdk`
 
-3. 「OK」をクリック
+または、`settings.json`に直接追加：
+
+```json
+{
+  "java.jdt.ls.java.home": "/path/to/jdk-21"
+}
+```
 
 ### 便利な設定（オプション）
 
-#### 自動インポートの有効化
+#### 自動保存の有効化
 
-1. `File` → `Settings` → `Editor` → `General` → `Auto Import`
+1. `File` → `Preferences` → `Settings`（macOSは`Code` → `Settings` → `Settings`）
+
+2. 検索ボックスに「auto save」と入力
+
+3. `Files: Auto Save`を「afterDelay」に設定
+
+#### フォーマット設定
+
+1. 設定画面で「format on save」を検索
 
 2. 以下にチェック：
-   - ✅ `Add unambiguous imports on the fly`
-   - ✅ `Optimize imports on the fly`
+   - ✅ `Editor: Format On Save`
 
-#### Mavenの自動リロード
-
-1. `File` → `Settings` → `Build, Execution, Deployment` → `Build Tools` → `Maven`
-
-2. 以下にチェック：
-   - ✅ `Reload project after changes in the build scripts`
-   - `Any changes`を選択
-
-これで、`pom.xml`を編集すると自動的に依存関係がダウンロードされます。
-
-### IntelliJ IDEAの基本的な使い方
+### VSCodeの基本的な使い方
 
 #### プロジェクトを開く
 
-- `File` → `Open` → プロジェクトディレクトリを選択
+- `File` → `Open Folder` → プロジェクトディレクトリを選択
 - `pom.xml`がある場合、自動的にMavenプロジェクトとして認識されます
 
 #### アプリケーションの実行
 
 - メインクラス（`@SpringBootApplication`付き）を開く
-- `main`メソッドの左側にある緑の▶ボタンをクリック
-- または `Shift + F10`（macOSは`⌃R`）
+- `main`メソッドの上に表示される「Run」または「Debug」リンクをクリック
+- または、Spring Boot Dashboardから実行
 
 #### ショートカットキー（覚えると便利）
 
 | 操作 | Windows/Linux | macOS |
 |------|---------------|-------|
-| クラス検索 | `Ctrl + N` | `⌘O` |
-| ファイル検索 | `Ctrl + Shift + N` | `⌘⇧O` |
-| 実行 | `Shift + F10` | `⌃R` |
-| デバッグ | `Shift + F9` | `⌃D` |
+| コマンドパレット | `Ctrl + Shift + P` | `⌘⇧P` |
+| ファイル検索 | `Ctrl + P` | `⌘P` |
+| シンボル検索 | `Ctrl + Shift + O` | `⌘⇧O` |
+| 実行 | `F5` | `F5` |
+| デバッグ | `F5` | `F5` |
 | コード補完 | `Ctrl + Space` | `⌃Space` |
-| コードフォーマット | `Ctrl + Alt + L` | `⌘⌥L` |
+| コードフォーマット | `Shift + Alt + F` | `⇧⌥F` |
+| ターミナル表示 | ``Ctrl + ` `` | ``⌘` `` |
 
 ---
 
@@ -492,25 +508,30 @@ source ~/.bashrc  # または source ~/.zshrc
 
 ### IDEでJDKが認識されない
 
-**症状**: IntelliJ IDEAでプロジェクトを開いてもJDKエラーが出る
+**症状**: VSCodeでプロジェクトを開いてもJDKエラーが出る
 
 **解決策**:
 
-1. `File` → `Project Structure`（`Ctrl + Alt + Shift + S`）
+1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
 
-2. `Project Settings` → `Project`
+2. 検索ボックスに「java home」と入力
 
-3. `SDK`で「Add SDK」→「Download JDK」
+3. `Java: Home`の設定で「Edit in settings.json」をクリック
 
-4. Vendor: `Oracle OpenJDK`, Version: `21`を選択
+4. 以下を追加：
 
-5. 「Download」をクリック
+```json
+{
+  "java.jdt.ls.java.home": "/path/to/jdk-21"
+}
+```
 
-または、既にインストールしたJDKを指定：
+パスの例：
+- **Windows**: `C:\\Program Files\\Java\\jdk-21`
+- **macOS (Homebrew)**: `/opt/homebrew/opt/openjdk@21`
+- **Linux**: `/usr/lib/jvm/java-21-openjdk`
 
-1. `SDK`で「Add SDK」→「Add JDK」
-
-2. OpenJDK 21のインストールパスを選択
+5. VSCodeを再起動
 
 ---
 
@@ -533,17 +554,18 @@ source ~/.bashrc  # または source ~/.zshrc
 
 **pom.xml**というファイルに設定を記述します。Spring Bootでは、必要なライブラリを`pom.xml`に書くだけで自動的にダウンロードされます。
 
-### IntelliJ IDEA Community Editionの利点
+### VSCodeの利点
 
 **Spring Boot開発に最適な理由**：
-- **Spring専用サポート**: Spring Bootプロジェクトを自動認識
-- **コード補完**: アノテーションや設定の自動補完が強力
-- **リファクタリング**: 安全なコード変更をサポート
+- **軽量で高速**: 起動が速く、メモリ消費が少ない
+- **豊富な拡張機能**: Spring Boot専用の拡張機能が充実
+- **統合ターミナル**: IDE内でコマンド実行が可能
+- **Git統合**: バージョン管理がIDE内で完結
+- **クロスプラットフォーム**: Windows、macOS、Linux全てで同じ環境
+- **無料でオープンソース**: すべての機能が無料で利用可能
+- **コード補完**: IntelliCode によるAI支援コード補完
 - **デバッガ**: ブレークポイントを使った効率的なデバッグ
 - **Maven統合**: `pom.xml`の編集で自動的に依存関係をダウンロード
-- **Git統合**: バージョン管理がIDE内で完結
-
-Community Edition（無料版）でも、Spring Boot開発に必要な機能はすべて揃っています。
 
 ---
 
@@ -553,13 +575,14 @@ Community Edition（無料版）でも、Spring Boot開発に必要な機能は�
 
 - [OpenJDK公式サイト](https://openjdk.org/)
 - [Maven公式サイト](https://maven.apache.org/)
-- [IntelliJ IDEA](https://www.jetbrains.com/idea/)
+- [Visual Studio Code](https://code.visualstudio.com/)
 - [Spring Initializr](https://start.spring.io/)
 
 ### インストールガイド
 
 - [Microsoft OpenJDK](https://learn.microsoft.com/ja-jp/java/openjdk/download)
-- [IntelliJ IDEA ドキュメント](https://www.jetbrains.com/help/idea/)
+- [VSCode ドキュメント](https://code.visualstudio.com/docs)
+- [VSCode Java 拡張機能](https://code.visualstudio.com/docs/java/java-spring-boot)
 - [Maven入門ガイド](https://maven.apache.org/guides/getting-started/)
 
 ---

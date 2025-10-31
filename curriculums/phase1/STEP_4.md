@@ -475,7 +475,8 @@ app:
 
 **解決策**:
 - `application.yml`を変更したら必ず再起動
-- IntelliJ IDEAの再起動ボタン（緑の矢印）をクリック
+- VSCodeのSpring Boot Dashboardから再起動
+- またはターミナルで`Ctrl + C`で停止後、再度実行
 
 ### プロパティ名の大文字小文字
 

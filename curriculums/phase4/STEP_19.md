@@ -744,7 +744,7 @@ UserResponse toResponse(User user);
 **原因**: アノテーションプロセッサが有効になっていない
 
 **解決策**:
-1. IntelliJ IDEA: `Settings` → `Build, Execution, Deployment` → `Compiler` → `Annotation Processors` → `Enable annotation processing`をON
+1. VSCode: コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
 2. `mvn clean compile`でビルド
 3. `target/generated-sources/annotations`に生成されたコードを確認
 

@@ -80,7 +80,8 @@
 
 ### 1-2. Maven Reload
 
-IntelliJ IDEAの右サイドバー「Maven」→ 🔄 をクリック
+VSCodeで`pom.xml`を保存すると自動的に依存関係が更新されます。
+または、コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
 
 ### 1-3. アプリケーション起動
 

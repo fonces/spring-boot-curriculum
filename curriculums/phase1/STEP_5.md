@@ -135,41 +135,33 @@ public class UserRequest {
 
 ### 1-2. Mavenプロジェクトの更新
 
-IntelliJ IDEAで：
-1. `pom.xml`を開く
-2. 右上に表示される「Load Maven Changes」（Mアイコン）をクリック
-3. または右クリック → `Maven` → `Reload project`
+VSCodeで：
+1. `pom.xml`を保存
+2. 右下に表示される「A build file was modified. Do you want to synchronize the Java classpath/configuration?」で「Always」をクリック
+3. または、コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
 
 依存関係がダウンロードされるまで待ちます。
 
 ---
 
-## 🚀 ステップ2: IntelliJ IDEAにLombokプラグインをインストール
+## 🚀 ステップ2: VSCodeにLombok拡張機能をインストール
 
-### 2-1. プラグインの確認
+### 2-1. 拡張機能のインストール
 
-IntelliJ IDEA Community Editionには、Lombokプラグインが標準でインストールされています。
+1. VSCodeの拡張機能ビュー（サイドバーの四角4つのアイコン）を開く
+2. 検索ボックスに「Lombok」と入力
+3. 「Lombok Annotations Support for VS Code」（GabrielBB作）をインストール
+4. VSCodeを再起動（推奨）
 
-**確認方法**:
-1. `File` → `Settings`（macOSは`Preferences`）
-2. `Plugins`を選択
-3. 検索ボックスに「Lombok」と入力
-4. 「Lombok」プラグインが**Installed**になっていることを確認
+### 2-2. 設定の確認
 
-### 2-2. インストールされていない場合
+Lombokが正しく動作するように設定を確認します：
 
-1. `Plugins`画面で「Marketplace」タブを選択
-2. 「Lombok」を検索
-3. 「Install」をクリック
-4. IntelliJ IDEAを再起動
+1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
+2. 検索ボックスに「java.compile.nullAnalysis.mode」と入力
+3. 値が「automatic」になっていることを確認
 
-### 2-3. アノテーション処理の有効化
-
-1. `File` → `Settings` → `Build, Execution, Deployment` → `Compiler` → `Annotation Processors`
-2. ✅ **Enable annotation processing** にチェックを入れる
-3. 「Apply」→「OK」
-
-**これを忘れるとLombokが動作しません！**
+**これでVSCodeがLombokのアノテーションを認識します！**
 
 ---
 
@@ -535,19 +527,22 @@ public class UserRequest {
 
 **解決策**:
 1. ステップ2を再確認
-2. IntelliJ IDEAを再起動
+**解決策**:
+1. `pom.xml`からLombokの依存関係を削除
+2. VSCodeを再起動
 3. `pom.xml`のLombok依存関係を確認
 
 ### Getter/Setterが見つからないエラー
 
 **エラー**: "Cannot resolve method 'getName()'"
 
-**原因**: アノテーション処理が有効になっていない
+**原因**: Lombokの拡張機能がインストールされていない、または認識されていない
 
 **解決策**:
-1. `Settings` → `Compiler` → `Annotation Processors`
-2. ✅ `Enable annotation processing`にチェック
-3. プロジェクトをリビルド: `Build` → `Rebuild Project`
+1. VSCodeを再起動
+2. 「Lombok Annotations Support for VS Code」拡張機能がインストール済みか確認
+3. コマンドパレットで「Java: Clean Java Language Server Workspace」を実行
+4. プロジェクトを再度開く
 
 ### @Builderと@NoArgsConstructorの競合
 

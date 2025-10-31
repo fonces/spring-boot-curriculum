@@ -522,6 +522,12 @@ public class UserServiceImpl implements UserService {
 
 **解決策**:
 ```java
+### エラー: "Field injection is not recommended"
+
+**原因**: フィールドインジェクションを使用している（IDEの警告）
+
+**解決策**:
+```java
 // ❌ フィールドインジェクション（非推奨）
 @Autowired
 private UserRepository userRepository;
@@ -532,6 +538,7 @@ private final UserRepository userRepository;
 public UserServiceImpl(UserRepository userRepository) {
     this.userRepository = userRepository;
 }
+```
 
 // ✅ Lombok使用でさらに簡潔
 @RequiredArgsConstructor
