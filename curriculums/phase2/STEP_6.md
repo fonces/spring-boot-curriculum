@@ -572,6 +572,40 @@ docker-compose logs mysql
 2. パッケージが`com.example.hellospringboot`またはそのサブパッケージにあるか確認
 3. `application.yml`の`ddl-auto`が`update`または`create`になっているか確認
 
+### DBeaverの接続時に`Public Key Retrieval is not allowed`エラー
+
+**症状**: DBeaverでMySQLに接続しようとすると以下のエラーが表示される
+
+```
+Public Key Retrieval is not allowed
+```
+
+**原因**: MySQL 8.0のデフォルト認証プラグイン（caching_sha2_password）使用時に、公開鍵の取得が許可されていません。
+
+**解決策**:
+
+DBeaverの接続設定で「Allow Public Key Retrieval」を有効にします：
+
+1. DBeaverで接続設定を開く（既存接続を編集、または新規接続作成時）
+2. 「Driver properties」タブまたは「接続の詳細設定」をクリック
+3. 「allowPublicKeyRetrieval」プロパティを探す
+4. 値を`true`に設定
+5. 「Test Connection」で接続を確認
+
+**または、接続URLに直接パラメータを追加**:
+
+```
+jdbc:mysql://localhost:3306/hello_db?allowPublicKeyRetrieval=true&useSSL=false
+```
+
+**Spring Bootの`application.yml`でも同様に設定可能**:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/hello_db?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Tokyo
+```
+
 ---
 
 ## 📖 参考資料
