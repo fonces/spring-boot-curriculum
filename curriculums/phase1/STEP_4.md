@@ -490,6 +490,66 @@ app.user_name: Taro      # スネークケース
 
 **推奨**: ケバブケース（`user-name`）を使用
 
+### エラー: "Ambiguous mapping. Cannot map 'helloController' method"
+
+**エラーメッセージ**:
+```
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-11-14T11:23:33.742+09:00 ERROR 13936 --- [  restartedMain] o.s.boot.SpringApplication               : Application run failed
+
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'requestMappingHandlerMapping' defined in class path resource [org/springframework/boot/autoconfigure/web/servlet/WebMvcAutoConfiguration$EnableWebMvcConfiguration.class]: Ambiguous mapping. Cannot map 'helloController' method
+com.example.hellospringboot.controller.HelloController#info()
+to {GET [/info]}: There is already 'appInfoController' bean method
+```
+
+**原因**: 同じURLパス（`/info`）に対して複数のメソッドがマッピングされている
+
+このエラーは、**Step 1で作成した`HelloController`の`/info`エンドポイント**と、**Step 4で作成した`AppInfoController`の`/info`エンドポイント**が競合しているために発生します。
+
+**解決策**:
+
+#### 方法1: Step 1の`/info`メソッドを削除または名前変更（推奨）
+
+`HelloController.java`から`/info`メソッドを削除するか、URLを変更します：
+
+```java
+@RestController
+public class HelloController {
+    
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+    
+    // この/infoメソッドを削除、またはパスを変更
+    // @GetMapping("/info")  // ← コメントアウトまたは削除
+    // public String info() {
+    //     return "This is a Spring Boot application";
+    // }
+}
+```
+
+#### 方法2: AppInfoControllerのパスを変更
+
+```java
+@RestController
+public class AppInfoController {
+    
+    @Value("${app.name}")
+    private String appName;
+    
+    @Value("${app.version}")
+    private String appVersion;
+    
+    @GetMapping("/app-info")  // /info から /app-info に変更
+    public String info() {
+        return "Application: " + appName + ", Version: " + appVersion;
+    }
+}
+```
+
+**重要**: Spring Bootでは、**同じHTTPメソッド（GET、POST等）と同じURLパスの組み合わせは、アプリケーション内で1つしか定義できません**。複数定義すると、どのメソッドを実行すればよいか判断できないため、起動時にエラーになります。
+
 ---
 
 ## 📚 このステップで学んだこと
