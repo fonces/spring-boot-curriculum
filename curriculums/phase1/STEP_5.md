@@ -434,6 +434,10 @@ public class Product {
 
 ### 7-2. @ToString
 
+`@ToString`は、オブジェクトの内容を文字列で表現する`toString()`メソッドを自動生成します。
+
+#### 基本的な使い方
+
 ```java
 import lombok.ToString;
 
@@ -442,20 +446,198 @@ public class User {
     private String name;
     private String email;
 }
-
-// 自動生成される
-// User(name=Taro, email=taro@example.com)
 ```
 
-特定フィールドを除外：
+このクラスのインスタンスを出力すると：
 
 ```java
-@ToString(exclude = "password")
-public class User {
-    private String name;
-    private String password;
+User user = new User();
+user.setName("Taro");
+user.setEmail("taro@example.com");
+
+System.out.println(user);
+// 出力: User(name=Taro, email=taro@example.com)
+```
+
+<details>
+<summary><strong>📖 主な用途: ログ出力でのデバッグ（クリックして展開）</strong></summary>
+
+`@ToString`は**ログ出力**で非常に便利です。オブジェクトの状態を簡単に確認できます：
+
+```java
+@RestController
+@Slf4j  // Lombokのログアノテーション
+public class UserController {
+    
+    @PostMapping("/users")
+    public UserResponse createUser(@RequestBody UserRequest request) {
+        // リクエスト内容をログ出力（デバッグ用）
+        log.info("Received user request: {}", request);
+        
+        // ... 処理 ...
+        
+        return response;
+    }
 }
 ```
+
+**ログ出力例**:
+```
+2025-11-14 10:30:45.123  INFO 12345 --- [nio-8080-exec-1] c.e.h.controller.UserController : Received user request: UserRequest(name=Taro, email=taro@example.com, age=30)
+```
+
+`@ToString`がなければ、以下のように表示されてしまいます：
+```
+Received user request: com.example.hellospringboot.dto.UserRequest@5a2e4553
+```
+
+#### ⚠️ 重要: 機密情報の除外
+
+**パスワードやトークンなどの機密情報は、ログに出力してはいけません！**
+
+`exclude`パラメータで特定フィールドを除外できます：
+
+```java
+import lombok.ToString;
+
+@ToString(exclude = {"password", "creditCardNumber"})
+public class UserRegistration {
+    private String username;
+    private String email;
+    private String password;           // ログに出力されない
+    private String creditCardNumber;   // ログに出力されない
+}
+```
+
+**出力例**:
+```java
+UserRegistration user = new UserRegistration();
+user.setUsername("taro");
+user.setEmail("taro@example.com");
+user.setPassword("secret123");
+user.setCreditCardNumber("1234-5678-9012-3456");
+
+System.out.println(user);
+// 出力: UserRegistration(username=taro, email=taro@example.com)
+// passwordとcreditCardNumberは出力されない
+```
+
+#### 💡 セキュリティのベストプラクティス
+
+**機密情報を含むクラスの例**:
+
+```java
+@ToString(exclude = {"password", "token", "secret"})
+@Data
+public class LoginRequest {
+    private String username;
+    private String password;  // 絶対にログに出さない！
+    private String deviceId;
+}
+```
+
+```java
+@ToString(exclude = "apiKey")
+@Data
+public class ExternalApiConfig {
+    private String endpoint;
+    private String apiKey;    // APIキーは機密情報
+    private Integer timeout;
+}
+```
+
+#### その他の便利なオプション
+
+**特定フィールドのみを含める**:
+
+```java
+@ToString(of = {"id", "name"})  // idとnameだけ出力
+public class User {
+    private Long id;
+    private String name;
+    private String email;
+    private String internalNote;  // 出力されない
+}
+```
+
+**スーパークラスのフィールドも含める**:
+
+```java
+@ToString(callSuper = true)
+public class AdminUser extends User {
+    private String role;
+}
+// 出力: AdminUser(super=User(name=Taro), role=ADMIN)
+```
+
+**フィールド名を表示しない**:
+
+```java
+@ToString(includeFieldNames = false)
+public class Point {
+    private Integer x;
+    private Integer y;
+}
+// 出力: Point(10, 20) ← フィールド名なし
+```
+
+#### 実践例: ログ出力での活用
+
+```java
+import lombok.Data;
+import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RestController
+public class OrderController {
+    
+    @PostMapping("/orders")
+    public OrderResponse createOrder(@RequestBody OrderRequest request) {
+        // リクエストの内容をログに記録
+        log.info("Creating order: {}", request);
+        
+        try {
+            // 処理...
+            OrderResponse response = processOrder(request);
+            
+            // 成功時のログ
+            log.info("Order created successfully: {}", response);
+            
+            return response;
+        } catch (Exception e) {
+            // エラー時にリクエスト内容を記録（デバッグに有用）
+            log.error("Failed to create order. Request: {}", request, e);
+            throw e;
+        }
+    }
+}
+
+@ToString(exclude = {"creditCardNumber", "cvv"})  // 決済情報は除外！
+@Data
+class OrderRequest {
+    private String productId;
+    private Integer quantity;
+    private String creditCardNumber;  // ログに出力しない
+    private String cvv;               // ログに出力しない
+}
+
+@ToString
+@Data
+class OrderResponse {
+    private String orderId;
+    private String status;
+    private LocalDateTime createdAt;
+}
+```
+
+**重要ポイント**:
+- ✅ ログ出力でオブジェクトの状態を簡単に確認できる
+- ✅ デバッグ作業が効率的になる
+- ⚠️ パスワード、トークン、カード番号などは必ず`exclude`で除外
+- ⚠️ 個人情報（メールアドレス、電話番号等）の取り扱いにも注意
+
+</details>
 
 ### 7-3. @EqualsAndHashCode
 
