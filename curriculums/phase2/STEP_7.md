@@ -156,21 +156,6 @@ Hibernate:
 
 **これで自動的にテーブルが作成されました！**
 
-**データベースの確認方法：**
-
-**DBeaver（プロフェッショナルなDBビューアー）**
-- 無料で多機能なデータベース管理ツール
-- [https://dbeaver.io/](https://dbeaver.io/)
-- MySQL、PostgreSQLなど多数のデータベースに対応
-- 接続情報: Host `localhost`, Port `3306`, Database `hellospringboot`, User `dbuser`, Password `dbpassword`
-
-**MySQL CLI**
-```bash
-docker exec -it spring-boot-mysql mysql -udbuser -pdbpassword hellospringboot
-```
-
-> **💡 ヒント**: 実務ではDBeaverなどの専用ツールを使うことが多いです
-
 ---
 
 ## 🚀 ステップ2: リポジトリの作成

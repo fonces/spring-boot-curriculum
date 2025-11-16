@@ -331,6 +331,8 @@ public List<User> searchUsers(String name, Integer minAge, Integer maxAge) {
 ### 2-5. UserControllerに追加
 
 ```java
+import java.util.Map;
+
 /**
  * メールドメインで検索
  * GET /api/users/search/email-domain?domain=example.com
@@ -410,6 +412,8 @@ curl "http://localhost:8080/api/users/search?minAge=28"
 `UserRepository.java`に追加：
 
 ```java
+import java.util.Map;
+
 /**
  * ネイティブSQLで年齢の統計情報を取得
  */

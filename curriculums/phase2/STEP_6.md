@@ -178,7 +178,7 @@ spring:
   
   # データソース設定
   datasource:
-    url: jdbc:mysql://localhost:3306/hello_db?useSSL=false&serverTimezone=Asia/Tokyo
+    url: jdbc:mysql://localhost:3306/hello_db?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Tokyo
     username: appuser
     password: apppassword
     driver-class-name: com.mysql.cj.jdbc.Driver
