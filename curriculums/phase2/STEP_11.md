@@ -55,9 +55,7 @@
 **ファイルパス**: `src/main/java/com/example/hellospringboot/entity/Post.java`
 
 ```java
-package com.example.hellospringboot.entity.
-
-;
+package com.example.hellospringboot.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -92,7 +90,7 @@ public class Post {
     // 多対1の関係（多くの投稿が1人のユーザーに属する）
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnoreProperties({"posts"})  // 循環参照を防ぐ
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "posts"})  // 循環参照を防ぐ
     private User user;
 
     @PrePersist
@@ -116,10 +114,12 @@ private User user;
 
 #### `@JsonIgnoreProperties`
 ```java
-@JsonIgnoreProperties({"posts"})
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "posts"})
 ```
-- JSON変換時に循環参照を防ぐ
-- `user.posts.user.posts...`の無限ループを回避
+- JSON変換時に循環参照とHibernateプロキシ問題を防ぐ
+- `"posts"`: `user.posts.user.posts...`の無限ループを回避
+- `"hibernateLazyInitializer"`, `"handler"`: Hibernateの遅延ロード用プロキシオブジェクトの内部フィールドを無視
+  - これらを指定しないと、JSON変換時に`ByteBuddyInterceptor`のシリアライズエラーが発生する可能性があります
 
 #### `@PrePersist`
 ```java
