@@ -41,7 +41,7 @@ Spring Boot 2.3以降では、`spring-boot-starter-validation`を明示的に追
 ### 1. DTOクラスにバリデーションアノテーション
 
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -68,7 +68,7 @@ public class UserCreateRequest {
 ```
 
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -109,12 +109,12 @@ public class UserUpdateRequest {
 ### 3. Controllerで`@Valid`を使う
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.UserCreateRequest;
-import com.example.demo.dto.UserUpdateRequest;
-import com.example.demo.entity.User;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -201,7 +201,7 @@ public class UserController {
 ### 1. カスタムアノテーションの作成
 
 ```java
-package com.example.demo.validation;
+package com.example.hellospringboot.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
@@ -221,7 +221,7 @@ public @interface Adult {
 ### 2. バリデータの実装
 
 ```java
-package com.example.demo.validation;
+package com.example.hellospringboot.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
@@ -258,7 +258,7 @@ public class UserCreateRequest {
 ### 4. より複雑な例: パスワード確認
 
 ```java
-package com.example.demo.validation;
+package com.example.hellospringboot.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
@@ -276,9 +276,9 @@ public @interface PasswordMatch {
 ```
 
 ```java
-package com.example.demo.validation;
+package com.example.hellospringboot.validation;
 
-import com.example.demo.dto.UserRegistrationRequest;
+import com.example.hellospringboot.dto.UserRegistrationRequest;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
@@ -318,7 +318,7 @@ public class UserRegistrationRequest {
 ### 1. バリデーショングループの定義
 
 ```java
-package com.example.demo.validation;
+package com.example.hellospringboot.validation;
 
 public interface ValidationGroups {
     interface Create {}

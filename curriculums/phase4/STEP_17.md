@@ -68,7 +68,7 @@ public class UserController {
 ### 1. カスタム例外クラスの作成
 
 ```java
-package com.example.demo.exception;
+package com.example.hellospringboot.exception;
 
 /**
  * リソースが見つからない場合の例外
@@ -93,7 +93,7 @@ public class ResourceNotFoundException extends RuntimeException {
 ```
 
 ```java
-package com.example.demo.exception;
+package com.example.hellospringboot.exception;
 
 /**
  * ビジネスルール違反の例外
@@ -118,7 +118,7 @@ public class BusinessException extends RuntimeException {
 ```
 
 ```java
-package com.example.demo.exception;
+package com.example.hellospringboot.exception;
 
 /**
  * バリデーションエラーの例外
@@ -140,7 +140,7 @@ public class ValidationException extends RuntimeException {
 ### 2. エラーレスポンスDTO
 
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -174,9 +174,9 @@ public class ErrorResponse {
 ### 3. グローバル例外ハンドラ
 
 ```java
-package com.example.demo.exception;
+package com.example.hellospringboot.exception;
 
-import com.example.demo.dto.ErrorResponse;
+import com.example.hellospringboot.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -301,12 +301,12 @@ public class GlobalExceptionHandler {
 ### 4. Serviceでの例外の使用
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.entity.User;
-import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.BusinessException;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -382,9 +382,9 @@ public class UserService {
 ### 5. Repositoryに追加メソッド
 
 ```java
-package com.example.demo.repository;
+package com.example.hellospringboot.repository;
 
-import com.example.demo.entity.User;
+import com.example.hellospringboot.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -397,10 +397,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 ### 6. Controller（シンプルに）
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.entity.User;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

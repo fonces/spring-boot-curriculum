@@ -99,7 +99,7 @@ mybatis:
   # Mapper XMLファイルの場所
   mapper-locations: classpath:mapper/**/*.xml
   # エイリアスのパッケージ
-  type-aliases-package: com.example.demo.entity
+  type-aliases-package: com.example.hellospringboot.entity
   configuration:
     # キャメルケース⇔スネークケース自動変換
     map-underscore-to-camel-case: true
@@ -111,14 +111,14 @@ mybatis:
 - `mapper-locations`: Mapper XMLファイルの配置場所
 - `type-aliases-package`: エンティティクラスのパッケージ（XMLで短縮名が使える）
 - `map-underscore-to-camel-case`: `user_name` ⇔ `userName` の自動変換
-- `log-impl`: 実行されるSQLをコンソールに出力
+- `log-impl`: 実行されるSQLをコンソールに出力   
 
 ### Step 3: Productエンティティの作成
 
 新しいエンティティ `Product` を作成します（MyBatis専用のため、JPAアノテーションは不要）:
 
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -168,22 +168,14 @@ INSERT INTO products (name, description, price, stock) VALUES
 ('キーボード', 'メカニカルキーボード', 15000.00, 20);
 ```
 
-**実行方法**:
-```bash
-# MySQLコンテナに接続
-docker exec -it mysql-container mysql -u user -p
-
-# パスワード入力後、上記SQLを実行
-```
-
 ### Step 5: Mapperインターフェースの作成
 
-`src/main/java/com/example/demo/mapper/ProductMapper.java`:
+`src/main/java/com/example/hellospringboot/mapper/ProductMapper.java`:
 
 ```java
-package com.example.demo.mapper;
+package com.example.hellospringboot.mapper;
 
-import com.example.demo.entity.Product;
+import com.example.hellospringboot.entity.Product;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
@@ -228,13 +220,13 @@ public interface ProductMapper {
 
 ### Step 6: Serviceクラスの作成
 
-`src/main/java/com/example/demo/service/ProductService.java`:
+`src/main/java/com/example/hellospringboot/service/ProductService.java`:
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.entity.Product;
-import com.example.demo.mapper.ProductMapper;
+import com.example.hellospringboot.entity.Product;
+import com.example.hellospringboot.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -291,13 +283,13 @@ public class ProductService {
 
 ### Step 7: Controllerクラスの作成
 
-`src/main/java/com/example/demo/controller/ProductController.java`:
+`src/main/java/com/example/hellospringboot/controller/ProductController.java`:
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.entity.Product;
-import com.example.demo.service.ProductService;
+import com.example.hellospringboot.entity.Product;
+import com.example.hellospringboot.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -472,7 +464,7 @@ curl -X DELETE http://localhost:8080/api/products/3
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.mapper.ProductMapper">
+<mapper namespace="com.example.hellospringboot.mapper.ProductMapper">
     
     <select id="findAll" resultType="Product">
         SELECT * FROM products ORDER BY id
@@ -552,7 +544,7 @@ curl -X DELETE http://localhost:8080/api/products/3
 **原因**: SQLの構文エラー
 
 **解決策**:
-1. `logging.level.com.example.demo.mapper=DEBUG`でSQLログを確認
+1. `logging.level.com.example.hellospringboot.mapper=DEBUG`でSQLログを確認
 2. SQLをMySQLクライアントで直接実行してみる
 3. テーブル名、カラム名のスペルミスを確認
 4. `#{}`と`${}`を間違えていないか確認（基本は`#{}`を使用）

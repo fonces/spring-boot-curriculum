@@ -58,7 +58,7 @@
 ### 1. プロジェクト構成
 
 ```
-src/main/java/com/example/demo/
+src/main/java/com/example/hellospringboot/
 ├── controller/
 │   └── UserController.java
 ├── service/
@@ -73,7 +73,7 @@ src/main/java/com/example/demo/
 ### 2. Entity（変更なし）
 
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -95,9 +95,9 @@ public class User {
 ### 3. Repository層
 
 ```java
-package com.example.demo.repository;
+package com.example.hellospringboot.repository;
 
-import com.example.demo.entity.User;
+import com.example.hellospringboot.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -113,9 +113,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 ### 4. Service層（インターフェース）
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.entity.User;
+import com.example.hellospringboot.entity.User;
 import java.util.List;
 import java.util.Optional;
 
@@ -160,10 +160,10 @@ public interface UserService {
 ### 5. Service層（実装クラス）
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.entity.User;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -237,10 +237,10 @@ public class UserServiceImpl implements UserService {
 ### 6. Controller層
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.entity.User;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

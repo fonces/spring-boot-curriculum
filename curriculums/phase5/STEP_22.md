@@ -58,10 +58,10 @@
 
 ### Step 1: フォーム用DTOクラスの作成
 
-`src/main/java/com/example/demo/dto/UserForm.java`:
+`src/main/java/com/example/hellospringboot/dto/UserForm.java`:
 
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -87,14 +87,14 @@ public class UserForm {
 
 ### Step 2: Controllerの実装
 
-`src/main/java/com/example/demo/controller/UserFormController.java`:
+`src/main/java/com/example/hellospringboot/controller/UserFormController.java`:
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.UserForm;
-import com.example.demo.entity.User;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.dto.UserForm;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;

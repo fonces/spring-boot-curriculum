@@ -107,7 +107,7 @@ spring:
 # MyBatis設定
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
-  type-aliases-package: com.example.demo.entity
+  type-aliases-package: com.example.hellospringboot.entity
   configuration:
     map-underscore-to-camel-case: true
 
@@ -191,9 +191,9 @@ GROUP BY a.id, a.title, u.username, a.created_at;
 
 ### 3.1 Userエンティティ
 
-**com/example/demo/entity/User.java**
+**src/main/java/com/example/hellospringboot/entity/User.java**
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -249,9 +249,9 @@ public class User {
 
 ### 3.2 Articleエンティティ
 
-**com/example/demo/entity/Article.java**
+**src/main/java/com/example/hellospringboot/entity/Article.java**
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -313,9 +313,9 @@ public class Article {
 
 ### 3.3 Commentエンティティ
 
-**com/example/demo/entity/Comment.java**
+**src/main/java/com/example/hellospringboot/entity/Comment.java**
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -364,11 +364,11 @@ public class Comment {
 
 ### 4.1 UserRepository
 
-**com/example/demo/repository/UserRepository.java**
+**src/main/java/com/example/hellospringboot/repository/UserRepository.java**
 ```java
-package com.example.demo.repository;
+package com.example.hellospringboot.repository;
 
-import com.example.demo.entity.User;
+import com.example.hellospringboot.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -384,11 +384,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 ### 4.2 ArticleRepository
 
-**com/example/demo/repository/ArticleRepository.java**
+**src/main/java/com/example/hellospringboot/repository/ArticleRepository.java**
 ```java
-package com.example.demo.repository;
+package com.example.hellospringboot.repository;
 
-import com.example.demo.entity.Article;
+import com.example.hellospringboot.entity.Article;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -413,9 +413,9 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
 ### 5.1 統計情報DTO
 
-**com/example/demo/dto/ArticleStatistics.java**
+**src/main/java/com/example/hellospringboot/dto/ArticleStatistics.java**
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -440,9 +440,9 @@ public class ArticleStatistics {
 
 ### 5.2 検索条件DTO
 
-**com/example/demo/dto/ArticleSearchRequest.java**
+**src/main/java/com/example/hellospringboot/dto/ArticleSearchRequest.java**
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import lombok.Data;
 
@@ -464,12 +464,12 @@ public class ArticleSearchRequest {
 
 ### 5.3 ArticleStatisticsMapper
 
-**com/example/demo/mapper/ArticleStatisticsMapper.java**
+**src/main/java/com/example/hellospringboot/mapper/ArticleStatisticsMapper.java**
 ```java
-package com.example.demo.mapper;
+package com.example.hellospringboot.mapper;
 
-import com.example.demo.dto.ArticleSearchRequest;
-import com.example.demo.dto.ArticleStatistics;
+import com.example.hellospringboot.dto.ArticleSearchRequest;
+import com.example.hellospringboot.dto.ArticleStatistics;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -496,15 +496,15 @@ public interface ArticleStatisticsMapper {
 
 ### 5.4 Mapper XML
 
-**resources/mapper/ArticleStatisticsMapper.xml**
+**src/main/resources/mapper/ArticleStatisticsMapper.xml**
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.mapper.ArticleStatisticsMapper">
+<mapper namespace="com.example.hellospringboot.mapper.ArticleStatisticsMapper">
 
     <!-- ResultMap -->
-    <resultMap id="articleStatisticsResultMap" type="com.example.demo.dto.ArticleStatistics">
+    <resultMap id="articleStatisticsResultMap" type="com.example.hellospringboot.dto.ArticleStatistics">
         <result property="articleId" column="article_id"/>
         <result property="title" column="title"/>
         <result property="author" column="author"/>
@@ -614,17 +614,17 @@ public interface ArticleStatisticsMapper {
 
 ### 6.1 ArticleService
 
-**com/example/demo/service/ArticleService.java**
+**src/main/java/com/example/hellospringboot/service/ArticleService.java**
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.dto.ArticleSearchRequest;
-import com.example.demo.dto.ArticleStatistics;
-import com.example.demo.entity.Article;
-import com.example.demo.entity.User;
-import com.example.demo.mapper.ArticleStatisticsMapper;
-import com.example.demo.repository.ArticleRepository;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.dto.ArticleSearchRequest;
+import com.example.hellospringboot.dto.ArticleStatistics;
+import com.example.hellospringboot.entity.Article;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.mapper.ArticleStatisticsMapper;
+import com.example.hellospringboot.repository.ArticleRepository;
+import com.example.hellospringboot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -753,9 +753,9 @@ public void complexOperation() {
 
 ### 7.2 トランザクション設定
 
-**com/example/demo/config/TransactionConfig.java**
+**src/main/java/com/example/hellospringboot/config/TransactionConfig.java**
 ```java
-package com.example.demo.config;
+package com.example.hellospringboot.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
@@ -772,14 +772,14 @@ public class TransactionConfig {
 
 ## 8. Controllerの実装
 
-**com/example/demo/controller/ArticleController.java**
+**src/main/java/com/example/hellospringboot/controller/ArticleController.java**
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.ArticleSearchRequest;
-import com.example.demo.dto.ArticleStatistics;
-import com.example.demo.entity.Article;
-import com.example.demo.service.ArticleService;
+import com.example.hellospringboot.dto.ArticleSearchRequest;
+import com.example.hellospringboot.dto.ArticleStatistics;
+import com.example.hellospringboot.entity.Article;
+import com.example.hellospringboot.service.ArticleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -1000,8 +1000,8 @@ List<Article> articles = articleRepository.findAll();
 **解決策**:
 ```java
 @SpringBootApplication
-@EntityScan("com.example.demo.entity")  // エンティティのパッケージを明示
-@EnableJpaRepositories("com.example.demo.repository")  // JPAリポジトリ
+@EntityScan("com.example.hellospringboot.entity")  // エンティティのパッケージを明示
+@EnableJpaRepositories("com.example.hellospringboot.repository")  // JPAリポジトリ
 public class DemoApplication {
     // ...
 }

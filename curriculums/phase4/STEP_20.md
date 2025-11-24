@@ -41,14 +41,14 @@
 ### 1. Lombokの`@Slf4j`を使う（推奨）
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.entity.User;
-import com.example.demo.exception.ResourceNotFoundException;
-import com.example.demo.mapper.UserMapper;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.mapper.UserMapper;
+import com.example.hellospringboot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -189,9 +189,9 @@ if (log.isDebugEnabled()) {
 logging:
   level:
     root: INFO                                    # デフォルト
-    com.example.demo: DEBUG                       # 自分のパッケージはDEBUG
-    com.example.demo.controller: INFO             # Controller層はINFO
-    com.example.demo.repository: DEBUG            # Repository層はDEBUG
+    com.example.hellospringboot: DEBUG                       # 自分のパッケージはDEBUG
+    com.example.hellospringboot.controller: INFO             # Controller層はINFO
+    com.example.hellospringboot.repository: DEBUG            # Repository層はDEBUG
     org.springframework.web: DEBUG                # Spring WebのDEBUG情報
     org.hibernate.SQL: DEBUG                      # SQL出力
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # バインド変数の値
@@ -214,7 +214,7 @@ logging:
 # application-dev.yml（開発環境）
 logging:
   level:
-    com.example.demo: DEBUG
+    com.example.hellospringboot: DEBUG
     org.hibernate.SQL: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
@@ -222,7 +222,7 @@ logging:
 # application-prod.yml（本番環境）
 logging:
   level:
-    com.example.demo: INFO
+    com.example.hellospringboot: INFO
     org.hibernate.SQL: WARN
   file:
     name: /var/log/myapp/application.log
@@ -288,7 +288,7 @@ logging:
     </springProfile>
 
     <!-- パッケージ別のログレベル -->
-    <logger name="com.example.demo" level="DEBUG"/>
+    <logger name="com.example.hellospringboot" level="DEBUG"/>
     <logger name="org.springframework.web" level="INFO"/>
     <logger name="org.hibernate.SQL" level="DEBUG"/>
 </configuration>
@@ -299,7 +299,7 @@ logging:
 ### 1. Interceptorでリクエストログ
 
 ```java
-package com.example.demo.interceptor;
+package com.example.hellospringboot.interceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -335,9 +335,9 @@ public class LoggingInterceptor implements HandlerInterceptor {
 ### 2. Interceptorの登録
 
 ```java
-package com.example.demo.config;
+package com.example.hellospringboot.config;
 
-import com.example.demo.interceptor.LoggingInterceptor;
+import com.example.hellospringboot.interceptor.LoggingInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -384,7 +384,7 @@ public class UserService {
 ### 4. AOPでメソッド実行ログ
 
 ```java
-package com.example.demo.aspect;
+package com.example.hellospringboot.aspect;
 
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -397,7 +397,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class LoggingAspect {
     
-    @Around("execution(* com.example.demo.service.*.*(..))")
+    @Around("execution(* com.example.hellospringboot.service.*.*(..))")
     public Object logExecutionTime(ProceedingJoinPoint joinPoint) throws Throwable {
         long start = System.currentTimeMillis();
         String methodName = joinPoint.getSignature().toShortString();
@@ -588,7 +588,7 @@ public class GlobalExceptionHandler {
 logging:
   level:
     # ✅ パッケージ名を正確に指定
-    com.example.demo: DEBUG  # プロジェクトのパッケージ
+    com.example.hellospringboot: DEBUG  # プロジェクトのパッケージ
     root: INFO  # デフォルトレベル
 ```
 
@@ -598,7 +598,7 @@ logging:
 @Service
 public class UserService {
     public void method() {
-        log.debug("Debug message");  // logging.level.com.example.demo=DEBUG以上で出力
+        log.debug("Debug message");  // logging.level.com.example.hellospringboot=DEBUG以上で出力
     }
 }
 ```
@@ -662,12 +662,12 @@ public class User {
 # application-dev.yml（開発環境）
 logging:
   level:
-    com.example.demo: DEBUG
+    com.example.hellospringboot: DEBUG
 
 # application-prod.yml（本番環境）
 logging:
   level:
-    com.example.demo: INFO  # 本番はINFO以上
+    com.example.hellospringboot: INFO  # 本番はINFO以上
     root: WARN
 ```
 

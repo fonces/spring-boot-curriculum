@@ -137,14 +137,14 @@
 ### 2-1. ユニットテストの例（Service層）
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.entity.User;
-import com.example.demo.exception.ResourceNotFoundException;
-import com.example.demo.mapper.UserMapper;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.mapper.UserMapper;
+import com.example.hellospringboot.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -279,10 +279,10 @@ class UserServiceTest {
 ### 2-2. 統合テストの例（Controller層）
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.response.UserResponse;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -380,7 +380,7 @@ class UserControllerIntegrationTest {
 ```
 target/site/jacoco/
 ├── index.html              # カバレッジサマリー
-├── com.example.demo/       # パッケージごとのレポート
+├── com.example.hellospringboot/       # パッケージごとのレポート
 │   ├── controller/
 │   ├── service/
 │   └── repository/
@@ -410,9 +410,9 @@ start target/site/jacoco/index.html
 │ Element         Instructions  Branches  Lines  Methods  │
 ├─────────────────────────────────────────────────────────┤
 │ Total           85% (425/500) 70% (14/20) 82% (82/100)  │
-│ com.example.demo.controller  90%  75%    88%    90%     │
-│ com.example.demo.service     95%  80%    92%    100%    │
-│ com.example.demo.repository  100% N/A    100%   100%    │
+│ com.example.hellospringboot.controller  90%  75%    88%    90%     │
+│ com.example.hellospringboot.service     95%  80%    92%    100%    │
+│ com.example.hellospringboot.repository  100% N/A    100%   100%    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -455,7 +455,7 @@ public class UserService {
 
 **カバレッジ不足の例**:
 ```
-[WARNING] Rule violated for package com.example.demo.service:
+[WARNING] Rule violated for package com.example.hellospringboot.service:
 lines covered ratio is 0.65, but expected minimum is 0.80
 ```
 
@@ -521,7 +521,7 @@ void create_DuplicateEmail() {
 **カバレッジ不足時の出力**:
 ```
 [ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.11:check
-[ERROR] Rule violated for package com.example.demo: 
+[ERROR] Rule violated for package com.example.hellospringboot: 
         lines covered ratio is 0.75, but expected minimum is 0.80
 ```
 
@@ -556,7 +556,7 @@ void create_DuplicateEmail() {
     <rule>
         <element>PACKAGE</element>
         <includes>
-            <include>com.example.demo.service.*</include>
+            <include>com.example.hellospringboot.service.*</include>
         </includes>
         <limits>
             <limit>
@@ -570,7 +570,7 @@ void create_DuplicateEmail() {
     <rule>
         <element>PACKAGE</element>
         <includes>
-            <include>com.example.demo.controller.*</include>
+            <include>com.example.hellospringboot.controller.*</include>
         </includes>
         <limits>
             <limit>
@@ -661,10 +661,10 @@ PITestを導入してミューテーションテストを実施してくださ�
     </dependencies>
     <configuration>
         <targetClasses>
-            <param>com.example.demo.service.*</param>
+            <param>com.example.hellospringboot.service.*</param>
         </targetClasses>
         <targetTests>
-            <param>com.example.demo.service.*Test</param>
+            <param>com.example.hellospringboot.service.*Test</param>
         </targetTests>
     </configuration>
 </plugin>

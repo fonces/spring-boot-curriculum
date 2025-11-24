@@ -303,7 +303,7 @@ Expected output
 ### コード例の構成
 
 ```java
-package com.example.demo;  // パッケージ宣言
+package com.example.hellospringboot;  // パッケージ宣言
 
 import org.springframework.web.bind.annotation.GetMapping;  // インポート（初回のみ）
 import org.springframework.web.bind.annotation.RestController;

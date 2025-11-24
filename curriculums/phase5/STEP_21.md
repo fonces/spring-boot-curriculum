@@ -125,10 +125,10 @@ spring:
 
 ### Step 4: Controllerの作成
 
-`src/main/java/com/example/demo/controller/HelloController.java`:
+`src/main/java/com/example/hellospringboot/controller/HelloController.java`:
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -295,13 +295,13 @@ http://localhost:8080/greet?name=太郎
 
 ### Step 7: UserViewController の作成
 
-`src/main/java/com/example/demo/controller/UserViewController.java`:
+`src/main/java/com/example/hellospringboot/controller/UserViewController.java`:
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.entity.User;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;

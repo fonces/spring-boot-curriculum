@@ -75,7 +75,7 @@ public User getUser(@PathVariable Long id) {
 ### プロジェクト構造
 
 ```
-src/main/java/com/example/demo/
+src/main/java/com/example/hellospringboot/
 ├── controller/
 │   └── UserController.java
 ├── dto/
@@ -100,7 +100,7 @@ src/main/java/com/example/demo/
 ### 1. Entity（内部データ）
 
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -150,7 +150,7 @@ public class User {
 ### 2. リクエストDTO
 
 ```java
-package com.example.demo.dto.request;
+package com.example.hellospringboot.dto.request;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -182,7 +182,7 @@ public class UserCreateRequest {
 ```
 
 ```java
-package com.example.demo.dto.request;
+package com.example.hellospringboot.dto.request;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -209,7 +209,7 @@ public class UserUpdateRequest {
 ### 3. レスポンスDTO
 
 ```java
-package com.example.demo.dto.response;
+package com.example.hellospringboot.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -233,7 +233,7 @@ public class UserResponse {
 ```
 
 ```java
-package com.example.demo.dto.response;
+package com.example.hellospringboot.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -265,13 +265,13 @@ public class UserDetailResponse {
 #### 手動マッピング
 
 ```java
-package com.example.demo.mapper;
+package com.example.hellospringboot.mapper;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.request.UserUpdateRequest;
-import com.example.demo.dto.response.UserDetailResponse;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.entity.User;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.request.UserUpdateRequest;
+import com.example.hellospringboot.dto.response.UserDetailResponse;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -346,11 +346,11 @@ public class UserMapper {
 ```
 
 ```java
-package com.example.demo.mapper;
+package com.example.hellospringboot.mapper;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.entity.User;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -370,16 +370,16 @@ public interface UserMapperMapStruct {
 ### 5. Service層（DTO/Entity変換含む）
 
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.request.UserUpdateRequest;
-import com.example.demo.dto.response.UserDetailResponse;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.entity.User;
-import com.example.demo.exception.ResourceNotFoundException;
-import com.example.demo.mapper.UserMapper;
-import com.example.demo.repository.UserRepository;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.request.UserUpdateRequest;
+import com.example.hellospringboot.dto.response.UserDetailResponse;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.mapper.UserMapper;
+import com.example.hellospringboot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -463,13 +463,13 @@ public class UserService {
 ### 6. Controller（すっきり）
 
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.request.UserCreateRequest;
-import com.example.demo.dto.request.UserUpdateRequest;
-import com.example.demo.dto.response.UserDetailResponse;
-import com.example.demo.dto.response.UserResponse;
-import com.example.demo.service.UserService;
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.request.UserUpdateRequest;
+import com.example.hellospringboot.dto.response.UserDetailResponse;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -534,7 +534,7 @@ public class UserController {
 ### 7. PasswordEncoderの設定（仮実装）
 
 ```java
-package com.example.demo.config;
+package com.example.hellospringboot.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

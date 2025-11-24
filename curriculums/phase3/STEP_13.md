@@ -62,9 +62,9 @@ UPDATE products SET category_id = 2 WHERE id = 2;
 
 ### 2.1 Categoryエンティティ
 
-**com/example/demo/entity/Category.java**
+**src/main/java/com/example/hellospringboot/entity/Category.java**
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -88,9 +88,9 @@ public class Category {
 
 ### 2.2 Productエンティティの拡張
 
-**com/example/demo/entity/Product.java**
+**src/main/java/com/example/hellospringboot/entity/Product.java**
 ```java
-package com.example.demo.entity;
+package com.example.hellospringboot.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -124,9 +124,9 @@ public class Product {
 
 ### 3.1 検索条件DTOの作成
 
-**com/example/demo/dto/ProductSearchRequest.java**
+**src/main/java/com/example/hellospringboot/dto/ProductSearchRequest.java**
 ```java
-package com.example.demo.dto;
+package com.example.hellospringboot.dto;
 
 import lombok.Data;
 
@@ -150,12 +150,12 @@ public class ProductSearchRequest {
 
 ### 3.2 Mapperインターフェースの拡張
 
-**com/example/demo/mapper/ProductMapper.java**
+**src/main/java/com/example/hellospringboot/mapper/ProductMapper.java**
 ```java
-package com.example.demo.mapper;
+package com.example.hellospringboot.mapper;
 
-import com.example.demo.dto.ProductSearchRequest;
-import com.example.demo.entity.Product;
+import com.example.hellospringboot.dto.ProductSearchRequest;
+import com.example.hellospringboot.entity.Product;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -181,15 +181,15 @@ public interface ProductMapper {
 
 ### 3.3 動的SQL（XML Mapper）
 
-**resources/mapper/ProductMapper.xml**
+**src/main/resources/mapper/ProductMapper.xml**
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.mapper.ProductMapper">
+<mapper namespace="com.example.hellospringboot.mapper.ProductMapper">
 
     <!-- ResultMap: 基本的な商品 -->
-    <resultMap id="productResultMap" type="com.example.demo.entity.Product">
+    <resultMap id="productResultMap" type="com.example.hellospringboot.entity.Product">
         <id property="id" column="id"/>
         <result property="name" column="name"/>
         <result property="price" column="price"/>
@@ -200,7 +200,7 @@ public interface ProductMapper {
     </resultMap>
 
     <!-- ResultMap: カテゴリを含む商品 -->
-    <resultMap id="productWithCategoryResultMap" type="com.example.demo.entity.Product">
+    <resultMap id="productWithCategoryResultMap" type="com.example.hellospringboot.entity.Product">
         <id property="id" column="product_id"/>
         <result property="name" column="product_name"/>
         <result property="price" column="price"/>
@@ -208,7 +208,7 @@ public interface ProductMapper {
         <result property="categoryId" column="category_id"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
-        <association property="category" javaType="com.example.demo.entity.Category">
+        <association property="category" javaType="com.example.hellospringboot.entity.Category">
             <id property="id" column="category_id"/>
             <result property="name" column="category_name"/>
             <result property="description" column="category_description"/>
@@ -367,13 +367,13 @@ public interface ProductMapper {
 
 ### 4.1 ProductService
 
-**com/example/demo/service/ProductService.java**
+**src/main/java/com/example/hellospringboot/service/ProductService.java**
 ```java
-package com.example.demo.service;
+package com.example.hellospringboot.service;
 
-import com.example.demo.dto.ProductSearchRequest;
-import com.example.demo.entity.Product;
-import com.example.demo.mapper.ProductMapper;
+import com.example.hellospringboot.dto.ProductSearchRequest;
+import com.example.hellospringboot.entity.Product;
+import com.example.hellospringboot.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -450,13 +450,13 @@ public class ProductService {
 
 ### 5.1 ProductController
 
-**com/example/demo/controller/ProductController.java**
+**src/main/java/com/example/hellospringboot/controller/ProductController.java**
 ```java
-package com.example.demo.controller;
+package com.example.hellospringboot.controller;
 
-import com.example.demo.dto.ProductSearchRequest;
-import com.example.demo.entity.Product;
-import com.example.demo.service.ProductService;
+import com.example.hellospringboot.dto.ProductSearchRequest;
+import com.example.hellospringboot.entity.Product;
+import com.example.hellospringboot.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -696,7 +696,7 @@ curl "http://localhost:8080/api/products/search?name=PC&minStock=3&categoryId=1&
 ### 8.1 基本的なマッピング
 
 ```xml
-<resultMap id="productResultMap" type="com.example.demo.entity.Product">
+<resultMap id="productResultMap" type="com.example.hellospringboot.entity.Product">
     <id property="id" column="id"/>
     <result property="name" column="name"/>
 </resultMap>
@@ -705,7 +705,7 @@ curl "http://localhost:8080/api/products/search?name=PC&minStock=3&categoryId=1&
 ### 8.2 Association（1対1）
 
 ```xml
-<association property="category" javaType="com.example.demo.entity.Category">
+<association property="category" javaType="com.example.hellospringboot.entity.Category">
     <id property="id" column="category_id"/>
     <result property="name" column="category_name"/>
 </association>
@@ -714,7 +714,7 @@ curl "http://localhost:8080/api/products/search?name=PC&minStock=3&categoryId=1&
 ### 8.3 Collection（1対多）
 
 ```xml
-<collection property="products" ofType="com.example.demo.entity.Product">
+<collection property="products" ofType="com.example.hellospringboot.entity.Product">
     <id property="id" column="product_id"/>
     <result property="name" column="product_name"/>
 </collection>
@@ -839,7 +839,7 @@ List<Product> search(
 **原因**: `<where>`や`<if>`の条件式が間違っている
 
 **解決策**:
-1. SQLログを有効化して実際のSQLを確認: `logging.level.com.example.demo.mapper=DEBUG`
+1. SQLログを有効化して実際のSQLを確認: `logging.level.com.example.hellospringboot.mapper=DEBUG`
 2. `test`属性の条件式を確認（`test="name != null and name != ''"`など）
 3. `<where>`タグを使うとANDやORの前置詞を自動削除してくれる
 4. MyBatisのOGNL式を理解する（`!= null`、`!= ''`など）
