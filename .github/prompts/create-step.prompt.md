@@ -1,5 +1,5 @@
 ---
-mode: 'agent'
+agent: 'agent'
 description: 'Generate Markdown specification for Step Guide creation for Spring Boot Curriculum'
 ---
 
