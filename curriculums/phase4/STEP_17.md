@@ -142,18 +142,21 @@ public class ValidationException extends RuntimeException {
 ```java
 package com.example.hellospringboot.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)  // nullのフィールドは出力しない
 public class ErrorResponse {
-    private LocalDateTime timestamp;
+    private String timestamp;
     private int status;
     private String error;
     private String message;
@@ -162,7 +165,7 @@ public class ErrorResponse {
     
     // 簡易コンストラクタ
     public ErrorResponse(int status, String error, String message, String path) {
-        this.timestamp = LocalDateTime.now();
+        this.timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         this.status = status;
         this.error = error;
         this.message = message;
@@ -245,12 +248,12 @@ public class GlobalExceptionHandler {
             errors.put(fieldName, errorMessage);
         });
         
-        ErrorResponse error = new ErrorResponse();
-        error.setTimestamp(java.time.LocalDateTime.now());
-        error.setStatus(HttpStatus.BAD_REQUEST.value());
-        error.setError("Validation Failed");
-        error.setMessage("入力値が不正です");
-        error.setPath(request.getDescription(false).replace("uri=", ""));
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            "Validation Failed",
+            "入力値が不正です",
+            request.getDescription(false).replace("uri=", "")
+        );
         error.setErrors(errors);
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
@@ -264,12 +267,12 @@ public class GlobalExceptionHandler {
             ValidationException ex,
             WebRequest request) {
         
-        ErrorResponse error = new ErrorResponse();
-        error.setTimestamp(java.time.LocalDateTime.now());
-        error.setStatus(HttpStatus.BAD_REQUEST.value());
-        error.setError("Validation Error");
-        error.setMessage(ex.getMessage());
-        error.setPath(request.getDescription(false).replace("uri=", ""));
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            "Validation Error",
+            ex.getMessage(),
+            request.getDescription(false).replace("uri=", "")
+        );
         error.setErrors(ex.getErrors());
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);

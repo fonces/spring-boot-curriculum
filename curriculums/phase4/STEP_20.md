@@ -271,6 +271,13 @@ logging:
         </rollingPolicy>
     </appender>
 
+    <!-- デフォルト設定（プロファイル未指定時も適用） -->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+
     <!-- 開発環境のみ適用 -->
     <springProfile name="dev">
         <root level="DEBUG">

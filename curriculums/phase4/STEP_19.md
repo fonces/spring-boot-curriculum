@@ -254,8 +254,8 @@ public class UserDetailResponse {
     private String email;
     private Integer age;
     private String role;  // 詳細情報には含める
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private String createdAt;
+    private String updatedAt;
     // パスワードは含まない
 }
 ```
@@ -272,6 +272,7 @@ import com.example.hellospringboot.dto.request.UserUpdateRequest;
 import com.example.hellospringboot.dto.response.UserDetailResponse;
 import com.example.hellospringboot.dto.response.UserResponse;
 import com.example.hellospringboot.entity.User;
+import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -299,8 +300,8 @@ public class UserMapper {
             .email(user.getEmail())
             .age(user.getAge())
             .role(user.getRole())
-            .createdAt(user.getCreatedAt())
-            .updatedAt(user.getUpdatedAt())
+            .createdAt(user.getCreatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+            .updatedAt(user.getUpdatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
             .build();
     }
     

@@ -329,6 +329,16 @@ public class UserService {
 public class TaskProcessor {
     // 毎回新しいインスタンスが生成される
 }
+```
+
+**src/main/java/com/example/hellospringboot/context/RequestContext.java**
+```java
+package com.example.hellospringboot.context;
+
+import org.springframework.context.annotation.Scope;
+import org.springframework.context.annotation.ScopedProxyMode;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.WebApplicationContext;
 
 @Component
 @Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
@@ -472,6 +482,8 @@ curl -X POST "http://localhost:8080/api/orders/1/checkout?amount=10000&method=ba
 
 ### 外部ライブラリのBean登録
 
+
+**src/main/java/com/example/hellospringboot/config/AppConfig.java**
 ```java
 @Configuration
 public class AppConfig {
@@ -495,6 +507,7 @@ public class AppConfig {
 
 ### 条件付きBean登録
 
+**src/main/java/com/example/hellospringboot/config/DataSourceConfig.java**
 ```java
 @Configuration
 public class DataSourceConfig {

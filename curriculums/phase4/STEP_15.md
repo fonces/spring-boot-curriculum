@@ -70,7 +70,7 @@ src/main/java/com/example/hellospringboot/
     └── User.java
 ```
 
-### 2. Entity（変更なし）
+### 2. Entity
 
 ```java
 package com.example.hellospringboot.entity;

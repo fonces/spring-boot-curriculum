@@ -40,21 +40,36 @@ Spring Boot 2.3以降では、`spring-boot-starter-validation`を明示的に追
 
 ### 1. DTOクラスにバリデーションアノテーション
 
-```java
-package com.example.hellospringboot.dto;
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`
 
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Data;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
 @Data
-public class UserCreateRequest {
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
     
     @NotBlank(message = "名前は必須です")
     @Size(min = 2, max = 50, message = "名前は2文字以上50文字以下で入力してください")
+    @Column(nullable = false, length = 50)
     private String name;
     
     @NotBlank(message = "メールアドレスは必須です")
     @Email(message = "有効なメールアドレスを入力してください")
+    @Column(nullable = false, unique = true)
     private String email;
     
     @NotNull(message = "年齢は必須です")
@@ -64,29 +79,13 @@ public class UserCreateRequest {
     
     @Pattern(regexp = "^\\d{3}-\\d{4}-\\d{4}$", message = "電話番号は xxx-xxxx-xxxx の形式で入力してください")
     private String phoneNumber;
-}
-```
-
-```java
-package com.example.hellospringboot.dto;
-
-import jakarta.validation.constraints.*;
-import lombok.Data;
-
-@Data
-public class UserUpdateRequest {
     
-    @NotBlank(message = "名前は必須です")
-    @Size(min = 2, max = 50, message = "名前は2文字以上50文字以下で入力してください")
-    private String name;
+    @CreationTimestamp
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
     
-    @NotBlank(message = "メールアドレスは必須です")
-    @Email(message = "有効なメールアドレスを入力してください")
-    private String email;
-    
-    @Min(value = 18, message = "18歳以上である必要があります")
-    @Max(value = 120, message = "年齢は120歳以下で入力してください")
-    private Integer age;
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
 }
 ```
 
@@ -108,11 +107,11 @@ public class UserUpdateRequest {
 
 ### 3. Controllerで`@Valid`を使う
 
+**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
+
 ```java
 package com.example.hellospringboot.controller;
 
-import com.example.hellospringboot.dto.UserCreateRequest;
-import com.example.hellospringboot.dto.UserUpdateRequest;
 import com.example.hellospringboot.entity.User;
 import com.example.hellospringboot.service.UserService;
 import jakarta.validation.Valid;
@@ -145,16 +144,16 @@ public class UserController {
      * バリデーションエラーがあれば MethodArgumentNotValidException がスローされる
      */
     @PostMapping
-    public ResponseEntity<User> create(@Valid @RequestBody UserCreateRequest request) {
-        User user = userService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+    public ResponseEntity<User> create(@Valid @RequestBody User user) {
+        User created = userService.create(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
     @PutMapping("/{id}")
     public User update(
             @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
-        return userService.update(id, request);
+            @Valid @RequestBody User user) {
+        return userService.update(id, user);
     }
     
     @DeleteMapping("/{id}")
@@ -165,7 +164,62 @@ public class UserController {
 }
 ```
 
-### 4. パスパラメータとクエリパラメータのバリデーション
+### 4. UserServiceの実装
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+
+```java
+package com.example.hellospringboot.service;
+
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class UserService {
+    
+    private final UserRepository userRepository;
+    
+    public List<User> findAll() {
+        return userRepository.findAll();
+    }
+    
+    public User findById(Long id) {
+        return userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+    }
+    
+    @Transactional
+    public User create(User user) {
+        return userRepository.save(user);
+    }
+    
+    @Transactional
+    public User update(Long id, User user) {
+        User existingUser = findById(id);
+        existingUser.setName(user.getName());
+        existingUser.setEmail(user.getEmail());
+        existingUser.setAge(user.getAge());
+        existingUser.setPhoneNumber(user.getPhoneNumber());
+        return userRepository.save(existingUser);
+    }
+    
+    @Transactional
+    public void delete(Long id) {
+        User user = findById(id);
+        userRepository.delete(user);
+    }
+}
+```
+
+### 5. パスパラメータとクエリパラメータのバリデーション
 
 ```java
 @RestController
@@ -182,16 +236,6 @@ public class UserController {
     @GetMapping("/{id}")
     public User getById(@PathVariable @Positive Long id) {
         return userService.findById(id);
-    }
-    
-    /**
-     * クエリパラメータのバリデーション
-     */
-    @GetMapping("/search")
-    public List<User> search(
-            @RequestParam @NotBlank String name,
-            @RequestParam(required = false) @Min(0) Integer minAge) {
-        return userService.searchByNameAndAge(name, minAge);
     }
 }
 ```
@@ -241,8 +285,14 @@ public class AdultValidator implements ConstraintValidator<Adult, Integer> {
 ### 3. カスタムアノテーションの使用
 
 ```java
+@Entity
+@Table(name = "users")
 @Data
-public class UserCreateRequest {
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
     @NotBlank
     private String name;
     
@@ -252,64 +302,8 @@ public class UserCreateRequest {
     @NotNull
     @Adult  // カスタムバリデーション
     private Integer age;
-}
-```
-
-### 4. より複雑な例: パスワード確認
-
-```java
-package com.example.hellospringboot.validation;
-
-import jakarta.validation.Constraint;
-import jakarta.validation.Payload;
-import java.lang.annotation.*;
-
-@Documented
-@Constraint(validatedBy = PasswordMatchValidator.class)
-@Target(ElementType.TYPE)  // クラスレベルに適用
-@Retention(RetentionPolicy.RUNTIME)
-public @interface PasswordMatch {
-    String message() default "パスワードが一致しません";
-    Class<?>[] groups() default {};
-    Class<? extends Payload>[] payload() default {};
-}
-```
-
-```java
-package com.example.hellospringboot.validation;
-
-import com.example.hellospringboot.dto.UserRegistrationRequest;
-import jakarta.validation.ConstraintValidator;
-import jakarta.validation.ConstraintValidatorContext;
-
-public class PasswordMatchValidator implements ConstraintValidator<PasswordMatch, UserRegistrationRequest> {
     
-    @Override
-    public boolean isValid(UserRegistrationRequest request, ConstraintValidatorContext context) {
-        if (request.getPassword() == null || request.getPasswordConfirm() == null) {
-            return true;
-        }
-        return request.getPassword().equals(request.getPasswordConfirm());
-    }
-}
-```
-
-```java
-@Data
-@PasswordMatch  // クラスレベルのバリデーション
-public class UserRegistrationRequest {
-    @NotBlank
-    private String name;
-    
-    @Email
-    private String email;
-    
-    @NotBlank
-    @Size(min = 8, message = "パスワードは8文字以上である必要があります")
-    private String password;
-    
-    @NotBlank
-    private String passwordConfirm;
+    // その他のフィールド...
 }
 ```
 
@@ -329,22 +323,36 @@ public interface ValidationGroups {
 ### 2. グループごとのバリデーション
 
 ```java
+import com.example.hellospringboot.validation.ValidationGroups.Create;
+import com.example.hellospringboot.validation.ValidationGroups.Update;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+@Entity
+@Table(name = "users")
 @Data
-public class UserRequest {
+public class User {
     
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Null(groups = Create.class, message = "作成時はIDを指定できません")
     @NotNull(groups = Update.class, message = "更新時はIDが必須です")
     private Long id;
     
-    @NotBlank(groups = {Create.class, Update.class})
+    @NotBlank(groups = {Create.class, Update.class}, message = "名前は必須です")
+    @Size(min = 2, max = 50, groups = {Create.class, Update.class})
     private String name;
     
-    @Email(groups = {Create.class, Update.class})
+    @Email(groups = {Create.class, Update.class}, message = "有効なメールアドレスを入力してください")
     private String email;
     
-    @NotNull(groups = Create.class)
+    @NotNull(groups = Create.class, message = "年齢は必須です")
     @Min(value = 18, groups = {Create.class, Update.class})
+    @Adult(groups = {Create.class, Update.class})
     private Integer age;
+    
+    // その他のフィールド...
 }
 ```
 
@@ -360,16 +368,16 @@ public class UserController {
     
     @PostMapping
     public ResponseEntity<User> create(
-            @Validated(ValidationGroups.Create.class) @RequestBody UserRequest request) {
-        User user = userService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+            @Validated(ValidationGroups.Create.class) @RequestBody User user) {
+        User created = userService.create(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
     @PutMapping("/{id}")
     public User update(
             @PathVariable Long id,
-            @Validated(ValidationGroups.Update.class) @RequestBody UserRequest request) {
-        return userService.update(id, request);
+            @Validated(ValidationGroups.Update.class) @RequestBody User user) {
+        return userService.update(id, user);
     }
 }
 ```
@@ -379,27 +387,31 @@ public class UserController {
 Step 17で作成したGlobalExceptionHandlerが以下のように処理します：
 
 ```java
+/**
+ * バリデーションエラー（@Validアノテーション）
+ */
 @ExceptionHandler(MethodArgumentNotValidException.class)
 public ResponseEntity<ErrorResponse> handleValidationException(
         MethodArgumentNotValidException ex,
         WebRequest request) {
     
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        "Validation Failed",
+        "入力値が不正です",
+        request.getDescription(false).replace("uri=", "")
+    );
+
+        // フィールドエラーをMapに変換（シンプルな形式）
     Map<String, String> errors = new HashMap<>();
-    ex.getBindingResult().getAllErrors().forEach(error -> {
-        String fieldName = ((FieldError) error).getField();
+    ex.getBindingResult().getFieldErrors().forEach(error -> {
+        String fieldName = error.getField();
         String errorMessage = error.getDefaultMessage();
         errors.put(fieldName, errorMessage);
     });
+    errorResponse.setErrors(errors);
     
-    ErrorResponse error = new ErrorResponse();
-    error.setTimestamp(LocalDateTime.now());
-    error.setStatus(HttpStatus.BAD_REQUEST.value());
-    error.setError("Validation Failed");
-    error.setMessage("入力値が不正です");
-    error.setPath(request.getDescription(false).replace("uri=", ""));
-    error.setErrors(errors);
-    
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
 }
 ```
 
@@ -457,8 +469,11 @@ curl -X GET http://localhost:8080/api/users/-1
 {
   "timestamp": "2024-01-15T11:05:00",
   "status": 400,
-  "error": "Bad Request",
-  "message": "getById.id: 0より大きい値を入力してください"
+  "error": "Constraint Violation",
+  "message": "パラメータが不正です",
+  "errors": {
+    "getById.id": "0 より大きな値にしてください"
+  }
 }
 ```
 
@@ -477,12 +492,12 @@ public ResponseEntity<ErrorResponse> handleConstraintViolation(
         errors.put(propertyPath, message);
     });
     
-    ErrorResponse error = new ErrorResponse();
-    error.setTimestamp(LocalDateTime.now());
-    error.setStatus(HttpStatus.BAD_REQUEST.value());
-    error.setError("Constraint Violation");
-    error.setMessage("パラメータが不正です");
-    error.setPath(request.getDescription(false).replace("uri=", ""));
+    ErrorResponse error = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        "Constraint Violation",
+        "パラメータが不正です",
+        request.getDescription(false).replace("uri=", "")
+    );
     error.setErrors(errors);
     
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
@@ -493,41 +508,31 @@ public ResponseEntity<ErrorResponse> handleConstraintViolation(
 
 ### 課題1: 日付バリデーション
 
-誕生日が過去の日付であることを検証してください。
+`User`エンティティに誕生日フィールドを追加し、過去の日付であることを検証してください。
 
 ```java
+@Entity
+@Table(name = "users")
 @Data
-public class UserCreateRequest {
-    @NotBlank
-    private String name;
+public class User {
+    // 既存のフィールド...
     
     @Past(message = "誕生日は過去の日付である必要があります")
     private LocalDate birthDate;
 }
 ```
 
-### 課題2: リスト内のバリデーション
-
-複数のユーザーを一括登録する際のバリデーション。
-
-```java
-@Data
-public class BulkUserCreateRequest {
-    
-    @NotNull(message = "ユーザーリストは必須です")
-    @Size(min = 1, max = 100, message = "一度に登録できるユーザーは100人までです")
-    @Valid  // ⭐ リスト内の各要素もバリデーション
-    private List<UserCreateRequest> users;
-}
-```
-
-### 課題3: 条件付きバリデーション
+### 課題2: 条件付きバリデーション
 
 年齢が18歳未満の場合は保護者の同意が必要、といった条件付きバリデーション。
 
 ```java
+@Entity
+@Table(name = "users")
 @Data
-public class UserCreateRequest {
+public class User {
+    // 既存のフィールド...
+    
     @NotNull
     @Min(0)
     private Integer age;
