@@ -20,6 +20,82 @@
 
 ---
 
+## 🔧 Step 0: Userエンティティの修正（重要）
+
+Phase 2で作成した`User`エンティティには`age`や`password`などのフィールドに`@NotNull`制約が付いている場合があります。
+このステップでは基本的なフォーム処理を学ぶため、シンプルなエンティティに修正します。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`
+
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
+@Data
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 50)
+    private String name;
+    
+    @Column(nullable = false, unique = true)
+    private String email;
+    
+    // age, password などの他のフィールドは削除または nullable = true に変更
+    // Phase 6（セキュリティ）でパスワードフィールドは再度追加します
+    
+    @CreationTimestamp
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+    
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+}
+```
+
+**データベーステーブルの再作成**:
+
+`application.yml`で以下を設定してアプリケーションを再起動すると、テーブルが再作成されます：
+
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create  # 開発時のみ！本番環境では使用禁止
+    show-sql: true
+```
+
+⚠️ **注意**: `ddl-auto: create`は既存データを**すべて削除**してテーブルを再作成します。開発環境でのみ使用してください。
+
+または、MySQLで手動でテーブルを削除して再作成：
+
+```sql
+DROP TABLE IF EXISTS users;
+
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at DATETIME(6),
+    updated_at DATETIME(6)
+);
+```
+
+※他Mapperなど、必要に応じて項目の削除を行ってください。
+
+---
+
 ## 💡 フォーム処理の流れ
 
 ### 従来のHTMLフォーム
@@ -211,6 +287,76 @@ public class UserFormController {
             "ユーザー「" + user.getName() + "」を削除しました");
         
         return "redirect:/users";
+    }
+}
+```
+
+**UserServiceの実装**:
+
+上記のControllerで使用している`createUser`、`updateUser`、`deleteUser`メソッドを`UserService`に追加します。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+
+```java
+package com.example.hellospringboot.service;
+
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class UserService {
+    
+    private final UserRepository userRepository;
+    
+    /**
+     * 全ユーザーを取得
+     */
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+    
+    /**
+     * IDでユーザーを取得
+     */
+    public User getUserById(Long id) {
+        return userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+    }
+    
+    /**
+     * ユーザーを作成
+     */
+    @Transactional
+    public User createUser(User user) {
+        return userRepository.save(user);
+    }
+    
+    /**
+     * ユーザーを更新
+     */
+    @Transactional
+    public User updateUser(Long id, User userDetails) {
+        User user = getUserById(id);  // 存在チェック
+        user.setName(userDetails.getName());
+        user.setEmail(userDetails.getEmail());
+        return userRepository.save(user);
+    }
+    
+    /**
+     * ユーザーを削除
+     */
+    @Transactional
+    public void deleteUser(Long id) {
+        User user = getUserById(id);  // 存在チェック
+        userRepository.delete(user);
     }
 }
 ```

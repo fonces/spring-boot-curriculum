@@ -336,6 +336,51 @@ public class UserViewController {
 }
 ```
 
+**UserServiceの実装**:
+
+Phase 2で作成した`UserService`に以下のメソッドがあることを確認してください。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+
+```java
+package com.example.hellospringboot.service;
+
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.ResourceNotFoundException;
+import com.example.hellospringboot.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class UserService {
+    
+    private final UserRepository userRepository;
+    
+    /**
+     * 全ユーザーを取得
+     */
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+    
+    /**
+     * IDでユーザーを取得
+     * 存在しない場合はResourceNotFoundExceptionをスロー
+     */
+    public User getUserById(Long id) {
+        return userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+    }
+    
+    // その他のメソッド...
+}
+```
+
 ### Step 8: ユーザー詳細ページ
 
 `src/main/resources/templates/users/detail.html`:

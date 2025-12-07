@@ -87,35 +87,6 @@
 </dependencies>
 ```
 
-### 1-2. データベース設定
-
-`src/main/resources/application.yml`:
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/task_db?createDatabaseIfNotExist=true
-    username: root
-    password: password
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-  thymeleaf:
-    cache: false  # 開発中はキャッシュOFF
-
-server:
-  port: 8080
-
-logging:
-  level:
-    org.hibernate.SQL: DEBUG
-```
-
 ---
 
 ## 🗄️ ステップ2: タスクエンティティとリポジトリの作成
