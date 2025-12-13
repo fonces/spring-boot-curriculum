@@ -2,35 +2,92 @@
 
 ## 🎯 このステップの目標
 
-- 記事への画像アップロード機能を実装できる
-- プロフィール画像のアップロードができる
-- MyBatisで複雑な検索クエリを実装できる
-- 複数条件での記事検索ができる
-- ファイルアップロードのセキュリティ対策ができる
+ファイル管理と高度な検索機能を実装します。セキュアなファイルアップロード、プロフィール画像管理、MyBatisによる複雑な検索クエリを学びます。
 
-**所要時間**: 約80分
+**所要時間**: 約90分
+
+**学ぶこと**:
+- ファイルアップロードのセキュリティ対策
+- パストラバーサル攻撃の防止
+- ファイルサイズと拡張子の検証
+- MyBatisによる動的SQL
+- 複数条件での高度な検索機能
+- プロフィール画像の管理
 
 ---
 
 ## 📋 事前準備
 
-- Step 36までの内容を完了していること
-- Phase 7 Step 30のファイルアップロード機能を復習していること
-- MyBatis設定が完了していること
+このステップを始める前に、以下が完了していることを確認してください：
+
+- ✅ Step 36で記事とコメント機能を実装済み
+- ✅ Spring Securityによる認証が動作している
+- ✅ MySQLデータベースが起動している
+- ✅ MyBatisの基本的な使い方を理解している
 
 ---
 
-## 🚀 ステップ1: ファイルストレージサービスの実装
+## 📝 ステップバイステップの手順
 
-### 1-1. FileStorageServiceの作成
+### 1. application.ymlにファイルアップロード設定を追加
 
-`src/main/java/com/example/bloghub/services/FileStorageService.java`を作成：
+`src/main/resources/application.yml`にファイルアップロードの設定を追加します。
+
+```yaml
+spring:
+  application:
+    name: bloghub
+  
+  datasource:
+    url: jdbc:mysql://localhost:3306/bloghub
+    username: bloghub_user
+    password: bloghub_pass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+jwt:
+  secret: your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+  expiration: 86400000
+
+file:
+  upload-dir: uploads/
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.example.bloghub.dto
+  configuration:
+    map-underscore-to-camel-case: true
+```
+
+**ポイント**:
+- `spring.servlet.multipart.max-file-size`: アップロード可能なファイルの最大サイズ（5MB）
+- `spring.servlet.multipart.max-request-size`: リクエスト全体の最大サイズ
+- `file.upload-dir`: ファイルの保存先ディレクトリ
+
+---
+
+### 2. FileStorageServiceの実装
+
+セキュアなファイル保存機能を実装します。
+
+`src/main/java/com/example/bloghub/service/FileStorageService.java`を作成：
 
 ```java
-package com.example.bloghub.services;
+package com.example.bloghub.service;
 
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -44,278 +101,428 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
-/**
- * ファイルストレージサービス
- */
 @Service
-@Slf4j
 public class FileStorageService {
     
-    @Value("${file.upload-dir}")
-    private String uploadDir;
+    private final Path fileStorageLocation;
+    private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "gif");
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
-    private Path fileStorageLocation;
-    
-    @PostConstruct
-    public void init() {
-        this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
+    public FileStorageService(@Value("${file.upload-dir}") String uploadDir) {
+        this.fileStorageLocation = Paths.get(uploadDir)
+                .toAbsolutePath()
+                .normalize();
         
         try {
             Files.createDirectories(this.fileStorageLocation);
-            log.info("File storage directory created at: {}", this.fileStorageLocation);
-        } catch (Exception ex) {
-            throw new RuntimeException("Could not create the directory for file upload", ex);
+        } catch (IOException e) {
+            throw new RuntimeException("ファイル保存用ディレクトリの作成に失敗しました", e);
         }
     }
     
     /**
-     * ファイル保存
+     * ファイルを保存します
+     * @param file アップロードされたファイル
+     * @return 保存されたファイル名
      */
     public String storeFile(MultipartFile file) {
         // ファイル名のサニタイズ
-        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
+        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
         
         try {
-            // パストラバーサル対策
-            if (originalFilename.contains("..")) {
-                throw new RuntimeException("Invalid path sequence: " + originalFilename);
+            // パストラバーサル攻撃の防止
+            if (originalFileName.contains("..")) {
+                throw new RuntimeException("不正なファイル名が含まれています: " + originalFileName);
             }
             
-            // ファイルサイズチェック（5MB制限）
-            if (file.getSize() > 5 * 1024 * 1024) {
-                throw new RuntimeException("File size exceeds maximum limit (5MB)");
+            // ファイルサイズチェック
+            if (file.getSize() > MAX_FILE_SIZE) {
+                throw new RuntimeException("ファイルサイズが5MBを超えています");
             }
             
             // 拡張子チェック
-            String extension = getFileExtension(originalFilename);
-            if (!isAllowedExtension(extension)) {
-                throw new RuntimeException("File type not allowed: " + extension);
+            String extension = getFileExtension(originalFileName);
+            if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+                throw new RuntimeException("許可されていないファイル形式です。jpg、png、gifのみアップロード可能です");
             }
             
-            // ユニークなファイル名生成
-            String storedFilename = UUID.randomUUID().toString() + "." + extension;
+            // ユニークなファイル名を生成
+            String fileName = UUID.randomUUID().toString() + "." + extension;
+            Path targetLocation = this.fileStorageLocation.resolve(fileName);
             
-            // ファイル保存
-            Path targetLocation = this.fileStorageLocation.resolve(storedFilename);
+            // ファイルをコピー
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
             
-            log.info("File stored: {}", storedFilename);
-            return storedFilename;
-            
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not store file " + originalFilename, ex);
+            return fileName;
+        } catch (IOException e) {
+            throw new RuntimeException("ファイルの保存に失敗しました: " + originalFileName, e);
         }
     }
     
     /**
-     * ファイル読み込み
+     * ファイルをリソースとして読み込みます
+     * @param fileName ファイル名
+     * @return ファイルリソース
      */
-    public Resource loadFileAsResource(String filename) {
+    public Resource loadFileAsResource(String fileName) {
         try {
-            Path filePath = this.fileStorageLocation.resolve(filename).normalize();
+            // ファイル名のサニタイズ
+            String cleanFileName = StringUtils.cleanPath(fileName);
+            
+            // パストラバーサル攻撃の防止
+            if (cleanFileName.contains("..")) {
+                throw new RuntimeException("不正なファイル名が含まれています: " + cleanFileName);
+            }
+            
+            Path filePath = this.fileStorageLocation.resolve(cleanFileName).normalize();
             Resource resource = new UrlResource(filePath.toUri());
             
-            if (resource.exists()) {
+            if (resource.exists() && resource.isReadable()) {
                 return resource;
             } else {
-                throw new RuntimeException("File not found: " + filename);
+                throw new RuntimeException("ファイルが見つかりません: " + fileName);
             }
-        } catch (MalformedURLException ex) {
-            throw new RuntimeException("File not found: " + filename, ex);
+        } catch (MalformedURLException e) {
+            throw new RuntimeException("ファイルが見つかりません: " + fileName, e);
         }
     }
     
     /**
-     * ファイル削除
+     * ファイルを削除します
+     * @param fileName ファイル名
      */
-    public void deleteFile(String filename) {
+    public void deleteFile(String fileName) {
         try {
-            Path filePath = this.fileStorageLocation.resolve(filename).normalize();
+            // ファイル名のサニタイズ
+            String cleanFileName = StringUtils.cleanPath(fileName);
+            
+            // パストラバーサル攻撃の防止
+            if (cleanFileName.contains("..")) {
+                throw new RuntimeException("不正なファイル名が含まれています: " + cleanFileName);
+            }
+            
+            Path filePath = this.fileStorageLocation.resolve(cleanFileName).normalize();
             Files.deleteIfExists(filePath);
-            log.info("File deleted: {}", filename);
-        } catch (IOException ex) {
-            log.error("Could not delete file: {}", filename, ex);
+        } catch (IOException e) {
+            throw new RuntimeException("ファイルの削除に失敗しました: " + fileName, e);
         }
     }
     
     /**
-     * 拡張子取得
+     * ファイル拡張子を取得します
+     * @param fileName ファイル名
+     * @return 拡張子
      */
-    private String getFileExtension(String filename) {
-        int dotIndex = filename.lastIndexOf('.');
-        return dotIndex > 0 ? filename.substring(dotIndex + 1).toLowerCase() : "";
-    }
-    
-    /**
-     * 許可する拡張子のチェック
-     */
-    private boolean isAllowedExtension(String extension) {
-        return extension.matches("jpg|jpeg|png|gif|webp");
+    private String getFileExtension(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return "";
+        }
+        return fileName.substring(fileName.lastIndexOf(".") + 1);
     }
 }
 ```
 
-### 1-2. FileControllerの作成
+**セキュリティ対策のポイント**:
+- **パストラバーサル防止**: `..`を含むファイル名を拒否
+- **ファイルサイズ制限**: 5MBを超えるファイルを拒否
+- **拡張子チェック**: jpg、png、gifのみ許可
+- **ユニークなファイル名**: UUID付与で衝突を防止
 
-`src/main/java/com/example/bloghub/controllers/FileController.java`を作成：
+---
+
+### 3. FileControllerの実装
+
+ファイルアップロード・ダウンロードのエンドポイントを作成します。
+
+`src/main/java/com/example/bloghub/controller/FileController.java`を作成：
 
 ```java
-package com.example.bloghub.controllers;
+package com.example.bloghub.controller;
 
-import com.example.bloghub.services.FileStorageService;
+import com.example.bloghub.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * ファイルアップロードコントローラー
- */
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
-@Slf4j
 public class FileController {
     
     private final FileStorageService fileStorageService;
     
     /**
-     * ファイルアップロード
+     * ファイルをアップロードします
      */
     @PostMapping("/upload")
-    public ResponseEntity<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
-        String filename = fileStorageService.storeFile(file);
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> uploadFile(
+            @RequestParam("file") MultipartFile file) {
         
-        String fileUrl = "/api/files/" + filename;
+        String fileName = fileStorageService.storeFile(file);
         
         Map<String, String> response = new HashMap<>();
-        response.put("filename", filename);
-        response.put("url", fileUrl);
-        response.put("size", String.valueOf(file.getSize()));
+        response.put("fileName", fileName);
+        response.put("fileUrl", "/api/files/" + fileName);
         
         return ResponseEntity.ok(response);
     }
     
     /**
-     * ファイルダウンロード
+     * ファイルをダウンロードします
      */
-    @GetMapping("/{filename:.+}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
-        Resource resource = fileStorageService.loadFileAsResource(filename);
-        
-        String contentType = "application/octet-stream";
+    @GetMapping("/{fileName:.+}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
+        Resource resource = fileStorageService.loadFileAsResource(fileName);
         
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION, 
-                    "inline; filename=\"" + resource.getFilename() + "\"")
+                .contentType(MediaType.IMAGE_JPEG)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + resource.getFilename() + "\"")
                 .body(resource);
+    }
+    
+    /**
+     * ファイルを削除します
+     */
+    @DeleteMapping("/{fileName:.+}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteFile(@PathVariable String fileName) {
+        fileStorageService.deleteFile(fileName);
+        return ResponseEntity.noContent().build();
+    }
+}
+```
+
+**ポイント**:
+- `@PreAuthorize("isAuthenticated()")`: 認証済みユーザーのみアップロード・削除可能
+- `/{fileName:.+}`: ファイル名に`.`が含まれても正しく処理
+- `MediaType.IMAGE_JPEG`: 画像として返す
+
+---
+
+### 4. Userエンティティにプロフィール画像フィールドを追加
+
+`src/main/java/com/example/bloghub/entity/User.java`を更新：
+
+```java
+package com.example.bloghub.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, unique = true, length = 50)
+    private String username;
+    
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
+    
+    @Column(nullable = false)
+    private String password;
+    
+    @Column(length = 200)
+    private String bio;
+    
+    @Column(name = "profile_image")
+    private String profileImage;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Article> articles = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Comment> comments = new ArrayList<>();
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ2: プロフィール画像アップロード
+### 5. UserService拡張
 
-### 2-1. UserServiceの拡張
+プロフィール画像アップロード機能を追加します。
 
-`src/main/java/com/example/bloghub/services/UserService.java`を作成：
+`src/main/java/com/example/bloghub/service/UserService.java`を更新：
 
 ```java
-package com.example.bloghub.services;
+package com.example.bloghub.service;
 
-import com.example.bloghub.dto.response.UserResponse;
-import com.example.bloghub.entities.User;
-import com.example.bloghub.repositories.UserRepository;
-import com.example.bloghub.security.UserPrincipal;
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.dto.user.UserUpdateRequest;
+import com.example.bloghub.entity.User;
+import com.example.bloghub.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-/**
- * ユーザーサービス
- */
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class UserService {
     
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     
     /**
-     * プロフィール画像アップロード
+     * プロフィール画像をアップロードします
      */
     @Transactional
-    public UserResponse uploadProfileImage(MultipartFile file) {
-        UserPrincipal userPrincipal = getCurrentUserPrincipal();
-        User user = userRepository.findById(userPrincipal.getId())
-            .orElseThrow(() -> new RuntimeException("User not found"));
+    public UserResponse uploadProfileImage(String username, MultipartFile file) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
         
-        // 古い画像を削除
+        // 既存のプロフィール画像を削除
         if (user.getProfileImage() != null) {
-            fileStorageService.deleteFile(extractFilename(user.getProfileImage()));
+            fileStorageService.deleteFile(user.getProfileImage());
         }
         
         // 新しい画像を保存
-        String filename = fileStorageService.storeFile(file);
-        String imageUrl = "/api/files/" + filename;
+        String fileName = fileStorageService.storeFile(file);
+        user.setProfileImage(fileName);
         
-        user.setProfileImage(imageUrl);
-        User updatedUser = userRepository.save(user);
-        
-        log.info("Profile image updated for user: {}", user.getUsername());
-        
-        return UserResponse.from(updatedUser);
+        User savedUser = userRepository.save(user);
+        return convertToResponse(savedUser);
     }
     
     /**
-     * URLからファイル名を抽出
+     * ユーザー情報を取得します
      */
-    private String extractFilename(String url) {
-        return url.substring(url.lastIndexOf('/') + 1);
+    public UserResponse getUser(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        return convertToResponse(user);
     }
     
     /**
-     * 現在のユーザー取得
+     * ユーザー情報を更新します
      */
-    private UserPrincipal getCurrentUserPrincipal() {
-        return (UserPrincipal) SecurityContextHolder.getContext()
-            .getAuthentication().getPrincipal();
+    @Transactional
+    public UserResponse updateUser(String username, UserUpdateRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        
+        if (request.getBio() != null) {
+            user.setBio(request.getBio());
+        }
+        
+        User savedUser = userRepository.save(user);
+        return convertToResponse(savedUser);
+    }
+    
+    private UserResponse convertToResponse(User user) {
+        UserResponse response = new UserResponse();
+        response.setId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setEmail(user.getEmail());
+        response.setBio(user.getBio());
+        response.setProfileImage(user.getProfileImage());
+        response.setCreatedAt(user.getCreatedAt());
+        return response;
     }
 }
 ```
 
-### 2-2. UserControllerの拡張
+---
 
-`src/main/java/com/example/bloghub/controllers/UserController.java`を作成：
+### 6. UserUpdateRequestとUserResponseの作成
+
+`src/main/java/com/example/bloghub/dto/user/UserUpdateRequest.java`を作成：
 
 ```java
-package com.example.bloghub.controllers;
+package com.example.bloghub.dto.user;
 
-import com.example.bloghub.dto.response.UserResponse;
-import com.example.bloghub.services.UserService;
+import lombok.Data;
+
+@Data
+public class UserUpdateRequest {
+    private String bio;
+}
+```
+
+`src/main/java/com/example/bloghub/dto/user/UserResponse.java`を作成：
+
+```java
+package com.example.bloghub.dto.user;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class UserResponse {
+    private Long id;
+    private String username;
+    private String email;
+    private String bio;
+    private String profileImage;
+    private LocalDateTime createdAt;
+}
+```
+
+---
+
+### 7. UserControllerの拡張
+
+`src/main/java/com/example/bloghub/controller/UserController.java`を作成：
+
+```java
+package com.example.bloghub.controller;
+
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.dto.user.UserUpdateRequest;
+import com.example.bloghub.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-/**
- * ユーザーコントローラー
- */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -324,11 +531,37 @@ public class UserController {
     private final UserService userService;
     
     /**
-     * プロフィール画像アップロード
+     * プロフィール画像をアップロードします
      */
     @PostMapping("/profile-image")
-    public ResponseEntity<UserResponse> uploadProfileImage(@RequestParam("file") MultipartFile file) {
-        UserResponse response = userService.uploadProfileImage(file);
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserResponse> uploadProfileImage(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file) {
+        
+        UserResponse response = userService.uploadProfileImage(userDetails.getUsername(), file);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * ユーザー情報を取得します
+     */
+    @GetMapping("/{username}")
+    public ResponseEntity<UserResponse> getUser(@PathVariable String username) {
+        UserResponse response = userService.getUser(username);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * ユーザー情報を更新します
+     */
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserResponse> updateUser(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody UserUpdateRequest request) {
+        
+        UserResponse response = userService.updateUser(userDetails.getUsername(), request);
         return ResponseEntity.ok(response);
     }
 }
@@ -336,168 +569,215 @@ public class UserController {
 
 ---
 
-## 🚀 ステップ3: MyBatisで複雑な検索クエリ
+### 8. MyBatisによる高度な検索機能の実装
 
-### 3-1. ArticleSearchMapperの作成
+#### 8.1 ArticleSearchMapperインターフェースの作成
 
-`src/main/java/com/example/bloghub/mappers/ArticleSearchMapper.java`を作成：
+`src/main/java/com/example/bloghub/mapper/ArticleSearchMapper.java`を作成：
 
 ```java
-package com.example.bloghub.mappers;
+package com.example.bloghub.mapper;
 
-import com.example.bloghub.dto.response.ArticleResponse;
+import com.example.bloghub.dto.article.ArticleSearchResult;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
-/**
- * 記事検索用MyBatisマッパー
- */
 @Mapper
 public interface ArticleSearchMapper {
     
     /**
-     * 複合条件検索
+     * 複数条件で記事を検索します
      */
-    List<ArticleResponse> searchArticles(
-        @Param("keyword") String keyword,
-        @Param("authorId") Long authorId,
-        @Param("tagName") String tagName,
-        @Param("minViewCount") Integer minViewCount,
-        @Param("offset") Integer offset,
-        @Param("limit") Integer limit
+    List<ArticleSearchResult> searchArticles(
+            @Param("keyword") String keyword,
+            @Param("tagNames") List<String> tagNames,
+            @Param("username") String username,
+            @Param("offset") int offset,
+            @Param("limit") int limit
     );
     
     /**
-     * 検索結果の総件数
+     * 検索結果の件数を取得します
      */
-    Long countSearchResults(
-        @Param("keyword") String keyword,
-        @Param("authorId") Long authorId,
-        @Param("tagName") String tagName,
-        @Param("minViewCount") Integer minViewCount
+    int countSearchResults(
+            @Param("keyword") String keyword,
+            @Param("tagNames") List<String> tagNames,
+            @Param("username") String username
     );
 }
 ```
 
-### 3-2. MyBatisマッパーXMLの作成
+---
 
-`src/main/resources/mybatis/mapper/ArticleSearchMapper.xml`を作成：
+#### 8.2 ArticleSearchMapper.xmlの作成
+
+`src/main/resources/mapper/ArticleSearchMapper.xml`を作成：
 
 ```xml
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-
-<mapper namespace="com.example.bloghub.mappers.ArticleSearchMapper">
+<mapper namespace="com.example.bloghub.mapper.ArticleSearchMapper">
     
-    <!-- 結果マッピング -->
-    <resultMap id="ArticleResponseMap" type="com.example.bloghub.dto.response.ArticleResponse">
-        <id property="id" column="article_id"/>
+    <resultMap id="ArticleSearchResultMap" type="com.example.bloghub.dto.article.ArticleSearchResult">
+        <id property="id" column="id"/>
         <result property="title" column="title"/>
         <result property="content" column="content"/>
-        <result property="imageUrl" column="image_url"/>
-        <result property="viewCount" column="view_count"/>
+        <result property="username" column="username"/>
         <result property="createdAt" column="created_at"/>
-        <result property="updatedAt" column="updated_at"/>
-        
-        <association property="author" javaType="com.example.bloghub.dto.response.ArticleResponse$AuthorResponse">
-            <id property="id" column="author_id"/>
-            <result property="username" column="username"/>
-            <result property="profileImage" column="profile_image"/>
-        </association>
+        <collection property="tags" ofType="String">
+            <result column="tag_name"/>
+        </collection>
     </resultMap>
     
-    <!-- 複合条件検索 -->
-    <select id="searchArticles" resultMap="ArticleResponseMap">
+    <!-- 記事検索 -->
+    <select id="searchArticles" resultMap="ArticleSearchResultMap">
         SELECT DISTINCT
-            a.id AS article_id,
+            a.id,
             a.title,
             a.content,
-            a.image_url,
-            a.view_count,
-            a.created_at,
-            a.updated_at,
-            u.id AS author_id,
             u.username,
-            u.profile_image
-        FROM article a
-        INNER JOIN user u ON a.author_id = u.id
-        <if test="tagName != null">
-            INNER JOIN article_tag at ON a.id = at.article_id
-            INNER JOIN tag t ON at.tag_id = t.id
-        </if>
+            a.created_at,
+            t.name as tag_name
+        FROM articles a
+        INNER JOIN users u ON a.user_id = u.id
+        LEFT JOIN article_tags at ON a.id = at.article_id
+        LEFT JOIN tags t ON at.tag_id = t.id
         <where>
             <if test="keyword != null and keyword != ''">
                 (a.title LIKE CONCAT('%', #{keyword}, '%')
                 OR a.content LIKE CONCAT('%', #{keyword}, '%'))
             </if>
-            <if test="authorId != null">
-                AND a.author_id = #{authorId}
+            <if test="tagNames != null and tagNames.size() > 0">
+                AND t.name IN
+                <foreach collection="tagNames" item="tag" open="(" separator="," close=")">
+                    #{tag}
+                </foreach>
             </if>
-            <if test="tagName != null and tagName != ''">
-                AND t.name = #{tagName}
-            </if>
-            <if test="minViewCount != null">
-                AND a.view_count >= #{minViewCount}
+            <if test="username != null and username != ''">
+                AND u.username = #{username}
             </if>
         </where>
         ORDER BY a.created_at DESC
-        <if test="limit != null">
-            LIMIT #{limit}
-        </if>
-        <if test="offset != null">
-            OFFSET #{offset}
-        </if>
+        LIMIT #{limit} OFFSET #{offset}
     </select>
     
-    <!-- 検索結果件数 -->
-    <select id="countSearchResults" resultType="long">
+    <!-- 検索結果の件数取得 -->
+    <select id="countSearchResults" resultType="int">
         SELECT COUNT(DISTINCT a.id)
-        FROM article a
-        INNER JOIN user u ON a.author_id = u.id
-        <if test="tagName != null">
-            INNER JOIN article_tag at ON a.id = at.article_id
-            INNER JOIN tag t ON at.tag_id = t.id
-        </if>
+        FROM articles a
+        INNER JOIN users u ON a.user_id = u.id
+        LEFT JOIN article_tags at ON a.id = at.article_id
+        LEFT JOIN tags t ON at.tag_id = t.id
         <where>
             <if test="keyword != null and keyword != ''">
                 (a.title LIKE CONCAT('%', #{keyword}, '%')
                 OR a.content LIKE CONCAT('%', #{keyword}, '%'))
             </if>
-            <if test="authorId != null">
-                AND a.author_id = #{authorId}
+            <if test="tagNames != null and tagNames.size() > 0">
+                AND t.name IN
+                <foreach collection="tagNames" item="tag" open="(" separator="," close=")">
+                    #{tag}
+                </foreach>
             </if>
-            <if test="tagName != null and tagName != ''">
-                AND t.name = #{tagName}
-            </if>
-            <if test="minViewCount != null">
-                AND a.view_count >= #{minViewCount}
+            <if test="username != null and username != ''">
+                AND u.username = #{username}
             </if>
         </where>
     </select>
 </mapper>
 ```
 
-### 3-3. 検索サービスの作成
+**動的SQLのポイント**:
+- `<where>`: 条件がない場合は`WHERE`句を省略
+- `<if>`: 条件が満たされた場合のみSQL追加
+- `<foreach>`: リストを展開してIN句を生成
 
-`src/main/java/com/example/bloghub/services/ArticleSearchService.java`を作成：
+---
+
+#### 8.3 DTOの作成
+
+`src/main/java/com/example/bloghub/dto/article/ArticleSearchRequest.java`を作成：
 
 ```java
-package com.example.bloghub.services;
+package com.example.bloghub.dto.article;
 
-import com.example.bloghub.dto.response.ArticleResponse;
-import com.example.bloghub.dto.response.PageResponse;
-import com.example.bloghub.mappers.ArticleSearchMapper;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+public class ArticleSearchRequest {
+    private String keyword;
+    private List<String> tags;
+    private String username;
+    private int page = 0;
+    private int size = 10;
+}
+```
+
+`src/main/java/com/example/bloghub/dto/article/ArticleSearchResult.java`を作成：
+
+```java
+package com.example.bloghub.dto.article;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Data
+public class ArticleSearchResult {
+    private Long id;
+    private String title;
+    private String content;
+    private String username;
+    private List<String> tags = new ArrayList<>();
+    private LocalDateTime createdAt;
+}
+```
+
+`src/main/java/com/example/bloghub/dto/article/ArticleSearchResponse.java`を作成：
+
+```java
+package com.example.bloghub.dto.article;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+public class ArticleSearchResponse {
+    private List<ArticleSearchResult> articles;
+    private int totalPages;
+    private long totalElements;
+    private int currentPage;
+}
+```
+
+---
+
+#### 8.4 ArticleSearchServiceの作成
+
+`src/main/java/com/example/bloghub/service/ArticleSearchService.java`を作成：
+
+```java
+package com.example.bloghub.service;
+
+import com.example.bloghub.dto.article.ArticleSearchRequest;
+import com.example.bloghub.dto.article.ArticleSearchResponse;
+import com.example.bloghub.dto.article.ArticleSearchResult;
+import com.example.bloghub.mapper.ArticleSearchMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-/**
- * 記事検索サービス
- */
 @Service
 @RequiredArgsConstructor
 public class ArticleSearchService {
@@ -505,220 +785,595 @@ public class ArticleSearchService {
     private final ArticleSearchMapper articleSearchMapper;
     
     /**
-     * 複合条件検索
+     * 複数条件で記事を検索します
      */
-    public PageResponse<ArticleResponse> advancedSearch(
-            String keyword,
-            Long authorId,
-            String tagName,
-            Integer minViewCount,
-            int page,
-            int size) {
+    public ArticleSearchResponse searchArticles(ArticleSearchRequest request) {
+        // オフセットを計算
+        int offset = request.getPage() * request.getSize();
         
-        int offset = page * size;
+        // 記事を検索
+        List<ArticleSearchResult> articles = articleSearchMapper.searchArticles(
+                request.getKeyword(),
+                request.getTags(),
+                request.getUsername(),
+                offset,
+                request.getSize()
+        );
         
-        List<ArticleResponse> articles = articleSearchMapper.searchArticles(
-            keyword, authorId, tagName, minViewCount, offset, size);
+        // 総件数を取得
+        int totalElements = articleSearchMapper.countSearchResults(
+                request.getKeyword(),
+                request.getTags(),
+                request.getUsername()
+        );
         
-        Long totalElements = articleSearchMapper.countSearchResults(
-            keyword, authorId, tagName, minViewCount);
+        // 総ページ数を計算
+        int totalPages = (int) Math.ceil((double) totalElements / request.getSize());
         
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-        
-        return PageResponse.<ArticleResponse>builder()
-            .content(articles)
-            .pageNumber(page)
-            .pageSize(size)
-            .totalElements(totalElements)
-            .totalPages(totalPages)
-            .first(page == 0)
-            .last(page >= totalPages - 1)
-            .empty(articles.isEmpty())
-            .build();
+        return new ArticleSearchResponse(
+                articles,
+                totalPages,
+                totalElements,
+                request.getPage()
+        );
     }
 }
 ```
 
-### 3-4. 検索コントローラーの拡張
+---
 
-`ArticleController`に検索エンドポイントを追加：
+#### 8.5 ArticleControllerに検索エンドポイントを追加
+
+`src/main/java/com/example/bloghub/controller/ArticleController.java`を更新：
 
 ```java
-// ArticleController.java に追加
+package com.example.bloghub.controller;
 
-private final ArticleSearchService articleSearchService;
+import com.example.bloghub.dto.article.*;
+import com.example.bloghub.service.ArticleSearchService;
+import com.example.bloghub.service.ArticleService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
 
-/**
- * 高度な検索
- */
-@GetMapping("/advanced-search")
-public ResponseEntity<PageResponse<ArticleResponse>> advancedSearch(
-        @RequestParam(required = false) String keyword,
-        @RequestParam(required = false) Long authorId,
-        @RequestParam(required = false) String tag,
-        @RequestParam(required = false) Integer minViews,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size) {
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/articles")
+@RequiredArgsConstructor
+public class ArticleController {
     
-    PageResponse<ArticleResponse> response = articleSearchService.advancedSearch(
-        keyword, authorId, tag, minViews, page, size);
+    private final ArticleService articleService;
+    private final ArticleSearchService articleSearchService;
     
-    return ResponseEntity.ok(response);
+    /**
+     * 記事を作成します
+     */
+    @PostMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ArticleResponse> createArticle(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody ArticleCreateRequest request) {
+        
+        ArticleResponse response = articleService.createArticle(userDetails.getUsername(), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+    
+    /**
+     * 記事一覧を取得します
+     */
+    @GetMapping
+    public ResponseEntity<List<ArticleResponse>> getAllArticles() {
+        List<ArticleResponse> articles = articleService.getAllArticles();
+        return ResponseEntity.ok(articles);
+    }
+    
+    /**
+     * 記事を取得します
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ArticleDetailResponse> getArticle(@PathVariable Long id) {
+        ArticleDetailResponse response = articleService.getArticle(id);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 記事を更新します
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ArticleResponse> updateArticle(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody ArticleUpdateRequest request) {
+        
+        ArticleResponse response = articleService.updateArticle(id, userDetails.getUsername(), request);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 記事を削除します
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteArticle(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        articleService.deleteArticle(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+    
+    /**
+     * 記事を検索します
+     */
+    @GetMapping("/search")
+    public ResponseEntity<ArticleSearchResponse> searchArticles(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) List<String> tags,
+            @RequestParam(required = false) String username,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        
+        ArticleSearchRequest request = new ArticleSearchRequest();
+        request.setKeyword(keyword);
+        request.setTags(tags);
+        request.setUsername(username);
+        request.setPage(page);
+        request.setSize(size);
+        
+        ArticleSearchResponse response = articleSearchService.searchArticles(request);
+        return ResponseEntity.ok(response);
+    }
 }
+```
+
+---
+
+### 9. アプリケーションのビルドと起動
+
+```bash
+cd workspace/bloghub
+./mvnw clean install
+./mvnw spring-boot:run
 ```
 
 ---
 
 ## ✅ 動作確認
 
-### 1. 画像アップロード
+### 1. ユーザー登録とログイン
 
 ```bash
-TOKEN="<JWTトークン>"
+# ユーザー登録
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "password123"
+  }'
 
-curl -X POST http://localhost:8080/api/files/upload \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/path/to/image.jpg"
+# ログイン
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "password": "password123"
+  }'
 ```
 
-**期待される結果**:
+**レスポンス例**:
 ```json
 {
-  "filename": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
-  "url": "/api/files/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
-  "size": "245678"
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "username": "alice"
 }
 ```
 
-### 2. プロフィール画像アップロード
-
+トークンを環境変数に保存：
 ```bash
-curl -X POST http://localhost:8080/api/users/profile-image \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/path/to/profile.jpg"
+export TOKEN="eyJhbGciOiJIUzI1NiJ9..."
 ```
 
-### 3. 画像付き記事投稿
+---
+
+### 2. プロフィール画像のアップロード
 
 ```bash
-# まず画像をアップロード
-IMAGE_URL=$(curl -X POST http://localhost:8080/api/files/upload \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/path/to/image.jpg" | jq -r '.url')
+# 画像ファイルを作成（テスト用）
+echo "fake image data" > profile.jpg
 
-# 記事投稿
+# プロフィール画像をアップロード
+curl -X POST http://localhost:8080/api/users/profile-image \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@profile.jpg"
+```
+
+**レスポンス例**:
+```json
+{
+  "id": 1,
+  "username": "alice",
+  "email": "alice@example.com",
+  "bio": null,
+  "profileImage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+  "createdAt": "2025-12-13T10:00:00"
+}
+```
+
+---
+
+### 3. ユーザー情報の取得
+
+```bash
+curl http://localhost:8080/api/users/alice
+```
+
+**レスポンス例**:
+```json
+{
+  "id": 1,
+  "username": "alice",
+  "email": "alice@example.com",
+  "bio": null,
+  "profileImage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+  "createdAt": "2025-12-13T10:00:00"
+}
+```
+
+---
+
+### 4. プロフィール画像のダウンロード
+
+```bash
+curl http://localhost:8080/api/files/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg -o downloaded.jpg
+```
+
+---
+
+### 5. 記事の作成（検索テスト用）
+
+```bash
+# Spring Boot記事を作成
 curl -X POST http://localhost:8080/api/articles \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"title\": \"画像付き記事\",
-    \"content\": \"画像を含む記事です\",
-    \"imageUrl\": \"$IMAGE_URL\",
-    \"tags\": [\"開発\", \"Tips\"]
-  }"
+  -d '{
+    "title": "Spring Boot入門",
+    "content": "Spring Bootの基礎を学びます",
+    "tags": ["Spring", "Tutorial"]
+  }'
+
+# Java記事を作成
+curl -X POST http://localhost:8080/api/articles \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Javaプログラミング",
+    "content": "Javaの基本文法を学びます",
+    "tags": ["Java", "Programming"]
+  }'
 ```
 
-### 4. 高度な検索
+---
+
+### 6. 高度な検索機能のテスト
+
+#### 6.1 キーワード検索
 
 ```bash
-# キーワード + タグで検索
-curl "http://localhost:8080/api/articles/advanced-search?keyword=Spring&tag=Java&page=0&size=10"
+curl "http://localhost:8080/api/articles/search?keyword=Spring"
+```
 
-# 閲覧数100以上の記事を検索
-curl "http://localhost:8080/api/articles/advanced-search?minViews=100"
+**レスポンス例**:
+```json
+{
+  "articles": [
+    {
+      "id": 1,
+      "title": "Spring Boot入門",
+      "content": "Spring Bootの基礎を学びます",
+      "username": "alice",
+      "tags": ["Spring", "Tutorial"],
+      "createdAt": "2025-12-13T10:00:00"
+    }
+  ],
+  "totalPages": 1,
+  "totalElements": 1,
+  "currentPage": 0
+}
 ```
 
 ---
 
-## 🎨 チャレンジ課題
+#### 6.2 タグ検索
 
-### チャレンジ 1: サムネイル生成
+```bash
+curl "http://localhost:8080/api/articles/search?tags=Java&tags=Programming"
+```
 
-**目標**: アップロードされた画像から自動的にサムネイルを生成
+---
+
+#### 6.3 ユーザー名検索
+
+```bash
+curl "http://localhost:8080/api/articles/search?username=alice"
+```
+
+---
+
+#### 6.4 複合条件検索
+
+```bash
+curl "http://localhost:8080/api/articles/search?keyword=Spring&tags=Tutorial&username=alice"
+```
+
+---
+
+#### 6.5 ページネーション付き検索
+
+```bash
+curl "http://localhost:8080/api/articles/search?keyword=Java&page=0&size=5"
+```
+
+---
+
+### 7. ファイルアップロードのエラーテスト
+
+#### 7.1 大きすぎるファイル
+
+```bash
+# 10MBのファイルを作成
+dd if=/dev/zero of=large.jpg bs=1M count=10
+
+# アップロード（失敗するはず）
+curl -X POST http://localhost:8080/api/users/profile-image \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@large.jpg"
+```
+
+**エラーレスポンス**:
+```
+ファイルサイズが5MBを超えています
+```
+
+---
+
+#### 7.2 許可されていない拡張子
+
+```bash
+# txtファイルを作成
+echo "test" > test.txt
+
+# アップロード（失敗するはず）
+curl -X POST http://localhost:8080/api/users/profile-image \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@test.txt"
+```
+
+**エラーレスポンス**:
+```
+許可されていないファイル形式です。jpg、png、gifのみアップロード可能です
+```
+
+---
+
+## 🎯 チャレンジ課題
+
+### 課題1: 画像のサムネイル生成
+
+画像アップロード時に自動的にサムネイルを生成する機能を実装してください。
 
 **ヒント**:
 ```java
-// imgscalr ライブラリを使用
+// 依存関係追加（pom.xml）
 <dependency>
-    <groupId>org.imgscalr</groupId>
-    <artifactId>imgscalr-lib</artifactId>
-    <version>4.2</version>
+    <groupId>net.coobird</groupId>
+    <artifactId>thumbnailator</artifactId>
+    <version>0.4.20</version>
 </dependency>
 
-BufferedImage thumbnail = Scalr.resize(originalImage, 300);
-```
-
-### チャレンジ 2: 全文検索エンジン
-
-**目標**: MySQLのFULLTEXT INDEXを使った高速な全文検索
-
-**ヒント**:
-```sql
-ALTER TABLE article ADD FULLTEXT INDEX idx_fulltext (title, content);
-
-SELECT * FROM article 
-WHERE MATCH(title, content) AGAINST('Spring Boot' IN NATURAL LANGUAGE MODE);
-```
-
-### チャレンジ 3: 画像圧縮
-
-**目標**: アップロード時に画像を自動圧縮してストレージを節約
-
----
-
-## 🐛 トラブルシューティング
-
-### エラー: "File type not allowed"
-
-**原因**: 許可されていない拡張子のファイルをアップロード
-
-**解決策**: jpg, jpeg, png, gif, webpのみ許可されています
-
-### エラー: "File size exceeds maximum limit"
-
-**原因**: 5MBを超えるファイルをアップロード
-
-**解決策**: ファイルサイズを5MB以下に縮小してください
-
-### エラー: "Could not create the directory"
-
-**原因**: アップロードディレクトリの作成権限がない
-
-**解決策**: アプリケーション実行ユーザーに書き込み権限を付与
-
-### エラー: MyBatisマッパーが見つからない
-
-**原因**: `@MapperScan`が設定されていない、またはXMLのパスが間違っている
-
-**解決策**:
-```java
-@SpringBootApplication
-@MapperScan("com.example.bloghub.mappers")
-public class BlogHubApplication { }
+// サムネイル生成
+Thumbnails.of(file.getInputStream())
+    .size(200, 200)
+    .toFile(thumbnailPath.toFile());
 ```
 
 ---
 
-## 📚 このステップで学んだこと
+### 課題2: ファイルメタデータの管理
 
-- ✅ ファイルアップロードのセキュリティ対策を実装した
-- ✅ プロフィール画像のアップロード機能を実装した
-- ✅ MyBatisで動的SQLを使った複雑な検索クエリを実装した
-- ✅ 複数条件での記事検索を実装した
-- ✅ ファイルストレージの管理方法を理解した
-- ✅ パストラバーサル攻撃への対策を学んだ
+アップロードされたファイルのメタデータ（サイズ、MIMEタイプ、アップロード日時など）をデータベースで管理する機能を実装してください。
+
+**実装のヒント**:
+1. `FileMetadata`エンティティを作成
+2. `FileMetadataRepository`を作成
+3. `FileStorageService`でメタデータを保存
+4. 管理画面でファイル一覧を表示
 
 ---
 
-## ➡️ 次のステップ
+### 課題3: 全文検索エンジンの統合
 
-[Step 38: テストとデプロイ準備](STEP_38.md)へ進みましょう！
+Elasticsearchを使った高速な全文検索機能を実装してください。
 
-最終ステップでは、アプリケーションの品質を保証するテストと、本番環境へのデプロイ準備を行います：
-- ユニットテスト
-- 統合テスト
-- テストカバレッジ
-- 本番環境設定
-- デプロイメント戦略
+**実装のヒント**:
+1. Docker ComposeでElasticsearchを起動
+2. Spring Data Elasticsearchを依存関係に追加
+3. `ArticleDocument`を作成してインデックス化
+4. `ArticleSearchRepository`で検索
 
-プロジェクトの完成まであと一歩です！🚀
+---
+
+## 🔧 トラブルシューティング
+
+### 問題1: ファイルアップロードで413エラー
+
+**エラー**:
+```
+413 Payload Too Large
+```
+
+**原因**: ファイルサイズが制限を超えている
+
+**解決方法**:
+```yaml
+# application.yml
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+```
+
+---
+
+### 問題2: パストラバーサル攻撃が検出される
+
+**エラー**:
+```
+不正なファイル名が含まれています: ../../../etc/passwd
+```
+
+**原因**: ファイル名に`..`が含まれている
+
+**解決方法**:
+- `FileStorageService`の検証ロジックが正しく動作している証拠
+- クライアント側でファイル名をサニタイズする
+
+---
+
+### 問題3: MyBatisマッパーが見つからない
+
+**エラー**:
+```
+org.apache.ibatis.binding.BindingException: Invalid bound statement (not found)
+```
+
+**原因**: マッパーXMLのnamespaceが間違っている、またはファイルが読み込まれていない
+
+**解決方法**:
+```yaml
+# application.yml
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+```
+
+```xml
+<!-- ArticleSearchMapper.xml -->
+<mapper namespace="com.example.bloghub.mapper.ArticleSearchMapper">
+```
+
+---
+
+### 問題4: 動的SQLで結果が空になる
+
+**症状**: 検索条件を指定しても結果が0件
+
+**原因**: `<where>`タグや`<if>`タグの条件が正しくない
+
+**解決方法**:
+```xml
+<!-- パラメータのnullチェックと空文字チェック -->
+<if test="keyword != null and keyword != ''">
+    (a.title LIKE CONCAT('%', #{keyword}, '%'))
+</if>
+```
+
+**デバッグ方法**:
+```yaml
+# application.yml
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+```
+
+---
+
+### 問題5: プロフィール画像が表示されない
+
+**症状**: 画像URLにアクセスすると404エラー
+
+**原因**: ファイルパスの解決に失敗している
+
+**解決方法**:
+1. `uploads/`ディレクトリが存在するか確認
+2. ファイル名が正しいか確認
+3. `FileController`の`/{fileName:.+}`パターンが正しいか確認
+
+```bash
+# アップロードディレクトリの確認
+ls -la uploads/
+```
+
+---
+
+## 📚 まとめ
+
+このステップでは、以下の内容を学びました：
+
+1. **ファイルアップロードのセキュリティ対策**
+   - パストラバーサル攻撃の防止
+   - ファイルサイズと拡張子の検証
+   - ユニークなファイル名の生成
+
+2. **FileStorageServiceの実装**
+   - ファイルの保存、読み込み、削除
+   - セキュアなファイル管理
+
+3. **プロフィール画像機能**
+   - 画像のアップロードとダウンロード
+   - 既存画像の自動削除
+
+4. **MyBatisによる動的SQL**
+   - `<where>`、`<if>`、`<foreach>`タグ
+   - 複数条件での検索
+
+5. **高度な検索機能**
+   - キーワード検索（LIKE句）
+   - タグ検索（IN句）
+   - ユーザー名検索
+   - ページネーション
+
+6. **ResultMapによる結果マッピング**
+   - 複雑なオブジェクト構造の変換
+   - コレクションのマッピング
+
+7. **セキュリティのベストプラクティス**
+   - 入力値のサニタイズ
+   - ファイル検証
+   - 所有者チェック
+
+8. **エラーハンドリング**
+   - ファイル操作の例外処理
+   - わかりやすいエラーメッセージ
+
+9. **パフォーマンス最適化**
+   - ページネーションによるデータ量制限
+   - インデックスを活用した検索
+
+10. **テストと検証**
+    - curlコマンドでの動作確認
+    - エラーケースのテスト
+
+これで、BlogHubプロジェクトの主要機能がほぼ完成しました！次のステップでは、テストとデプロイの準備を行います。
+
+---
+
+## 🚀 次のステップへ
+
+次は**Step 38: テストとデプロイ準備**に進みましょう！
+
+**Step 38で学ぶこと**:
+- ユニットテストの追加
+- 統合テストの実装
+- テストカバレッジの確認
+- Docker化
+- デプロイの準備
+
+[→ Step 38に進む](STEP_38.md)

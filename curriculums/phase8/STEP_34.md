@@ -2,11 +2,11 @@
 
 ## 🎯 このステップの目標
 
-- 最終プロジェクト「ミニブログアプリケーション」の全体像を理解できる
-- プロジェクトの技術スタックと機能要件を把握できる
-- 開発環境を構築し、プロジェクトの初期設定を完了できる
-- データベース設計とエンティティモデルを作成できる
-- これまで学んだすべての技術を統合する準備ができる
+- BlogHubアプリケーションの全体像と要件を理解する
+- ER図を元にデータベース設計を理解する
+- Docker ComposeでMySQL環境を構築する
+- JPAエンティティクラスを作成し、テーブル間の関連を定義する
+- データベース初期化スクリプトを作成し、テストデータを投入する
 
 **所要時間**: 約60分
 
@@ -14,375 +14,245 @@
 
 ## 📋 事前準備
 
-- Phase 1〜7の全ステップを完了していること
-- Docker Desktop、MySQL、VSCodeが正常に動作すること
-- JWT認証、JPA、MyBatis、Thymeleaf、キャッシュ、非同期処理の基礎知識があること
-- Gitリポジトリの準備（コード管理用）
+このステップを始める前に、以下を確認してください：
 
----
+- Phase 1〜7のカリキュラムを完了していること
+- Docker Desktop がインストールされ、起動していること
+- Java 21、Maven、VSCodeがインストールされていること
+- 以下のコマンドで環境を確認できること：
 
-## 🚀 ステップ1: プロジェクト概要
-
-### 1-1. ミニブログアプリケーションとは
-
-**プロジェクト名**: **BlogHub**（ブログハブ）
-
-**コンセプト**: 
-シンプルで実践的なブログプラットフォーム。ユーザーが記事を投稿し、他のユーザーがコメントできるコミュニティ型ブログシステム。
-
-### 1-2. 機能要件
-
-#### 認証・認可機能
-- ✅ ユーザー登録（メールアドレス、パスワード、ユーザー名）
-- ✅ ログイン（JWT認証）
-- ✅ ログアウト
-- ✅ プロフィール編集
-- ✅ パスワード変更
-
-#### 記事管理機能
-- ✅ 記事投稿（タイトル、本文、画像、タグ）
-- ✅ 記事編集（自分の記事のみ）
-- ✅ 記事削除（自分の記事のみ）
-- ✅ 記事一覧表示（ページネーション付き）
-- ✅ 記事詳細表示
-- ✅ タグによる記事検索
-- ✅ キーワード検索
-
-#### コメント機能
-- ✅ 記事へのコメント投稿
-- ✅ コメント編集（自分のコメントのみ）
-- ✅ コメント削除（自分のコメントのみ）
-- ✅ コメント一覧表示
-
-#### ファイル管理機能
-- ✅ 記事の画像アップロード
-- ✅ プロフィール画像アップロード
-- ✅ 画像のサムネイル表示
-
-### 1-3. 非機能要件
-
-#### パフォーマンス
-- ✅ 記事一覧のキャッシュ（Caffeine）
-- ✅ ページネーション（1ページ10件）
-- ✅ 画像アップロードの非同期処理
-
-#### セキュリティ
-- ✅ JWT認証によるステートレス認証
-- ✅ パスワードのBCrypt暗号化
-- ✅ CSRF対策
-- ✅ XSS対策（入力サニタイズ）
-- ✅ ファイルアップロードの検証（拡張子、サイズ）
-
-#### テスト
-- ✅ ユニットテスト（カバレッジ70%以上）
-- ✅ 統合テスト（主要なAPIエンドポイント）
-- ✅ セキュリティテスト
-
-### 1-4. 技術スタック
-
-| 分類 | 技術 | 用途 |
-|------|------|------|
-| **フレームワーク** | Spring Boot 3.5.8 | アプリケーション基盤 |
-| **データアクセス** | Spring Data JPA | 基本的なCRUD操作 |
-| **データアクセス** | MyBatis | 複雑な検索クエリ |
-| **データベース** | MySQL 8.0 | データ永続化 |
-| **認証** | Spring Security + JWT | 認証・認可 |
-| **テンプレート** | Thymeleaf | サーバーサイドレンダリング |
-| **キャッシュ** | Caffeine | パフォーマンス最適化 |
-| **ビルドツール** | Maven | 依存関係管理 |
-| **テスト** | JUnit 5 + Mockito | ユニット/統合テスト |
-
-### 1-5. アーキテクチャ
-
-```
-┌─────────────────────────────────────────────────┐
-│                   Client (Browser)              │
-│         (Thymeleaf + Bootstrap 5)               │
-└─────────────────┬───────────────────────────────┘
-                  │ HTTP/HTTPS
-┌─────────────────▼───────────────────────────────┐
-│              Controller Layer                   │
-│  AuthController, ArticleController,             │
-│  CommentController, FileController              │
-└─────────────────┬───────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────┐
-│               Service Layer                     │
-│  AuthService, ArticleService,                   │
-│  CommentService, FileStorageService             │
-│  (@Transactional, @Cacheable, @Async)           │
-└─────────┬───────────────────┬───────────────────┘
-          │                   │
-┌─────────▼─────────┐  ┌──────▼────────────────┐
-│ Repository Layer  │  │  MyBatis Mapper       │
-│  (Spring Data JPA)│  │  (Complex Queries)    │
-│  UserRepository   │  │  ArticleSearchMapper  │
-│  ArticleRepo...   │  │  CommentMapper        │
-└─────────┬─────────┘  └──────┬────────────────┘
-          │                   │
-          └───────────┬───────┘
-                      │
-          ┌───────────▼────────────┐
-          │   MySQL 8.0 Database   │
-          │   (Docker Container)   │
-          └────────────────────────┘
+```bash
+docker --version
+docker-compose --version
+java -version
+./mvnw --version
 ```
 
 ---
 
-## 🚀 ステップ2: プロジェクトの作成
+## 🎨 BlogHubアプリケーションとは
 
-### 2-1. Spring Initializrでプロジェクト作成
+### アプリケーション概要
 
-[Spring Initializr](https://start.spring.io/)で以下の設定でプロジェクトを作成します：
+**BlogHub**は、複数のユーザーが記事を投稿し、コメントやタグで情報を整理できるミニブログプラットフォームです。これまで学んだすべての技術を統合し、実践的なWebアプリケーションを開発します。
 
-**基本設定**:
+### 主要機能
+
+1. **ユーザー管理**
+   - ユーザー登録（サインアップ）
+   - ログイン/ログアウト（JWT認証）
+   - プロフィール画像のアップロード
+
+2. **記事管理**
+   - 記事の作成・編集・削除（CRUD）
+   - マークダウン形式での記事作成
+   - タグによる記事の分類
+   - 記事の検索（タイトル、本文、タグ）
+
+3. **コメント機能**
+   - 記事へのコメント投稿
+   - コメントの削除（投稿者のみ）
+
+4. **検索機能**
+   - キーワード検索（MyBatis動的SQL）
+   - タグフィルタリング
+   - ページネーション
+
+5. **Web画面（Thymeleaf）**
+   - 記事一覧ページ
+   - 記事詳細ページ
+   - 記事投稿・編集フォーム
+   - ユーザー登録・ログインフォーム
+
+### 技術スタック
+
+| レイヤー | 技術 |
+|---------|------|
+| **バックエンド** | Spring Boot 3.5.X |
+| **データアクセス** | Spring Data JPA + MyBatis |
+| **認証** | Spring Security + JWT |
+| **テンプレート** | Thymeleaf |
+| **データベース** | MySQL 8.0 (Docker) |
+| **ビルドツール** | Maven |
+| **テスト** | JUnit 5 + Mockito + JaCoCo |
+
+---
+
+## 🗄️ データベース設計
+
+### ER図
+
+```
+┌─────────────────┐
+│      User       │
+├─────────────────┤
+│ id (PK)         │
+│ username        │
+│ email           │
+│ password        │
+│ profile_image   │
+│ created_at      │
+│ updated_at      │
+└────────┬────────┘
+         │
+         │ 1
+         │
+         │ N
+         │
+┌────────┴────────┐      N ┌─────────────────┐ N
+│     Article     │────────┤  Article_Tag    │────────┐
+├─────────────────┤        ├─────────────────┤        │
+│ id (PK)         │        │ article_id (FK) │        │
+│ title           │        │ tag_id (FK)     │        │
+│ content         │        └─────────────────┘        │
+│ user_id (FK)    │                                   │
+│ created_at      │                           ┌───────┴────────┐
+│ updated_at      │                           │      Tag       │
+└────────┬────────┘                           ├────────────────┤
+         │                                    │ id (PK)        │
+         │ 1                                  │ name           │
+         │                                    │ created_at     │
+         │ N                                  └────────────────┘
+         │
+┌────────┴────────┐
+│    Comment      │
+├─────────────────┤
+│ id (PK)         │
+│ content         │
+│ article_id (FK) │
+│ user_id (FK)    │
+│ created_at      │
+└─────────────────┘
+```
+
+### テーブル定義
+
+#### 1. `users` テーブル
+
+| カラム名 | 型 | 制約 | 説明 |
+|---------|-----|------|------|
+| `id` | BIGINT | PRIMARY KEY, AUTO_INCREMENT | ユーザーID |
+| `username` | VARCHAR(50) | UNIQUE, NOT NULL | ユーザー名 |
+| `email` | VARCHAR(100) | UNIQUE, NOT NULL | メールアドレス |
+| `password` | VARCHAR(255) | NOT NULL | ハッシュ化されたパスワード |
+| `profile_image` | VARCHAR(255) | NULL | プロフィール画像のパス |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 作成日時 |
+| `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新日時 |
+
+#### 2. `articles` テーブル
+
+| カラム名 | 型 | 制約 | 説明 |
+|---------|-----|------|------|
+| `id` | BIGINT | PRIMARY KEY, AUTO_INCREMENT | 記事ID |
+| `title` | VARCHAR(200) | NOT NULL | タイトル |
+| `content` | TEXT | NOT NULL | 本文（マークダウン） |
+| `user_id` | BIGINT | FOREIGN KEY → users(id) | 投稿者ID |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 作成日時 |
+| `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新日時 |
+
+#### 3. `comments` テーブル
+
+| カラム名 | 型 | 制約 | 説明 |
+|---------|-----|------|------|
+| `id` | BIGINT | PRIMARY KEY, AUTO_INCREMENT | コメントID |
+| `content` | TEXT | NOT NULL | コメント内容 |
+| `article_id` | BIGINT | FOREIGN KEY → articles(id) | 記事ID |
+| `user_id` | BIGINT | FOREIGN KEY → users(id) | 投稿者ID |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 作成日時 |
+
+#### 4. `tags` テーブル
+
+| カラム名 | 型 | 制約 | 説明 |
+|---------|-----|------|------|
+| `id` | BIGINT | PRIMARY KEY, AUTO_INCREMENT | タグID |
+| `name` | VARCHAR(50) | UNIQUE, NOT NULL | タグ名 |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 作成日時 |
+
+#### 5. `article_tags` テーブル（中間テーブル）
+
+| カラム名 | 型 | 制約 | 説明 |
+|---------|-----|------|------|
+| `article_id` | BIGINT | FOREIGN KEY → articles(id) | 記事ID |
+| `tag_id` | BIGINT | FOREIGN KEY → tags(id) | タグID |
+
+- 複合主キー: `(article_id, tag_id)`
+
+---
+
+## 🚀 ステップ1: プロジェクト作成
+
+### 1-1. Spring Initializrでプロジェクト生成
+
+ブラウザで [https://start.spring.io/](https://start.spring.io/) にアクセスし、以下の設定でプロジェクトを生成します：
+
+**プロジェクト設定**:
 - **Project**: Maven
 - **Language**: Java
 - **Spring Boot**: 3.5.8
-- **Group**: `com.example`
-- **Artifact**: `bloghub`
-- **Name**: `BlogHub`
-- **Package name**: `com.example.bloghub`
 - **Packaging**: Jar
 - **Java**: 21
 
-**依存関係**:
+**Project Metadata**:
+- **Group**: `com.example`
+- **Artifact**: `bloghub`
+- **Name**: `bloghub`
+- **Package name**: `com.example.bloghub`
+
+**依存関係（Dependencies）**:
+- Spring Web
+- Spring Data JPA
+- Spring Security
+- MySQL Driver
+- Lombok
+- Validation
+- Thymeleaf
+- MyBatis Framework
+
+### 1-2. プロジェクトのダウンロードと配置
+
+1. **GENERATE**ボタンをクリックして`bloghub.zip`をダウンロード
+2. zipファイルを解凍
+3. `workspace/bloghub/`ディレクトリに配置
+
+```bash
+cd ~/git/spring-boot-curriculum/workspace
+unzip ~/Downloads/bloghub.zip
+cd bloghub
 ```
-Spring Web
-Spring Data JPA
-Spring Security
-MySQL Driver
-Lombok
-Validation
-Thymeleaf
-Spring Boot DevTools
-Spring Cache Abstraction
+
+### 1-3. プロジェクト構造の確認
+
 ```
-
-### 2-2. 追加依存関係の設定
-
-`pom.xml`に以下の依存関係を追加します：
-
-```xml
-<!-- pom.xml -->
-<dependencies>
-    <!-- Spring Boot Starters -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-security</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-thymeleaf</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-validation</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-cache</artifactId>
-    </dependency>
-    
-    <!-- Thymeleaf Security Extension -->
-    <dependency>
-        <groupId>org.thymeleaf.extras</groupId>
-        <artifactId>thymeleaf-extras-springsecurity6</artifactId>
-    </dependency>
-    
-    <!-- Database -->
-    <dependency>
-        <groupId>com.mysql</groupId>
-        <artifactId>mysql-connector-j</artifactId>
-        <scope>runtime</scope>
-    </dependency>
-    
-    <!-- MyBatis -->
-    <dependency>
-        <groupId>org.mybatis.spring.boot</groupId>
-        <artifactId>mybatis-spring-boot-starter</artifactId>
-        <version>3.0.3</version>
-    </dependency>
-    
-    <!-- JWT -->
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-api</artifactId>
-        <version>0.12.5</version>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-impl</artifactId>
-        <version>0.12.5</version>
-        <scope>runtime</scope>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-jackson</artifactId>
-        <version>0.12.5</version>
-        <scope>runtime</scope>
-    </dependency>
-    
-    <!-- Caffeine Cache -->
-    <dependency>
-        <groupId>com.github.ben-manes.caffeine</groupId>
-        <artifactId>caffeine</artifactId>
-    </dependency>
-    
-    <!-- Lombok -->
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <optional>true</optional>
-    </dependency>
-    
-    <!-- DevTools -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-devtools</artifactId>
-        <scope>runtime</scope>
-        <optional>true</optional>
-    </dependency>
-    
-    <!-- Test -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-test</artifactId>
-        <scope>test</scope>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.security</groupId>
-        <artifactId>spring-security-test</artifactId>
-        <scope>test</scope>
-    </dependency>
-</dependencies>
+bloghub/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── example/
+│   │   │           └── bloghub/
+│   │   │               └── BloghubApplication.java
+│   │   └── resources/
+│   │       ├── application.yml
+│   │       ├── static/
+│   │       └── templates/
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── example/
+│                   └── bloghub/
+├── pom.xml
+└── mvnw
 ```
 
 ---
 
-## 🚀 ステップ3: データベース設計
+## 🚀 ステップ2: Docker ComposeでMySQL環境構築
 
-### 3-1. ER図
+### 2-1. docker-compose.ymlの作成
 
-```
-┌──────────────────┐          ┌──────────────────┐
-│      User        │          │     Article      │
-├──────────────────┤          ├──────────────────┤
-│ id (PK)          │─────┐    │ id (PK)          │
-│ username         │     │    │ title            │
-│ email (UNIQUE)   │     │    │ content          │
-│ password         │     │    │ image_url        │
-│ profile_image    │     └───<│ author_id (FK)   │
-│ role             │          │ view_count       │
-│ created_at       │          │ created_at       │
-│ updated_at       │          │ updated_at       │
-└──────────────────┘          └────────┬─────────┘
-                                       │
-                                       │
-                              ┌────────▼─────────┐
-                              │    Comment       │
-                              ├──────────────────┤
-                              │ id (PK)          │
-                              │ content          │
-                              │ article_id (FK)  │─┐
-                              │ user_id (FK)     │ │
-                              │ created_at       │ │
-                              │ updated_at       │ │
-                              └──────────────────┘ │
-                                                   │
-┌──────────────────┐          ┌──────────────────┐ │
-│       Tag        │          │  Article_Tag     │ │
-├──────────────────┤          ├──────────────────┤ │
-│ id (PK)          │─────────<│ article_id (FK)  │<┘
-│ name (UNIQUE)    │          │ tag_id (FK)      │
-│ created_at       │          └──────────────────┘
-└──────────────────┘
-```
+プロジェクトルート（`bloghub/`）に`docker-compose.yml`を作成します：
 
-### 3-2. テーブル定義
-
-#### Userテーブル
-```sql
-CREATE TABLE user (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    profile_image VARCHAR(500),
-    role VARCHAR(20) NOT NULL DEFAULT 'USER',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username),
-    INDEX idx_email (email)
-);
-```
-
-#### Articleテーブル
-```sql
-CREATE TABLE article (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(200) NOT NULL,
-    content TEXT NOT NULL,
-    image_url VARCHAR(500),
-    author_id BIGINT NOT NULL,
-    view_count INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (author_id) REFERENCES user(id) ON DELETE CASCADE,
-    INDEX idx_author_id (author_id),
-    INDEX idx_created_at (created_at DESC)
-);
-```
-
-#### Commentテーブル
-```sql
-CREATE TABLE comment (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    content TEXT NOT NULL,
-    article_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
-    INDEX idx_article_id (article_id),
-    INDEX idx_user_id (user_id)
-);
-```
-
-#### Tagテーブル
-```sql
-CREATE TABLE tag (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_name (name)
-);
-```
-
-#### Article_Tagテーブル（多対多の中間テーブル）
-```sql
-CREATE TABLE article_tag (
-    article_id BIGINT NOT NULL,
-    tag_id BIGINT NOT NULL,
-    PRIMARY KEY (article_id, tag_id),
-    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE CASCADE
-);
-```
-
-### 3-3. Docker Composeでデータベース構築
-
-`docker-compose.yml`を作成：
+**ファイルパス**: `bloghub/docker-compose.yml`
 
 ```yaml
 version: '3.8'
@@ -395,113 +265,180 @@ services:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: bloghub
       MYSQL_USER: bloghub_user
-      MYSQL_PASSWORD: bloghub_pass
+      MYSQL_PASSWORD: bloghub_password
     ports:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
 
 volumes:
   mysql_data:
 ```
 
-`init.sql`を作成（上記のテーブル定義をすべて含める）：
+### 2-2. コードの解説
+
+#### `ports: "3307:3306"`
+- ホストの**3307番ポート**をコンテナの3306番ポートにマッピング
+- Phase 2の`hello-spring-boot`プロジェクトがポート3306を使用している場合があるため、衝突を避ける
+
+#### `volumes`
+- `mysql_data`: データの永続化（コンテナ削除後もデータ保持）
+- `./init.sql`: 初回起動時に自動実行されるSQLスクリプト
+
+#### `healthcheck`
+- MySQLが完全に起動するまで待機する設定
+
+---
+
+## 🚀 ステップ3: データベース初期化スクリプト作成
+
+### 3-1. init.sqlの作成
+
+**ファイルパス**: `bloghub/init.sql`
 
 ```sql
--- init.sql
-CREATE TABLE user (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    profile_image VARCHAR(500),
-    role VARCHAR(20) NOT NULL DEFAULT 'USER',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username),
-    INDEX idx_email (email)
-);
+-- データベースの選択
+USE bloghub;
 
-CREATE TABLE article (
+-- テーブルが存在する場合は削除（開発用）
+DROP TABLE IF EXISTS article_tags;
+DROP TABLE IF EXISTS comments;
+DROP TABLE IF EXISTS articles;
+DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS users;
+
+-- 1. usersテーブル
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    profile_image VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 2. articlesテーブル
+CREATE TABLE articles (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(200) NOT NULL,
     content TEXT NOT NULL,
-    image_url VARCHAR(500),
-    author_id BIGINT NOT NULL,
-    view_count INT DEFAULT 0,
+    user_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (author_id) REFERENCES user(id) ON DELETE CASCADE,
-    INDEX idx_author_id (author_id),
-    INDEX idx_created_at (created_at DESC)
-);
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE comment (
+-- 3. commentsテーブル
+CREATE TABLE comments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     content TEXT NOT NULL,
     article_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_article_id (article_id),
     INDEX idx_user_id (user_id)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE tag (
+-- 4. tagsテーブル
+CREATE TABLE tags (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_name (name)
-);
+    name VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE article_tag (
+-- 5. article_tagsテーブル（中間テーブル）
+CREATE TABLE article_tags (
     article_id BIGINT NOT NULL,
     tag_id BIGINT NOT NULL,
     PRIMARY KEY (article_id, tag_id),
-    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE CASCADE
-);
+    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- テストデータ（開発用）
-INSERT INTO user (username, email, password, role) VALUES
-('admin', 'admin@bloghub.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'ADMIN'),
-('testuser', 'test@bloghub.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'USER');
--- パスワードはどちらも "password123" (BCrypt)
+-- テストデータの投入
+-- パスワードは "password123" のBCryptハッシュ（実際のアプリではSpring Securityで生成）
+INSERT INTO users (username, email, password) VALUES
+('alice', 'alice@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+('bob', 'bob@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy');
 
-INSERT INTO tag (name) VALUES ('Java'), ('Spring Boot'), ('開発'), ('チュートリアル'), ('Tips');
+INSERT INTO tags (name) VALUES
+('Spring Boot'),
+('Java'),
+('Database'),
+('Tutorial');
+
+INSERT INTO articles (title, content, user_id) VALUES
+('Spring Bootの始め方', '# Spring Boot入門\n\nSpring Bootは...', 1),
+('JPAとMyBatisの違い', '## データアクセス技術の比較\n\nJPAは...', 1),
+('Docker入門', 'Dockerを使うと...', 2);
+
+INSERT INTO article_tags (article_id, tag_id) VALUES
+(1, 1), -- Spring Bootの始め方 → Spring Boot
+(1, 4), -- Spring Bootの始め方 → Tutorial
+(2, 1), -- JPAとMyBatisの違い → Spring Boot
+(2, 3), -- JPAとMyBatisの違い → Database
+(3, 4); -- Docker入門 → Tutorial
+
+INSERT INTO comments (content, article_id, user_id) VALUES
+('とても参考になりました！', 1, 2),
+('続きが気になります', 1, 2),
+('JPAの方が使いやすいですね', 2, 2);
 ```
 
-データベースを起動：
+### 3-2. SQLスクリプトの解説
 
-```bash
-docker-compose up -d
+#### インデックス設定
+```sql
+INDEX idx_user_id (user_id),
+INDEX idx_created_at (created_at)
 ```
+- 検索パフォーマンスを向上させるためのインデックス
+- `user_id`での検索や`created_at`でのソートが高速化される
+
+#### カスケード削除
+```sql
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+```
+- ユーザーが削除されたとき、そのユーザーの記事・コメントも自動削除
+- データの整合性を保つ
+
+#### 文字コード設定
+```sql
+ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+```
+- **utf8mb4**: 絵文字を含むすべてのUnicode文字に対応
+- **InnoDB**: トランザクション対応のストレージエンジン
 
 ---
 
-## 🚀 ステップ4: 基本設定
+## 🚀 ステップ4: application.ymlの設定
 
-### 4-1. application.ymlの設定
+### 4-1. application.ymlの作成
 
-`src/main/resources/application.yml`を作成：
+**ファイルパス**: `src/main/resources/application.yml`
 
 ```yaml
 spring:
   application:
-    name: BlogHub
-  
-  # データソース設定
+    name: bloghub
+
   datasource:
-    url: jdbc:mysql://localhost:3307/bloghub?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=utf8mb4
+    url: jdbc:mysql://localhost:3307/bloghub?useSSL=false&serverTimezone=Asia/Tokyo&allowPublicKeyRetrieval=true
     username: bloghub_user
-    password: bloghub_pass
+    password: bloghub_password
     driver-class-name: com.mysql.cj.jdbc.Driver
-  
-  # JPA設定
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -510,162 +447,67 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
-  
-  # MyBatis設定
-  mybatis:
-    mapper-locations: classpath:mybatis/mapper/**/*.xml
-    type-aliases-package: com.example.bloghub.entities
-    configuration:
-      map-underscore-to-camel-case: true
-  
-  # ファイルアップロード設定
+
+  security:
+    user:
+      name: admin
+      password: admin123
+
   servlet:
     multipart:
-      max-file-size: 5MB
+      max-file-size: 10MB
       max-request-size: 10MB
-  
-  # キャッシュ設定
-  cache:
-    type: caffeine
-    caffeine:
-      spec: maximumSize=1000,expireAfterWrite=600s
-  
-  # Thymeleaf設定
-  thymeleaf:
-    cache: false
-    prefix: classpath:/templates/
-    suffix: .html
 
-# ファイルストレージ設定
-file:
-  upload-dir: uploads
-  max-size: 5242880  # 5MB
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
 
-# JWT設定
-jwt:
-  secret: YourSecretKeyHereMustBeLongEnoughForHS512Algorithm
-  expiration: 86400000  # 24時間（ミリ秒）
-
-# ログ設定
 logging:
   level:
     com.example.bloghub: DEBUG
     org.springframework.security: DEBUG
-    org.hibernate.SQL: DEBUG
+
+server:
+  port: 8080
 ```
 
-### 4-2. プロジェクトディレクトリ構造
+### 4-2. 設定の解説
 
-以下の構造でパッケージを作成：
+#### `ddl-auto: validate`
+- **validate**: エンティティとテーブル定義が一致するか検証のみ
+- **create**: 毎回テーブルを作り直す（開発初期のみ）
+- **update**: スキーマを自動更新（本番では非推奨）
+- **none**: Hibernateによるスキーマ管理を無効化
 
-```
-src/
-├── main/
-│   ├── java/com/example/bloghub/
-│   │   ├── BlogHubApplication.java
-│   │   ├── config/
-│   │   │   ├── SecurityConfig.java
-│   │   │   ├── CacheConfig.java
-│   │   │   ├── AsyncConfig.java
-│   │   │   └── WebConfig.java
-│   │   ├── controllers/
-│   │   │   ├── AuthController.java
-│   │   │   ├── ArticleController.java
-│   │   │   ├── CommentController.java
-│   │   │   ├── FileController.java
-│   │   │   └── HomeController.java
-│   │   ├── dto/
-│   │   │   ├── request/
-│   │   │   │   ├── LoginRequest.java
-│   │   │   │   ├── SignupRequest.java
-│   │   │   │   ├── ArticleCreateRequest.java
-│   │   │   │   └── CommentCreateRequest.java
-│   │   │   └── response/
-│   │   │       ├── JwtResponse.java
-│   │   │       ├── ArticleResponse.java
-│   │   │       ├── CommentResponse.java
-│   │   │       └── PageResponse.java
-│   │   ├── entities/
-│   │   │   ├── User.java
-│   │   │   ├── Article.java
-│   │   │   ├── Comment.java
-│   │   │   ├── Tag.java
-│   │   │   └── Role.java (enum)
-│   │   ├── repositories/
-│   │   │   ├── UserRepository.java
-│   │   │   ├── ArticleRepository.java
-│   │   │   ├── CommentRepository.java
-│   │   │   └── TagRepository.java
-│   │   ├── mappers/
-│   │   │   ├── ArticleSearchMapper.java
-│   │   │   └── CommentMapper.java
-│   │   ├── services/
-│   │   │   ├── AuthService.java
-│   │   │   ├── ArticleService.java
-│   │   │   ├── CommentService.java
-│   │   │   ├── TagService.java
-│   │   │   ├── FileStorageService.java
-│   │   │   └── UserDetailsServiceImpl.java
-│   │   ├── security/
-│   │   │   ├── JwtAuthenticationFilter.java
-│   │   │   ├── JwtTokenProvider.java
-│   │   │   └── UserPrincipal.java
-│   │   └── exception/
-│   │       ├── GlobalExceptionHandler.java
-│   │       ├── ResourceNotFoundException.java
-│   │       └── UnauthorizedException.java
-│   └── resources/
-│       ├── application.yml
-│       ├── mybatis/mapper/
-│       │   ├── ArticleSearchMapper.xml
-│       │   └── CommentMapper.xml
-│       ├── templates/
-│       │   ├── layout/
-│       │   │   ├── header.html
-│       │   │   └── footer.html
-│       │   ├── auth/
-│       │   │   ├── login.html
-│       │   │   └── signup.html
-│       │   ├── articles/
-│       │   │   ├── list.html
-│       │   │   ├── detail.html
-│       │   │   ├── create.html
-│       │   │   └── edit.html
-│       │   └── index.html
-│       └── static/
-│           ├── css/
-│           ├── js/
-│           └── images/
-└── test/
-    └── java/com/example/bloghub/
-        ├── controllers/
-        ├── services/
-        └── repositories/
-```
+今回は`init.sql`でテーブルを作成するため、`validate`を使用します。
+
+#### `multipart`
+- ファイルアップロード機能で使用
+- 最大10MBまでのファイルを受け付ける
 
 ---
 
-## 🚀 ステップ5: エンティティの作成
+## 🚀 ステップ5: エンティティクラスの作成
 
-### 5-1. Roleエンティティ（Enum）
+### 5-1. パッケージ構成
 
-`src/main/java/com/example/bloghub/entities/Role.java`を作成：
-
-```java
-package com.example.bloghub.entities;
-
-public enum Role {
-    USER,
-    ADMIN
-}
+```
+com.example.bloghub/
+├── BloghubApplication.java
+└── entity/
+    ├── User.java
+    ├── Article.java
+    ├── Comment.java
+    └── Tag.java
 ```
 
-### 5-2. Userエンティティ
+### 5-2. Userエンティティの作成
 
-`src/main/java/com/example/bloghub/entities/User.java`を作成：
+**ファイルパス**: `src/main/java/com/example/bloghub/entity/User.java`
 
 ```java
-package com.example.bloghub.entities;
+package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -680,58 +522,55 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "user")
+@Table(name = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class User {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(nullable = false, unique = true, length = 50)
     private String username;
-    
+
     @Column(nullable = false, unique = true, length = 100)
     private String email;
-    
+
     @Column(nullable = false)
     private String password;
-    
-    @Column(length = 500)
+
+    @Column(name = "profile_image")
     private String profileImage;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private Role role = Role.USER;
-    
+
     @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-    
+
     @UpdateTimestamp
-    @Column(nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
-    @OneToMany(mappedBy = "author", cascade = CascadeType.ALL, orphanRemoval = true)
+
+    // 1対多のリレーション: ユーザーは複数の記事を持つ
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Article> articles = new ArrayList<>();
-    
+
+    // 1対多のリレーション: ユーザーは複数のコメントを持つ
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Comment> comments = new ArrayList<>();
 }
 ```
 
-### 5-3. Articleエンティティ
+### 5-3. Articleエンティティの作成
 
-`src/main/java/com/example/bloghub/entities/Article.java`を作成：
+**ファイルパス**: `src/main/java/com/example/bloghub/entity/Article.java`
 
 ```java
-package com.example.bloghub.entities;
+package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -748,78 +587,59 @@ import java.util.List;
 import java.util.Set;
 
 @Entity
-@Table(name = "article")
+@Table(name = "articles")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class Article {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(nullable = false, length = 200)
     private String title;
-    
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
-    
-    @Column(length = 500)
-    private String imageUrl;
-    
+
+    // 多対1のリレーション: 記事は1人のユーザーに属する
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "author_id", nullable = false)
-    private User author;
-    
-    @Column(nullable = false)
-    @Builder.Default
-    private Integer viewCount = 0;
-    
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
     @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-    
+
     @UpdateTimestamp
-    @Column(nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
+
+    // 1対多のリレーション: 記事は複数のコメントを持つ
     @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Comment> comments = new ArrayList<>();
-    
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+
+    // 多対多のリレーション: 記事は複数のタグを持つ
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
-        name = "article_tag",
+        name = "article_tags",
         joinColumns = @JoinColumn(name = "article_id"),
         inverseJoinColumns = @JoinColumn(name = "tag_id")
     )
     @Builder.Default
     private Set<Tag> tags = new HashSet<>();
-    
-    // ヘルパーメソッド
-    public void incrementViewCount() {
-        this.viewCount++;
-    }
-    
-    public void addTag(Tag tag) {
-        this.tags.add(tag);
-        tag.getArticles().add(this);
-    }
-    
-    public void removeTag(Tag tag) {
-        this.tags.remove(tag);
-        tag.getArticles().remove(this);
-    }
 }
 ```
 
-### 5-4. Commentエンティティ
+### 5-4. Commentエンティティの作成
 
-`src/main/java/com/example/bloghub/entities/Comment.java`を作成：
+**ファイルパス**: `src/main/java/com/example/bloghub/entity/Comment.java`
 
 ```java
-package com.example.bloghub.entities;
+package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -827,49 +647,46 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "comment")
+@Table(name = "comments")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class Comment {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
-    
+
+    // 多対1のリレーション: コメントは1つの記事に属する
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "article_id", nullable = false)
     private Article article;
-    
+
+    // 多対1のリレーション: コメントは1人のユーザーに属する
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
-    
+
     @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-    
-    @UpdateTimestamp
-    @Column(nullable = false)
-    private LocalDateTime updatedAt;
 }
 ```
 
-### 5-5. Tagエンティティ
+### 5-5. Tagエンティティの作成
 
-`src/main/java/com/example/bloghub/entities/Tag.java`を作成：
+**ファイルパス**: `src/main/java/com/example/bloghub/entity/Tag.java`
 
 ```java
-package com.example.bloghub.entities;
+package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -883,53 +700,114 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "tag")
+@Table(name = "tags")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class Tag {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(nullable = false, unique = true, length = 50)
     private String name;
-    
+
     @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-    
+
+    // 多対多のリレーション: タグは複数の記事を持つ
     @ManyToMany(mappedBy = "tags")
     @Builder.Default
     private Set<Article> articles = new HashSet<>();
 }
 ```
 
+### 5-6. エンティティの解説
+
+#### `@ManyToOne` vs `@OneToMany`
+
+```java
+// Article側（多側）
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "user_id")
+private User user;
+
+// User側（1側）
+@OneToMany(mappedBy = "user")
+private List<Article> articles;
+```
+
+- **`mappedBy`**: リレーションの所有者を示す（外部キーを持つのはArticle側）
+- **`FetchType.LAZY`**: 必要になるまでデータを取得しない（N+1問題を防ぐ）
+
+#### `@ManyToMany`
+
+```java
+@ManyToMany
+@JoinTable(
+    name = "article_tags",
+    joinColumns = @JoinColumn(name = "article_id"),
+    inverseJoinColumns = @JoinColumn(name = "tag_id")
+)
+private Set<Tag> tags;
+```
+
+- 中間テーブル`article_tags`を自動生成（今回はinit.sqlで手動作成）
+- `Set`を使うことで重複を防ぐ
+
+#### `cascade` と `orphanRemoval`
+
+```java
+@OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
+private List<Comment> comments;
+```
+
+- **`cascade = CascadeType.ALL`**: 親エンティティの操作（保存、削除）を子にも適用
+- **`orphanRemoval = true`**: 親から切り離された子エンティティを自動削除
+
+#### `@CreationTimestamp` と `@UpdateTimestamp`
+
+```java
+@CreationTimestamp
+@Column(name = "created_at", updatable = false)
+private LocalDateTime createdAt;
+
+@UpdateTimestamp
+@Column(name = "updated_at")
+private LocalDateTime updatedAt;
+```
+
+- Hibernateが自動的にタイムスタンプを設定
+- `updatable = false`で作成日時の上書きを防ぐ
+
 ---
 
-## ✅ 動作確認
+## ✅ ステップ6: 動作確認
 
-### 1. データベース起動確認
+### 6-1. MySQLコンテナの起動
 
 ```bash
-docker-compose ps
+cd ~/git/spring-boot-curriculum/workspace/bloghub
+docker-compose up -d
 ```
 
 **期待される結果**:
 ```
-NAME              IMAGE       STATUS
-bloghub-mysql     mysql:8.0   Up
+[+] Running 2/2
+ ✔ Network bloghub_default      Created
+ ✔ Container bloghub-mysql      Started
 ```
 
-### 2. データベース接続確認
+### 6-2. MySQL接続確認
 
 ```bash
-docker exec -it bloghub-mysql mysql -ubloghub_user -pbloghub_pass bloghub
+docker exec -it bloghub-mysql mysql -u bloghub_user -pbloghub_password bloghub
 ```
 
-MySQLに接続後、テーブル確認：
+MySQLコンソールで以下のコマンドを実行：
 
 ```sql
 SHOW TABLES;
@@ -940,69 +818,70 @@ SHOW TABLES;
 +-------------------+
 | Tables_in_bloghub |
 +-------------------+
-| article           |
-| article_tag       |
-| comment           |
-| tag               |
-| user              |
+| article_tags      |
+| articles          |
+| comments          |
+| tags              |
+| users             |
 +-------------------+
+5 rows in set (0.00 sec)
 ```
 
-### 3. アプリケーション起動確認
+テストデータの確認：
+
+```sql
+SELECT username, email FROM users;
+```
+
+**期待される結果**:
+```
++----------+-------------------+
+| username | email             |
++----------+-------------------+
+| alice    | alice@example.com |
+| bob      | bob@example.com   |
++----------+-------------------+
+2 rows in set (0.00 sec)
+```
+
+MySQLから抜ける：
+
+```sql
+EXIT;
+```
+
+### 6-3. Spring Bootアプリケーションの起動
 
 ```bash
-cd /path/to/bloghub
 ./mvnw clean install
 ./mvnw spring-boot:run
 ```
 
-**期待されるログ**:
+**期待される結果**:
 ```
-Started BlogHubApplication in X.XXX seconds
-```
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::               (v3.5.8)
 
-エラーがなく起動すれば成功です！
-
----
-
-## 🎨 チャレンジ課題
-
-基本が理解できたら、以下にチャレンジしてみましょう：
-
-### チャレンジ 1: サンプルデータの追加
-
-**目標**: 開発用のテストデータをもっと充実させる
-
-**ヒント**:
-```sql
--- init.sqlに追加
-INSERT INTO article (title, content, author_id, view_count) VALUES
-('Spring Bootの基礎', 'Spring Bootは...', 1, 120),
-('JPAとMyBatisの使い分け', 'JPAは...', 1, 85),
-('セキュリティ設定のベストプラクティス', 'Spring Securityで...', 2, 200);
-
-INSERT INTO article_tag (article_id, tag_id) VALUES
-(1, 2), (1, 3),
-(2, 1), (2, 2),
-(3, 2), (3, 5);
+...
+Started BloghubApplication in 3.456 seconds
 ```
 
-### チャレンジ 2: データベース設計の検証
+エラーが表示される場合は、トラブルシューティングを参照してください。
 
-**目標**: リレーションシップが正しく動作するか確認
+### 6-4. エンティティの検証
 
-**手順**:
-1. ユーザーを削除したら記事も削除されるか？（CASCADE動作）
-2. 記事を削除したらコメントも削除されるか？
-3. タグを削除しても記事は残るか？
+起動ログに以下のようなメッセージが表示されれば、エンティティとテーブルの定義が一致しています：
 
-### チャレンジ 3: プロファイル分離
+```
+Hibernate: validate the schema against the database
+```
 
-**目標**: 開発環境と本番環境で設定を分ける
-
-**ヒント**:
-- `application-dev.yml`: 開発環境用（ログレベルDEBUG）
-- `application-prod.yml`: 本番環境用（ログレベルINFO、キャッシュ有効）
+エラーが出る場合は、エンティティの`@Column`定義とinit.sqlのテーブル定義を見直してください。
 
 ---
 
@@ -1010,68 +889,156 @@ INSERT INTO article_tag (article_id, tag_id) VALUES
 
 ### エラー: "Access denied for user 'bloghub_user'@'localhost'"
 
-**原因**: データベース認証情報が間違っている
+**原因**: データベースのユーザー名またはパスワードが間違っている
 
 **解決策**:
-1. `docker-compose.yml`の認証情報を確認
-2. コンテナを再作成: `docker-compose down && docker-compose up -d`
-3. `application.yml`のusername/passwordを確認
+1. `docker-compose.yml`の`MYSQL_USER`と`MYSQL_PASSWORD`を確認
+2. `application.yml`の`username`と`password`が一致しているか確認
+3. コンテナを再起動: `docker-compose down && docker-compose up -d`
 
-### エラー: "Table 'bloghub.user' doesn't exist"
+### エラー: "Table 'bloghub.users' doesn't exist"
 
 **原因**: init.sqlが実行されていない
 
 **解決策**:
-```bash
-# コンテナとボリュームを完全削除
-docker-compose down -v
+1. コンテナとボリュームを削除: `docker-compose down -v`
+2. init.sqlが`bloghub/`直下にあることを確認
+3. コンテナを再起動: `docker-compose up -d`
+4. ログを確認: `docker-compose logs mysql | grep init.sql`
 
-# 再度起動（init.sqlが自動実行される）
-docker-compose up -d
+### エラー: "Schema-validation: missing table [users]"
+
+**原因**: エンティティのテーブル名とデータベースのテーブル名が一致していない
+
+**解決策**:
+1. エンティティの`@Table(name = "users")`を確認
+2. MySQLでテーブル名を確認: `SHOW TABLES;`
+3. テーブル名は複数形（users, articles, comments, tags）
+
+### エラー: "Port 3306 is already in use"
+
+**原因**: 別のMySQLコンテナがポート3306を使用している
+
+**解決策**:
+- `docker-compose.yml`で`ports`を`"3307:3306"`に変更済み
+- `application.yml`のURLも`localhost:3307`になっているか確認
+
+### エラー: "Could not autowire. No beans of 'UserRepository' type found"
+
+**原因**: まだRepositoryを作成していない（次のステップで作成します）
+
+**解決策**: Step 35でRepositoryを作成するため、現時点では無視してOK
+
+---
+
+## 🎨 チャレンジ課題
+
+基本が理解できたら、以下にチャレンジしてみましょう：
+
+### チャレンジ 1: createdAtでソートしたデータ取得
+
+MySQLコンソールで、記事を新しい順に取得するクエリを書いてみましょう。
+
+```sql
+-- ヒント: ORDER BY句を使用
+SELECT title, created_at FROM articles ORDER BY ? DESC;
 ```
 
-### エラー: "Port 3307 is already in use"
+### チャレンジ 2: タグ名で記事を検索
 
-**原因**: ポート3307が他のプロセスで使用中
+特定のタグ（例: "Spring Boot"）が付いた記事を取得するSQLを書いてみましょう。
 
-**解決策**:
-```bash
-# ポートを使用しているプロセスを確認
-lsof -ti:3307
-
-# 別のポートに変更（docker-compose.ymlとapplication.yml両方）
-# 例: 3308:3306
+```sql
+-- ヒント: JOINを使用
+SELECT a.title, t.name 
+FROM articles a
+JOIN article_tags at ON a.id = at.article_id
+JOIN tags t ON at.tag_id = t.id
+WHERE t.name = ?;
 ```
 
-### エラー: "Failed to load ApplicationContext"
+### チャレンジ 3: ユーザーごとの記事数を集計
 
-**原因**: 依存関係やBean定義の問題
+各ユーザーが投稿した記事数を集計するSQLを書いてみましょう。
 
-**解決策**:
-1. `./mvnw clean install`で依存関係を再取得
-2. エラーメッセージを確認し、不足しているBean定義を追加
-3. `@EnableJpaRepositories`や`@EntityScan`が必要な場合も
-
-### エラー: "HikariPool connection timeout"
-
-**原因**: データベースに接続できない
-
-**解決策**:
-1. MySQLコンテナが起動しているか確認: `docker-compose ps`
-2. ポート番号が正しいか確認（3307）
-3. ファイアウォールでポートがブロックされていないか確認
+```sql
+-- ヒント: COUNT()とGROUP BYを使用
+SELECT u.username, COUNT(a.id) as article_count
+FROM users u
+LEFT JOIN articles a ON u.id = a.user_id
+GROUP BY u.id, u.username;
+```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ 最終プロジェクト「BlogHub」の全体像と機能要件を理解した
-- ✅ Spring Boot + JPA + MyBatis + Thymeleafの統合プロジェクトを設計した
-- ✅ データベーススキーマを設計し、ER図を作成した
-- ✅ Docker Composeでデータベース環境を構築した
-- ✅ エンティティモデル（User, Article, Comment, Tag）を作成した
-- ✅ 1対多、多対多のリレーションシップを実装した
-- ✅ プロジェクトの全体的なディレクトリ構造を理解した
+- ✅ BlogHubアプリケーションの全体像と要件を理解した
+- ✅ ER図を元にデータベース設計（5つのテーブル）を理解した
+- ✅ Docker ComposeでMySQL環境を構築した
+- ✅ init.sqlでテーブル作成とテストデータ投入を自動化した
+- ✅ JPAエンティティクラスで複雑なリレーション（1対多、多対多）を定義した
+- ✅ `@ManyToOne`, `@OneToMany`, `@ManyToMany`の使い分けを理解した
+- ✅ `cascade`と`orphanRemoval`でデータの整合性を保つ方法を学んだ
+
+---
+
+## 💡 補足: リレーションシップの設計パターン
+
+### 双方向 vs 単方向
+
+**双方向リレーション**（今回の実装）:
+```java
+// User側
+@OneToMany(mappedBy = "user")
+private List<Article> articles;
+
+// Article側
+@ManyToOne
+@JoinColumn(name = "user_id")
+private User user;
+```
+
+**メリット**: 両側からナビゲーション可能
+**デメリット**: `toString()`や`equals()`で無限ループに注意
+
+**単方向リレーション**:
+```java
+// Article側のみ
+@ManyToOne
+@JoinColumn(name = "user_id")
+private User user;
+```
+
+**メリット**: シンプル、循環参照の心配なし
+**デメリット**: User側から直接Articleにアクセスできない
+
+### Fetch戦略の選択
+
+| Fetch Type | タイミング | 用途 |
+|-----------|----------|------|
+| **LAZY** | 必要になった時 | 関連エンティティが大きい場合（デフォルト推奨） |
+| **EAGER** | 親エンティティ取得時 | 常に必要な関連データ（N+1問題に注意） |
+
+**推奨**:
+- `@ManyToOne`, `@OneToOne`: デフォルトはEAGER → `LAZY`に変更推奨
+- `@OneToMany`, `@ManyToMany`: デフォルトはLAZY → そのまま
+
+### N+1問題の回避
+
+```java
+// 悪い例: N+1問題が発生
+List<Article> articles = articleRepository.findAll();
+for (Article article : articles) {
+    String username = article.getUser().getUsername(); // 毎回SQLが発行される
+}
+
+// 良い例: JOINで1回のSQLで取得
+@Query("SELECT a FROM Article a JOIN FETCH a.user")
+List<Article> findAllWithUser();
+```
+
+Step 36でこのテクニックを詳しく学びます！
 
 ---
 
@@ -1079,10 +1046,4 @@ lsof -ti:3307
 
 [Step 35: 認証・認可機能の実装](STEP_35.md)へ進みましょう！
 
-次のステップでは、Spring SecurityとJWTを使った認証・認可機能を実装します：
-- ユーザー登録・ログイン機能
-- JWTトークンの発行と検証
-- ログイン状態の管理
-- ロール別のアクセス制御
-
-プロジェクトの基盤が整ったので、いよいよセキュリティ機能の実装です！🔒
+次は、Spring Security + JWT認証でユーザー管理機能を実装します。ユーザー登録、ログイン、トークン検証など、セキュアなAPIを構築していきます。
