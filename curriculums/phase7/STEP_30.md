@@ -1,426 +1,749 @@
-# Step 30: ファイルアップロード・ダウンロード
+# Step 30: ファイルアップロード
 
 ## 🎯 このステップの目標
 
-- ファイルアップロード機能を実装する
-- ファイルダウンロード機能を実装する
-- ファイルストレージの管理方法を学ぶ
-- セキュリティ対策を理解する
+- `MultipartFile`を使ってファイルのアップロードを受け取る方法を理解する
+- ファイルをサーバーに保存し、メタデータをデータベースで管理できる
+- ファイルダウンロードAPIを実装できる
+- ファイルサイズや拡張子の制限を設定できる
+- セキュアなファイルアップロード機能を実装できる
 
-**所要時間**: 約2時間
-
+**所要時間**: 約45分
 
 ---
-
 
 ## 📋 事前準備
 
-- これまでのステップが完了していること（Phase 1〜6）
-- Spring Bootアプリケーションの開発環境が整っていること
-- Gitが使用できること
-
----
----
-
-## 💡 ファイルアップロードのユースケース
-
-- 📷 プロフィール画像
-- 📄 PDFドキュメント
-- 📊 CSVファイルのインポート
-- 🎵 メディアファイル
+- Phase 6までの内容を完了していること
+- Spring Bootアプリケーションが起動できること
+- データベース（MySQL）が稼働していること
+- curlまたはPostmanでファイル送信ができること
 
 ---
 
-## 🚀 ステップ1: 設定ファイル
+## 🚀 ステップ1: 依存関係とファイルストレージ設定
 
-### 1-1. application.ymlでファイル設定
+### 1-1. application.ymlにファイルアップロード設定を追加
+
+`src/main/resources/application.yaml`にファイルアップロードの設定を追加します：
+
+```yaml
+spring:
+  application:
+    name: hello-spring-boot
+  
+  # データソース設定
+  datasource:
+    url: jdbc:mysql://localhost:3306/spring_boot_db
+    username: root
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  # JPA設定
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  
+  # セキュリティ設定
+  security:
+    user:
+      name: admin
+      password: admin
+  
+  # ファイルアップロード設定
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB        # 1ファイルの最大サイズ
+      max-request-size: 20MB     # リクエスト全体の最大サイズ
+      file-size-threshold: 2MB   # メモリに保持する閾値
+
+# JWT設定
+jwt:
+  secret: my-super-secret-key-that-is-at-least-256-bits-long-for-hs256-algorithm-to-work-properly
+  expiration: 86400000
+
+# ファイル保存先ディレクトリ
+file:
+  upload-dir: uploads
+```
+
+### 1-2. コードの解説
+
+#### ファイルアップロード設定
 
 ```yaml
 spring:
   servlet:
     multipart:
-      enabled: true
       max-file-size: 10MB
-      max-request-size: 10MB
-
-# カスタム設定
-file:
-  upload-dir: ./uploads
-  allowed-extensions: jpg,jpeg,png,gif,pdf,doc,docx
+      max-request-size: 20MB
 ```
 
-### 1-2. FileStorageProperties
+- **max-file-size**: 1つのファイルの最大サイズ（これを超えるとエラー）
+- **max-request-size**: リクエスト全体の最大サイズ（複数ファイルの合計）
+- **file-size-threshold**: この閾値を超えるとディスクに一時保存
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/FileStorageProperties.java`
+---
+
+## 🚀 ステップ2: ファイルエンティティとリポジトリ作成
+
+### 2-1. FileMetadataエンティティを作成
+
+`src/main/java/com/example/hellospringboot/entities/FileMetadata.java`を作成：
 
 ```java
-package com.example.hellospringboot.config;
+package com.example.hellospringboot.entities;
 
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
+/**
+ * ファイルメタデータエンティティ
+ */
+@Entity
+@Table(name = "file_metadata")
 @Data
-@Component
-@ConfigurationProperties(prefix = "file")
-public class FileStorageProperties {
-    private String uploadDir;
-    private String allowedExtensions;
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class FileMetadata {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    /**
+     * 元のファイル名
+     */
+    @Column(nullable = false)
+    private String originalFilename;
+    
+    /**
+     * 保存されたファイル名（UUID + 拡張子）
+     */
+    @Column(nullable = false, unique = true)
+    private String storedFilename;
+    
+    /**
+     * ファイルパス
+     */
+    @Column(nullable = false)
+    private String filePath;
+    
+    /**
+     * ファイルサイズ（バイト）
+     */
+    @Column(nullable = false)
+    private Long fileSize;
+    
+    /**
+     * MIMEタイプ
+     */
+    @Column(nullable = false)
+    private String contentType;
+    
+    /**
+     * アップロード日時
+     */
+    @Column(nullable = false)
+    private LocalDateTime uploadedAt;
+    
+    /**
+     * アップロードしたユーザーID
+     */
+    @Column(nullable = false)
+    private Long uploadedBy;
+    
+    @PrePersist
+    protected void onCreate() {
+        uploadedAt = LocalDateTime.now();
+    }
+}
+```
+
+### 2-2. FileMetadataRepositoryを作成
+
+`src/main/java/com/example/hellospringboot/repositories/FileMetadataRepository.java`を作成：
+
+```java
+package com.example.hellospringboot.repositories;
+
+import com.example.hellospringboot.entities.FileMetadata;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * ファイルメタデータリポジトリ
+ */
+@Repository
+public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long> {
+    
+    /**
+     * 保存されたファイル名で検索
+     */
+    Optional<FileMetadata> findByStoredFilename(String storedFilename);
+    
+    /**
+     * アップロードしたユーザーIDで検索
+     */
+    List<FileMetadata> findByUploadedBy(Long uploadedBy);
 }
 ```
 
 ---
 
-## 🚀 ステップ2: ファイルストレージサービス
+## 🚀 ステップ3: ファイルストレージサービス
 
-### 2-1. FileStorageService
+### 3-1. FileStorageServiceを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/FileStorageService.java`
+`src/main/java/com/example/hellospringboot/services/FileStorageService.java`を作成：
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot.services;
 
-import com.example.hellospringboot.config.FileStorageProperties;
-import com.example.hellospringboot.exception.FileStorageException;
+import com.example.hellospringboot.entities.FileMetadata;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
+import com.example.hellospringboot.repositories.FileMetadataRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
-@Slf4j
+/**
+ * ファイルストレージサービス
+ */
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class FileStorageService {
-
-    private final Path fileStorageLocation;
-    private final String[] allowedExtensions;
-
-    @Autowired
-    public FileStorageService(FileStorageProperties fileStorageProperties) {
-        this.fileStorageLocation = Paths.get(fileStorageProperties.getUploadDir())
-                .toAbsolutePath().normalize();
-        this.allowedExtensions = fileStorageProperties.getAllowedExtensions().split(",");
-
+    
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+    
+    private final FileMetadataRepository fileMetadataRepository;
+    
+    private Path fileStorageLocation;
+    
+    /**
+     * 初期化: アップロードディレクトリを作成
+     */
+    @PostConstruct
+    public void init() {
+        this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
+        
         try {
             Files.createDirectories(this.fileStorageLocation);
-            log.info("アップロードディレクトリを作成しました: {}", this.fileStorageLocation);
-        } catch (Exception ex) {
-            throw new FileStorageException("アップロードディレクトリの作成に失敗しました。", ex);
+            log.info("File storage directory created: {}", this.fileStorageLocation);
+        } catch (IOException ex) {
+            throw new RuntimeException("Could not create upload directory!", ex);
         }
     }
-
+    
     /**
-     * ファイルをアップロードする
+     * ファイルを保存
      */
-    public String storeFile(MultipartFile file) {
-        // ファイル名を取得
+    public FileMetadata storeFile(MultipartFile file, Long userId) {
+        // ファイル名の正規化
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
-
+        
         try {
             // ファイル名のバリデーション
             if (originalFilename.contains("..")) {
-                throw new FileStorageException("不正なファイル名: " + originalFilename);
+                throw new IllegalArgumentException("Invalid file path: " + originalFilename);
             }
-
-            // 拡張子チェック
-            String extension = getFileExtension(originalFilename);
-            if (!isAllowedExtension(extension)) {
-                throw new FileStorageException("許可されていない拡張子です: " + extension);
-            }
-
+            
             // ユニークなファイル名を生成
-            String filename = UUID.randomUUID().toString() + "." + extension;
-
+            String fileExtension = getFileExtension(originalFilename);
+            String storedFilename = UUID.randomUUID().toString() + fileExtension;
+            
             // ファイルを保存
-            Path targetLocation = this.fileStorageLocation.resolve(filename);
+            Path targetLocation = this.fileStorageLocation.resolve(storedFilename);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-            log.info("ファイルをアップロードしました: {}", filename);
-            return filename;
-
+            
+            // メタデータをDBに保存
+            FileMetadata metadata = FileMetadata.builder()
+                    .originalFilename(originalFilename)
+                    .storedFilename(storedFilename)
+                    .filePath(targetLocation.toString())
+                    .fileSize(file.getSize())
+                    .contentType(file.getContentType())
+                    .uploadedBy(userId)
+                    .build();
+            
+            FileMetadata saved = fileMetadataRepository.save(metadata);
+            log.info("File stored: {} -> {}", originalFilename, storedFilename);
+            
+            return saved;
         } catch (IOException ex) {
-            throw new FileStorageException("ファイルの保存に失敗しました: " + originalFilename, ex);
+            throw new RuntimeException("Could not store file " + originalFilename, ex);
         }
     }
-
+    
     /**
-     * ファイルを読み込む
+     * ファイルをロード
      */
     public Resource loadFileAsResource(String filename) {
         try {
             Path filePath = this.fileStorageLocation.resolve(filename).normalize();
             Resource resource = new UrlResource(filePath.toUri());
-
+            
             if (resource.exists()) {
                 return resource;
             } else {
-                throw new FileStorageException("ファイルが見つかりません: " + filename);
+                throw new ResourceNotFoundException("File", "filename", filename);
             }
         } catch (MalformedURLException ex) {
-            throw new FileStorageException("ファイルが見つかりません: " + filename, ex);
+            throw new ResourceNotFoundException("File", "filename", filename);
         }
     }
-
+    
     /**
-     * ファイルを削除する
+     * ファイルメタデータを取得
      */
-    public void deleteFile(String filename) {
+    public FileMetadata getFileMetadata(Long id) {
+        return fileMetadataRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("FileMetadata", "id", id));
+    }
+    
+    /**
+     * ユーザーがアップロードした全ファイルを取得
+     */
+    public List<FileMetadata> getUserFiles(Long userId) {
+        return fileMetadataRepository.findByUploadedBy(userId);
+    }
+    
+    /**
+     * ファイル削除
+     */
+    public void deleteFile(Long id, Long userId) {
+        FileMetadata metadata = getFileMetadata(id);
+        
+        // 権限チェック（自分がアップロードしたファイルのみ削除可能）
+        if (!metadata.getUploadedBy().equals(userId)) {
+            throw new IllegalArgumentException("You don't have permission to delete this file");
+        }
+        
         try {
-            Path filePath = this.fileStorageLocation.resolve(filename).normalize();
+            // ファイルシステムから削除
+            Path filePath = Paths.get(metadata.getFilePath());
             Files.deleteIfExists(filePath);
-            log.info("ファイルを削除しました: {}", filename);
+            
+            // DBから削除
+            fileMetadataRepository.delete(metadata);
+            
+            log.info("File deleted: {}", metadata.getStoredFilename());
         } catch (IOException ex) {
-            throw new FileStorageException("ファイルの削除に失敗しました: " + filename, ex);
+            throw new RuntimeException("Could not delete file: " + metadata.getOriginalFilename(), ex);
         }
     }
-
+    
     /**
-     * 拡張子を取得
+     * ファイル拡張子を取得
      */
     private String getFileExtension(String filename) {
-        int lastIndexOf = filename.lastIndexOf(".");
-        if (lastIndexOf == -1) {
+        if (filename == null || !filename.contains(".")) {
             return "";
         }
-        return filename.substring(lastIndexOf + 1).toLowerCase();
-    }
-
-    /**
-     * 許可された拡張子かチェック
-     */
-    private boolean isAllowedExtension(String extension) {
-        return Arrays.asList(allowedExtensions).contains(extension);
+        return filename.substring(filename.lastIndexOf("."));
     }
 }
 ```
 
----
+### 3-2. コードの解説
 
-## 🚀 ステップ3: カスタム例外
-
-### 3-1. FileStorageException
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/exception/FileStorageException.java`
-
+#### `@PostConstruct`
 ```java
-package com.example.hellospringboot.exception;
-
-public class FileStorageException extends RuntimeException {
-    public FileStorageException(String message) {
-        super(message);
-    }
-
-    public FileStorageException(String message, Throwable cause) {
-        super(message, cause);
-    }
+@PostConstruct
+public void init() {
+    Files.createDirectories(this.fileStorageLocation);
 }
 ```
+- Bean作成後に自動的に実行される
+- アップロードディレクトリを作成
+
+#### `MultipartFile`
+```java
+public FileMetadata storeFile(MultipartFile file, Long userId)
+```
+- ファイルアップロードを受け取るSpring標準のインターフェース
+- `getInputStream()`, `getSize()`, `getContentType()`などのメソッドを提供
+
+#### セキュリティ対策
+```java
+if (originalFilename.contains("..")) {
+    throw new IllegalArgumentException("Invalid file path");
+}
+```
+- **パストラバーサル攻撃**を防ぐ
+- `../../../etc/passwd`のような危険なパスを拒否
+
+#### ユニークなファイル名生成
+```java
+String storedFilename = UUID.randomUUID().toString() + fileExtension;
+```
+- 同名ファイルの上書きを防ぐ
+- ファイル名の衝突を回避
 
 ---
 
-## 🚀 ステップ4: FileController
+## 🚀 ステップ4: ファイルアップロードAPI
 
-### 4-1. ファイルアップロード・ダウンロードAPI
+### 4-1. FileControllerを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/FileController.java`
+`src/main/java/com/example/hellospringboot/controllers/FileController.java`を作成：
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
-import com.example.hellospringboot.dto.response.UploadFileResponse;
-import com.example.hellospringboot.service.FileStorageService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
+import com.example.hellospringboot.entities.FileMetadata;
+import com.example.hellospringboot.services.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import java.io.IOException;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
-@Slf4j
+/**
+ * ファイルアップロード/ダウンロードAPI
+ */
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
-@Tag(name = "File", description = "ファイル管理API")
+@Slf4j
 public class FileController {
-
+    
     private final FileStorageService fileStorageService;
-
-    @Operation(summary = "ファイルアップロード", description = "単一ファイルをアップロードします")
-    @PostMapping("/upload")
-    public ResponseEntity<UploadFileResponse> uploadFile(@RequestParam("file") MultipartFile file) {
-        String filename = fileStorageService.storeFile(file);
-
-        String fileDownloadUri = ServletUriComponentsBuilder.fromCurrentContextPath()
+    
+    /**
+     * ファイルアップロード
+     */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        
+        log.info("File upload request: {}, size: {} bytes", 
+                file.getOriginalFilename(), file.getSize());
+        
+        // ファイル保存
+        FileMetadata metadata = fileStorageService.storeFile(file, userId);
+        
+        // ダウンロードURLを生成
+        String downloadUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/api/files/download/")
-                .path(filename)
+                .path(metadata.getStoredFilename())
                 .toUriString();
-
-        return ResponseEntity.ok(UploadFileResponse.builder()
-                .filename(filename)
-                .fileDownloadUri(fileDownloadUri)
-                .fileType(file.getContentType())
-                .size(file.getSize())
-                .build());
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", metadata.getId());
+        response.put("filename", metadata.getOriginalFilename());
+        response.put("storedFilename", metadata.getStoredFilename());
+        response.put("size", metadata.getFileSize());
+        response.put("contentType", metadata.getContentType());
+        response.put("downloadUrl", downloadUrl);
+        response.put("uploadedAt", metadata.getUploadedAt());
+        
+        return ResponseEntity.ok(response);
     }
-
-    @Operation(summary = "複数ファイルアップロード", description = "複数ファイルをアップロードします")
-    @PostMapping("/upload/multiple")
-    public ResponseEntity<List<UploadFileResponse>> uploadMultipleFiles(@RequestParam("files") MultipartFile[] files) {
-        List<UploadFileResponse> responses = Arrays.stream(files)
-                .map(file -> {
-                    String filename = fileStorageService.storeFile(file);
-                    String fileDownloadUri = ServletUriComponentsBuilder.fromCurrentContextPath()
-                            .path("/api/files/download/")
-                            .path(filename)
-                            .toUriString();
-
-                    return UploadFileResponse.builder()
-                            .filename(filename)
-                            .fileDownloadUri(fileDownloadUri)
-                            .fileType(file.getContentType())
-                            .size(file.getSize())
-                            .build();
-                })
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(responses);
+    
+    /**
+     * 複数ファイルアップロード
+     */
+    @PostMapping(value = "/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadMultipleFiles(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        
+        log.info("Multiple file upload request: {} files", files.length);
+        
+        List<FileMetadata> uploadedFiles = java.util.Arrays.stream(files)
+                .map(file -> fileStorageService.storeFile(file, userId))
+                .toList();
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("count", uploadedFiles.size());
+        response.put("files", uploadedFiles);
+        
+        return ResponseEntity.ok(response);
     }
-
-    @Operation(summary = "ファイルダウンロード", description = "指定されたファイルをダウンロードします")
+    
+    /**
+     * ファイルダウンロード
+     */
     @GetMapping("/download/{filename:.+}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String filename, HttpServletRequest request) {
+    public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
+        log.info("File download request: {}", filename);
+        
+        // ファイルをロード
         Resource resource = fileStorageService.loadFileAsResource(filename);
-
-        // Content-Typeを決定
-        String contentType = null;
-        try {
-            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
-        } catch (IOException ex) {
-            log.info("ファイルタイプを判定できませんでした。");
-        }
-
-        if (contentType == null) {
-            contentType = "application/octet-stream";
-        }
-
+        
+        // Content-Dispositionヘッダーを設定（ブラウザにダウンロードさせる）
+        String contentDisposition = "attachment; filename=\"" + resource.getFilename() + "\"";
+        
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                 .body(resource);
     }
+    
+    /**
+     * ファイルメタデータ取得
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<FileMetadata> getFileMetadata(@PathVariable Long id) {
+        FileMetadata metadata = fileStorageService.getFileMetadata(id);
+        return ResponseEntity.ok(metadata);
+    }
+    
+    /**
+     * ユーザーのファイル一覧取得
+     */
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<FileMetadata>> getUserFiles(@PathVariable Long userId) {
+        List<FileMetadata> files = fileStorageService.getUserFiles(userId);
+        return ResponseEntity.ok(files);
+    }
+    
+    /**
+     * ファイル削除
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteFile(
+            @PathVariable Long id,
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        
+        log.info("File delete request: id={}, userId={}", id, userId);
+        fileStorageService.deleteFile(id, userId);
+        
+        return ResponseEntity.noContent().build();
+    }
 }
 ```
 
----
+### 4-2. コードの解説
 
-## 🚀 ステップ5: UploadFileResponse DTO
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/UploadFileResponse.java`
-
+#### `consumes = MediaType.MULTIPART_FORM_DATA_VALUE`
 ```java
-package com.example.hellospringboot.dto.response;
-
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@Schema(description = "ファイルアップロードレスポンス")
-public class UploadFileResponse {
-
-    @Schema(description = "ファイル名", example = "550e8400-e29b-41d4-a716-446655440000.jpg")
-    private String filename;
-
-    @Schema(description = "ダウンロードURI", example = "http://localhost:8080/api/files/download/550e8400.jpg")
-    private String fileDownloadUri;
-
-    @Schema(description = "ファイルタイプ", example = "image/jpeg")
-    private String fileType;
-
-    @Schema(description = "ファイルサイズ（バイト）", example = "2048576")
-    private long size;
-}
+@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 ```
+- ファイルアップロードは`multipart/form-data`形式
+- このContent-Typeのみ受け付ける
+
+#### `@RequestParam("file") MultipartFile file`
+```java
+public ResponseEntity<Map<String, Object>> uploadFile(
+    @RequestParam("file") MultipartFile file)
+```
+- フォームフィールド名`file`でファイルを受け取る
+- `MultipartFile`はSpring標準のファイルインターフェース
+
+#### ダウンロードURL生成
+```java
+String downloadUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
+    .path("/api/files/download/")
+    .path(metadata.getStoredFilename())
+    .toUriString();
+```
+- 現在のドメインとポートを取得
+- 完全なダウンロードURLを生成
+
+#### ファイルダウンロードレスポンス
+```java
+return ResponseEntity.ok()
+    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+    .body(resource);
+```
+- `APPLICATION_OCTET_STREAM`: バイナリデータ
+- `Content-Disposition: attachment`: ブラウザにダウンロードさせる
 
 ---
 
 ## ✅ 動作確認
 
-### ファイルアップロード
+### 1. アプリケーションを起動
 
 ```bash
-curl -X POST http://localhost:8080/api/files/upload \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@/path/to/image.jpg"
+cd /path/to/hello-spring-boot
+./mvnw spring-boot:run
 ```
 
-**レスポンス例**:
+### 2. ファイルアップロード
+
+```bash
+# テスト用の画像ファイルを作成
+echo "test file content" > test.txt
+
+# ファイルをアップロード
+curl -X POST http://localhost:8080/api/files \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test.txt" \
+  -F "userId=1"
+```
+
+**期待される結果**:
 ```json
 {
-  "filename": "550e8400-e29b-41d4-a716-446655440000.jpg",
-  "fileDownloadUri": "http://localhost:8080/api/files/download/550e8400-e29b-41d4-a716-446655440000.jpg",
-  "fileType": "image/jpeg",
-  "size": 2048576
+  "id": 1,
+  "filename": "test.txt",
+  "storedFilename": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt",
+  "size": 17,
+  "contentType": "text/plain",
+  "downloadUrl": "http://localhost:8080/api/files/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt",
+  "uploadedAt": "2025-12-13T18:30:00"
 }
 ```
 
-### ファイルダウンロード
+### 3. ファイルダウンロード
 
 ```bash
-curl -O http://localhost:8080/api/files/download/550e8400-e29b-41d4-a716-446655440000.jpg
+# アップロードしたファイルをダウンロード
+curl -O http://localhost:8080/api/files/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt
+
+# ダウンロードしたファイルの内容を確認
+cat a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt
 ```
+
+**期待される結果**:
+```
+test file content
+```
+
+### 4. ファイル一覧取得
+
+```bash
+curl http://localhost:8080/api/files/user/1
+```
+
+**期待される結果**:
+```json
+[
+  {
+    "id": 1,
+    "originalFilename": "test.txt",
+    "storedFilename": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt",
+    "filePath": "/path/to/uploads/a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt",
+    "fileSize": 17,
+    "contentType": "text/plain",
+    "uploadedAt": "2025-12-13T18:30:00",
+    "uploadedBy": 1
+  }
+]
+```
+
+### 5. 複数ファイルアップロード
+
+```bash
+# 複数ファイルをまとめてアップロード
+curl -X POST http://localhost:8080/api/files/batch \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@test1.txt" \
+  -F "files=@test2.txt" \
+  -F "userId=1"
+```
+
+### 6. ファイル削除
+
+```bash
+curl -X DELETE "http://localhost:8080/api/files/1?userId=1"
+```
+
+**期待される結果**: HTTPステータス204 No Content
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: ユーザープロフィール画像
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-UserエンティティにprofileImageフィールドを追加してください。
+### チャレンジ 1: 画像のサムネイル生成
 
-### チャレンジ 2: 画像リサイズ
+**目標**: アップロードされた画像のサムネイルを自動生成
 
-Thumbnailatorライブラリを使って画像をリサイズしてください。
+**ヒント**:
+```java
+// Java標準のImageIOを使用
+BufferedImage originalImage = ImageIO.read(file.getInputStream());
+BufferedImage thumbnail = Scalr.resize(originalImage, 200);
+ImageIO.write(thumbnail, "jpg", thumbnailFile);
+```
 
-### チャレンジ 3: AWS S3連携
+**必要な依存関係**:
+```xml
+<dependency>
+    <groupId>org.imgscalr</groupId>
+    <artifactId>imgscalr-lib</artifactId>
+    <version>4.2</version>
+</dependency>
+```
 
-ローカルストレージの代わりにAWS S3を使ってください。
+### チャレンジ 2: ファイルタイプのバリデーション
 
----
+**目標**: 画像ファイル（JPG, PNG, GIF）のみアップロード可能にする
 
-## 📚 このステップで学んだこと
+**ヒント**:
+```java
+private static final List<String> ALLOWED_TYPES = 
+    Arrays.asList("image/jpeg", "image/png", "image/gif");
 
-- ✅ MultipartFileの処理
-- ✅ ファイルストレージの実装
-- ✅ ファイルアップロード/ダウンロードAPI
-- ✅ セキュリティ対策（拡張子チェック、パストラバーサル対策）
+if (!ALLOWED_TYPES.contains(file.getContentType())) {
+    throw new IllegalArgumentException("Only image files are allowed");
+}
+```
+
+### チャレンジ 3: S3へのアップロード（AWS）
+
+**目標**: ローカルファイルシステムではなくAmazon S3にファイルを保存
+
+**ヒント**:
+```java
+// AWS SDK for Java 2.x
+S3Client s3Client = S3Client.builder().build();
+
+PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+    .bucket("your-bucket-name")
+    .key(storedFilename)
+    .build();
+
+s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(
+    file.getInputStream(), file.getSize()));
+```
 
 ---
 
@@ -428,150 +751,174 @@ Thumbnailatorライブラリを使って画像をリサイズしてください�
 
 ### エラー: "Maximum upload size exceeded"
 
-**原因**: アップロードファイルサイズが制限を超えている
+**原因**: ファイルサイズが`max-file-size`を超えている
 
 **解決策**:
 ```yaml
-# application.yml
 spring:
   servlet:
     multipart:
-      max-file-size: 10MB  # 1ファイルの最大サイズ
-      max-request-size: 50MB  # リクエスト全体の最大サイズ
+      max-file-size: 50MB  # サイズを増やす
+      max-request-size: 50MB
 ```
 
-### エラー: "Required request part 'file' is not present"
+### エラー: "Could not create upload directory"
 
-**原因**: フォームのenctypeが間違っている、またはname属性が一致していない
+**原因**: ディレクトリ作成権限がない、またはパスが不正
 
 **解決策**:
-```html
-<!-- ❌ NG: enctypeがない -->
-<form action="/upload" method="post">
-    <input type="file" name="file">
-</form>
-
-<!-- ✅ OK: enctype指定 -->
-<form action="/upload" method="post" enctype="multipart/form-data">
-    <input type="file" name="file">
-</form>
+1. ディレクトリの権限を確認
+```bash
+ls -ld uploads/
+chmod 755 uploads/
 ```
 
-```java
-// name属性と@RequestParamの値を一致させる
-@PostMapping("/upload")
-public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file) {
-    // ...
-}
+2. 絶対パスを指定
+```yaml
+file:
+  upload-dir: /var/uploads  # 絶対パス
 ```
 
-### エラー: ファイルが保存されない
+### エラー: "The filename, directory name, or volume label syntax is incorrect"
 
-**原因**: 保存先ディレクトリが存在しない、または書き込み権限がない
+**原因**: Windowsで不正なパス文字が使われている
 
 **解決策**:
 ```java
-@PostConstruct
-public void init() {
-    try {
-        // アプリ起動時にディレクトリを作成
-        Files.createDirectories(Paths.get(uploadDir));
-    } catch (IOException e) {
-        throw new RuntimeException("Could not create upload directory", e);
-    }
-}
+// ファイル名から不正な文字を除去
+String sanitizedFilename = originalFilename.replaceAll("[^a-zA-Z0-9.-]", "_");
 ```
 
-### 問題: セキュリティ脆弱性（パストラバーサル攻撃）
+### ファイルが見つからない（404）
 
-**原因**: ファイル名を検証せずにそのまま使用
+**原因**: ファイルパスが間違っている、またはファイルが削除されている
 
-**解決策**:
+**デバッグ**:
 ```java
-// ❌ NG: 危険なコード
-String fileName = file.getOriginalFilename();
-Path filePath = Paths.get(uploadDir, fileName);  // ../../../etc/passwd のような攻撃が可能
-
-// ✅ OK: ファイル名をサニタイズ
-String fileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
-// UUIDで一意な名前に変換
-String safeFileName = UUID.randomUUID().toString() + "_" + fileName;
-Path filePath = uploadPath.resolve(safeFileName);
+log.info("Looking for file at: {}", filePath);
+log.info("File exists: {}", Files.exists(filePath));
 ```
 
-### 問題: 許可されていないファイルタイプがアップロードされる
+### メモリ不足エラー
 
-**原因**: ファイルタイプの検証がない
-
-**解決策**:
-```java
-private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "gif");
-private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList(
-    "image/jpeg", "image/png", "image/gif"
-);
-
-private void validateFile(MultipartFile file) {
-    // 拡張子チェック
-    String extension = getFileExtension(file.getOriginalFilename());
-    if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
-        throw new IllegalArgumentException("許可されていないファイル形式です");
-    }
-    
-    // Content-Typeチェック
-    if (!ALLOWED_CONTENT_TYPES.contains(file.getContentType())) {
-        throw new IllegalArgumentException("許可されていないファイルタイプです");
-    }
-    
-    // ファイルサイズチェック
-    if (file.getSize() > MAX_FILE_SIZE) {
-        throw new IllegalArgumentException("ファイルサイズが大きすぎます");
-    }
-}
-```
-
-### 問題: ダウンロード時にファイル名が文字化けする
-
-**原因**: ファイル名のエンコーディングが正しくない
+**原因**: 大きなファイルをメモリで処理している
 
 **解決策**:
-```java
-@GetMapping("/files/{fileId}")
-public ResponseEntity<Resource> download(@PathVariable String fileId) throws IOException {
-    // ファイル取得処理...
-    
-    // ✅ ファイル名をURLエンコード
-    String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8.toString())
-        .replaceAll("\\+", "%20");
-    
-    return ResponseEntity.ok()
-        .header(HttpHeaders.CONTENT_DISPOSITION, 
-            "attachment; filename=\"" + encodedFileName + "\"")
-        .body(resource);
-}
+```yaml
+spring:
+  servlet:
+    multipart:
+      file-size-threshold: 1MB  # 1MBを超えたらディスクに一時保存
 ```
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 📚 このステップで学んだこと
 
-```bash
-git add .
-git commit -m "Step 30: ファイルアップロード完了"
-git push origin main
+- ✅ `MultipartFile`を使ったファイルアップロードの基本
+- ✅ ファイルサイズとリクエストサイズの制限設定
+- ✅ UUIDを使ったユニークなファイル名生成
+- ✅ ファイルメタデータのデータベース管理
+- ✅ ファイルダウンロードAPIの実装
+- ✅ パストラバーサル攻撃の防止
+- ✅ `@PostConstruct`での初期化処理
+- ✅ `Resource`を使ったファイルレスポンス
+- ✅ 複数ファイルのバッチアップロード
+- ✅ セキュアなファイル管理（権限チェック）
+
+---
+
+## 💡 補足: ファイルアップロードのベストプラクティス
+
+### 1. ファイルサイズ制限
+
+**理由**: サーバーリソースの保護、DoS攻撃防止
+
+**推奨設定**:
+```yaml
+max-file-size: 10MB    # 一般的な用途
+max-file-size: 100MB   # 動画アップロード
+max-file-size: 1GB     # 大容量ファイル
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+### 2. ファイルタイプ検証
+
+**MIMEタイプだけでは不十分**:
+```java
+// ❌ 不十分（偽装可能）
+if (file.getContentType().equals("image/jpeg")) { }
+
+// ✅ 拡張子もチェック
+String extension = getFileExtension(file.getOriginalFilename());
+if (!extension.equals(".jpg") && !extension.equals(".jpeg")) {
+    throw new IllegalArgumentException("Invalid file type");
+}
+
+// ✅✅ ファイル内容を検証（最も安全）
+BufferedImage image = ImageIO.read(file.getInputStream());
+if (image == null) {
+    throw new IllegalArgumentException("Not a valid image file");
+}
+```
+
+### 3. ウイルススキャン
+
+本番環境では、アップロードされたファイルをウイルススキャンすることを推奨：
+
+```java
+// ClamAVなどのアンチウイルスライブラリを使用
+if (virusScanner.isInfected(file)) {
+    throw new SecurityException("File contains virus");
+}
+```
+
+### 4. ストレージの選択
+
+| ストレージ | メリット | デメリット | 使用例 |
+|---|---|---|---|
+| **ローカルファイルシステム** | シンプル、コスト0 | スケーラビリティ低、バックアップ必要 | 開発環境 |
+| **Amazon S3** | スケーラブル、CDN統合 | コストがかかる | 本番環境 |
+| **Azure Blob Storage** | Azureとの統合 | Azureベンダーロックイン | Azure環境 |
+| **Google Cloud Storage** | GCPとの統合 | GCPベンダーロックイン | GCP環境 |
+
+### 5. ファイル名の処理
+
+**セキュリティ上の注意点**:
+```java
+// ❌ 危険（パストラバーサル攻撃）
+String filename = file.getOriginalFilename();
+Path targetPath = Paths.get(uploadDir, filename);  // ../../../etc/passwdが可能
+
+// ✅ 安全（ファイル名を正規化）
+String sanitizedFilename = StringUtils.cleanPath(file.getOriginalFilename());
+if (sanitizedFilename.contains("..")) {
+    throw new IllegalArgumentException("Invalid filename");
+}
+
+// ✅✅ 最も安全（元のファイル名を使わない）
+String storedFilename = UUID.randomUUID().toString() + getFileExtension(filename);
+```
+
+### 6. ファイルの有効期限
+
+**一時ファイルは定期的に削除**:
+```java
+@Scheduled(cron = "0 0 2 * * *")  // 毎日午前2時
+public void cleanupExpiredFiles() {
+    LocalDateTime expirationDate = LocalDateTime.now().minusDays(30);
+    List<FileMetadata> expiredFiles = fileMetadataRepository
+        .findByUploadedAtBefore(expirationDate);
+    
+    expiredFiles.forEach(file -> {
+        deleteFile(file.getId(), file.getUploadedBy());
+    });
+}
+```
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 31: ページネーション](STEP_31.md)へ進みましょう！
+[Step 31: ページネーション](STEP_31.md)へ進みましょう！
 
-大量データの効率的な取得方法を学びます。
-
----
-
-お疲れさまでした！ 🎉
-
-ファイルアップロード機能を習得しました！
+次のステップでは、大量データを効率的に取得するためのページネーション機能を実装します。`Pageable`と`Page<T>`を使って、パフォーマンスの良いリストAPIを作成しましょう。

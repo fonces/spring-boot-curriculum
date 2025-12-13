@@ -2,118 +2,329 @@
 
 ## 🎯 このステップの目標
 
-- Bean Validation（Jakarta Bean Validation）の基本を理解する
-- `@Valid`と`@Validated`を使い分けられる
-- 標準バリデーションアノテーションを活用できる
-- カスタムバリデーションを作成できる
-- グループバリデーションを実装できる
+- リクエストデータのバリデーションの重要性を理解できる
+- Jakarta Bean Validation（旧Java Bean Validation）の基本アノテーションを使いこなせる
+- `@Valid`と`@Validated`を使ったリクエスト検証を実装できる
+- カスタムバリデーターを作成し、独自のビジネスルールを検証できる
+- バリデーションエラーを適切にハンドリングし、わかりやすいエラーメッセージを返せる
 
-**所要時間**: 約1時間
+**所要時間**: 約55分
 
 ---
 
 ## 📋 事前準備
 
-このステップを始める前に、以下を確認してください：
-
-- Step 17（例外ハンドリング）が完了していること
-- DTOクラスを作成した経験があること
-- `@RestControllerAdvice`でバリデーションエラーをハンドリングできること
+- [Step 17: 例外ハンドリング](STEP_17.md)が完了していること
+- `GlobalExceptionHandler`でエラーハンドリングを実装していること
+- DTOパターンの基本を理解していること（詳細はStep 19で学習）
+- 正規表現の基本知識があると望ましい
 
 ---
 
-## 📝 概要
-Webアプリケーションでは、ユーザーからの入力値を検証することが重要です。Spring Bootでは、Bean Validation（Jakarta Bean Validation）を使って宣言的にバリデーションを実装できます。
+## 🔍 なぜバリデーションが必要なのか
 
-## 📦 依存関係の追加
+### Before（バリデーションなし）
 
-Spring Boot 2.3以降では、`spring-boot-starter-validation`を明示的に追加する必要があります。
+現在の実装では、以下のような問題があります：
 
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-validation</artifactId>
-</dependency>
-```
-
-## 🔍 基本的なバリデーション
-
-### 1. DTOクラスにバリデーションアノテーション
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`
-
+**UserController.java**:
 ```java
-package com.example.hellospringboot.entity;
-
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
-import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @NotBlank(message = "名前は必須です")
-    @Size(min = 2, max = 50, message = "名前は2文字以上50文字以下で入力してください")
-    @Column(nullable = false, length = 50)
-    private String name;
-    
-    @NotBlank(message = "メールアドレスは必須です")
-    @Email(message = "有効なメールアドレスを入力してください")
-    @Column(nullable = false, unique = true)
-    private String email;
-    
-    @NotNull(message = "年齢は必須です")
-    @Min(value = 18, message = "18歳以上である必要があります")
-    @Max(value = 120, message = "年齢は120歳以下で入力してください")
-    private Integer age;
-    
-    @Pattern(regexp = "^\\d{3}-\\d{4}-\\d{4}$", message = "電話番号は xxx-xxxx-xxxx の形式で入力してください")
-    private String phoneNumber;
-    
-    @CreationTimestamp
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
-    
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
+@PostMapping
+public ResponseEntity<User> createUser(@RequestBody User user) {
+    User createdUser = userService.createUser(user);
+    return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
 }
 ```
 
-### 2. 主要なバリデーションアノテーション
+**問題のあるリクエスト例**:
 
-| アノテーション | 説明 | 例 |
-|---|---|---|
-| `@NotNull` | nullでないこと | `@NotNull private Integer age;` |
-| `@NotEmpty` | nullでなく、空でないこと（文字列、コレクション） | `@NotEmpty private String name;` |
-| `@NotBlank` | nullでなく、空白でないこと（文字列のみ） | `@NotBlank private String email;` |
-| `@Size` | サイズ制限 | `@Size(min=2, max=50)` |
-| `@Min` / `@Max` | 最小値 / 最大値 | `@Min(18) private Integer age;` |
-| `@Email` | メールアドレス形式 | `@Email private String email;` |
-| `@Pattern` | 正規表現パターン | `@Pattern(regexp="^\\d{3}-\\d{4}$")` |
-| `@Positive` | 正の数 | `@Positive private Integer price;` |
-| `@PositiveOrZero` | 0または正の数 | `@PositiveOrZero private Integer stock;` |
-| `@Past` | 過去の日付 | `@Past private LocalDate birthDate;` |
-| `@Future` | 未来の日付 | `@Future private LocalDate eventDate;` |
+```bash
+# 名前が空
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"","email":"test@example.com","age":25}'
 
-### 3. Controllerで`@Valid`を使う
+# メールアドレスの形式が不正
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alice","email":"invalid-email","age":25}'
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
+# 年齢が異常値
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Bob","email":"bob@example.com","age":999}'
+```
+
+**問題点**:
+- ❌ 空の名前やメールアドレスがデータベースに保存される
+- ❌ 不正なメール形式が通ってしまう
+- ❌ 異常な年齢値（999歳）が許容される
+- ❌ バリデーションロジックがServiceやControllerに散在
+- ❌ エラーメッセージが統一されていない
+
+---
+
+### After（バリデーションあり）
+
+理想的な実装：
 
 ```java
-package com.example.hellospringboot.controller;
+@PostMapping
+public ResponseEntity<User> createUser(@Valid @RequestBody UserCreateRequest request) {
+    User createdUser = userService.createUser(request);
+    return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+}
+```
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.service.UserService;
+**バリデーションエラーのレスポンス**:
+
+```json
+{
+  "timestamp": "2025-01-15 13:00:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users",
+  "errors": [
+    {
+      "field": "name",
+      "rejectedValue": "",
+      "message": "Name is required"
+    },
+    {
+      "field": "email",
+      "rejectedValue": "invalid-email",
+      "message": "Email format is invalid"
+    },
+    {
+      "field": "age",
+      "rejectedValue": 999,
+      "message": "Age must be between 0 and 150"
+    }
+  ]
+}
+```
+
+**改善点**:
+- ✅ 不正なデータを**Controller層でブロック**
+- ✅ **宣言的なバリデーション**（アノテーションだけで完結）
+- ✅ エラーメッセージが**わかりやすく統一**
+- ✅ 複数のバリデーションエラーを**一度に返却**
+- ✅ フィールドごとのエラー詳細を提供
+
+---
+
+## 🚀 ステップ1: 依存関係の確認
+
+### 1-1. pom.xmlの確認
+
+Spring Bootには`spring-boot-starter-web`に`jakarta.validation`が含まれているため、追加の依存関係は不要です。
+
+`pom.xml`を確認します：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+        <!-- この中にjakarta.validation-apiが含まれている -->
+    </dependency>
+    
+    <!-- その他の依存関係 -->
+</dependencies>
+```
+
+**確認方法**:
+
+```bash
+cd workspace/hello-spring-boot
+./mvnw dependency:tree | grep validation
+```
+
+**期待される出力**:
+```
+[INFO] |  +- org.hibernate.validator:hibernate-validator:jar:8.0.1.Final:compile
+[INFO] |  |  +- jakarta.validation:jakarta.validation-api:jar:3.0.2:compile
+```
+
+---
+
+## 🚀 ステップ2: DTOクラスの作成
+
+### 2-1. dtoパッケージの作成
+
+`src/main/java/com/example/hellospringboot/dto/`ディレクトリを作成します。
+
+---
+
+### 2-2. UserCreateRequestの作成
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/UserCreateRequest.java`に作成します：
+
+```java
+package com.example.hellospringboot.dto;
+
+import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * ユーザー作成リクエストDTO
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserCreateRequest {
+    
+    @NotBlank(message = "Name is required")
+    @Size(min = 2, max = 50, message = "Name must be between 2 and 50 characters")
+    private String name;
+    
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email format is invalid")
+    private String email;
+    
+    @NotNull(message = "Age is required")
+    @Min(value = 0, message = "Age must be at least 0")
+    @Max(value = 150, message = "Age must be at most 150")
+    private Integer age;
+}
+```
+
+---
+
+### 2-3. バリデーションアノテーションの解説
+
+#### `@NotNull`
+- **用途**: nullでないことを検証
+- **対象**: すべての型
+- **例**: `@NotNull private Integer age;`
+
+#### `@NotEmpty`
+- **用途**: nullでなく、空でないことを検証
+- **対象**: 文字列、コレクション、配列、Map
+- **例**: `@NotEmpty private String name;`
+- **注意**: 空白文字のみの文字列（" "）は通ってしまう
+
+#### `@NotBlank`
+- **用途**: nullでなく、空でなく、空白のみでもないことを検証
+- **対象**: 文字列のみ
+- **例**: `@NotBlank private String name;`
+- **推奨**: 文字列には`@NotEmpty`より`@NotBlank`を使う
+
+#### `@Size`
+- **用途**: 文字列の長さやコレクションのサイズを検証
+- **パラメータ**: `min`, `max`
+- **例**: `@Size(min = 2, max = 50) private String name;`
+
+#### `@Min` / `@Max`
+- **用途**: 数値の最小値/最大値を検証
+- **対象**: 数値型（Integer, Long, Double など）
+- **例**: `@Min(0) @Max(150) private Integer age;`
+
+#### `@Email`
+- **用途**: メールアドレス形式を検証
+- **正規表現**: RFC 5322に準拠
+- **例**: `@Email private String email;`
+
+#### `@Pattern`
+- **用途**: 正規表現パターンに一致することを検証
+- **例**: `@Pattern(regexp = "^[0-9]{3}-[0-9]{4}-[0-9]{4}$") private String phoneNumber;`
+
+---
+
+### 2-4. UserUpdateRequestの作成
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/UserUpdateRequest.java`に作成します：
+
+```java
+package com.example.hellospringboot.dto;
+
+import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * ユーザー更新リクエストDTO
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserUpdateRequest {
+    
+    @NotBlank(message = "Name is required")
+    @Size(min = 2, max = 50, message = "Name must be between 2 and 50 characters")
+    private String name;
+    
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email format is invalid")
+    private String email;
+    
+    @NotNull(message = "Age is required")
+    @Min(value = 0, message = "Age must be at least 0")
+    @Max(value = 150, message = "Age must be at most 150")
+    private Integer age;
+}
+```
+
+---
+
+### 2-5. UserResponseの作成
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/UserResponse.java`に作成します：
+
+```java
+package com.example.hellospringboot.dto;
+
+import com.example.hellospringboot.entities.User;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * ユーザーレスポンスDTO
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserResponse {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+    
+    /**
+     * EntityからDTOに変換するファクトリメソッド
+     */
+    public static UserResponse from(User user) {
+        return new UserResponse(
+            user.getId(),
+            user.getName(),
+            user.getEmail(),
+            user.getAge()
+        );
+    }
+}
+```
+
+---
+
+## 🚀 ステップ3: Controllerでバリデーションを有効化
+
+### 3-1. UserControllerの修正
+
+既存の`src/main/java/com/example/hellospringboot/controllers/UserController.java`を修正します：
+
+```java
+package com.example.hellospringboot.controllers;
+
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.dto.UserResponse;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.services.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -121,148 +332,628 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
-    
     private final UserService userService;
     
+    /**
+     * 全ユーザー取得
+     * GET /api/users
+     */
     @GetMapping
-    public List<User> getAll() {
-        return userService.findAll();
-    }
-    
-    @GetMapping("/{id}")
-    public User getById(@PathVariable Long id) {
-        return userService.findById(id);
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        List<User> users = userService.getAllUsers();
+        List<UserResponse> responses = users.stream()
+            .map(UserResponse::from)
+            .collect(Collectors.toList());
+        return ResponseEntity.ok(responses);
     }
     
     /**
-     * @Valid によりバリデーション実行
-     * バリデーションエラーがあれば MethodArgumentNotValidException がスローされる
+     * ユーザー詳細取得
+     * GET /api/users/{id}
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
+        User user = userService.getUserById(id);
+        return ResponseEntity.ok(UserResponse.from(user));
+    }
+    
+    /**
+     * ユーザー作成
+     * POST /api/users
      */
     @PostMapping
-    public ResponseEntity<User> create(@Valid @RequestBody User user) {
-        User created = userService.create(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserCreateRequest request) {
+        User user = userService.createUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(user));
     }
     
+    /**
+     * ユーザー更新
+     * PUT /api/users/{id}
+     */
     @PutMapping("/{id}")
-    public User update(
-            @PathVariable Long id,
-            @Valid @RequestBody User user) {
-        return userService.update(id, user);
+    public ResponseEntity<UserResponse> updateUser(
+        @PathVariable Long id,
+        @Valid @RequestBody UserUpdateRequest request
+    ) {
+        User user = userService.updateUser(id, request);
+        return ResponseEntity.ok(UserResponse.from(user));
     }
     
+    /**
+     * ユーザー削除
+     * DELETE /api/users/{id}
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        userService.delete(id);
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }
 }
 ```
 
-### 4. UserServiceの実装
+---
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+### 3-2. コードの解説
+
+#### `@Valid`
+- リクエストボディのバリデーションを有効化
+- `@RequestBody`、`@ModelAttribute`、`@PathVariable`などに付与
+- バリデーションエラーが発生すると`MethodArgumentNotValidException`がスロー
+
+#### `@Validated`
+- Spring独自のアノテーション
+- グループバリデーション（後述）で使用
+- クラスレベルでも使用可能
+
+**使い分け**:
+- 基本的には`@Valid`を使用
+- グループバリデーションが必要な場合のみ`@Validated`
+
+---
+
+## 🚀 ステップ4: Serviceの修正
+
+### 4-1. UserServiceの修正
+
+既存の`src/main/java/com/example/hellospringboot/services/UserService.java`を修正します：
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot.services;
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.exception.ResourceNotFoundException;
-import com.example.hellospringboot.repository.UserRepository;
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
+import com.example.hellospringboot.exceptions.ConflictException;
+import com.example.hellospringboot.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class UserService {
-    
     private final UserRepository userRepository;
     
-    public List<User> findAll() {
+    public List<User> getAllUsers() {
         return userRepository.findAll();
     }
     
-    public User findById(Long id) {
+    public User getUserById(Long id) {
         return userRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
     }
     
-    @Transactional
-    public User create(User user) {
-        return userRepository.save(user);
+    public User createUser(UserCreateRequest request) {
+        // メールアドレスの重複チェック
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new ConflictException("Email already exists: " + request.getEmail());
+        }
+        
+        // DTOからEntityに変換
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setAge(request.getAge());
+        
+        userRepository.save(user);
+        return user;
     }
     
-    @Transactional
-    public User update(Long id, User user) {
-        User existingUser = findById(id);
-        existingUser.setName(user.getName());
-        existingUser.setEmail(user.getEmail());
-        existingUser.setAge(user.getAge());
-        existingUser.setPhoneNumber(user.getPhoneNumber());
-        return userRepository.save(existingUser);
+    public User updateUser(Long id, UserUpdateRequest request) {
+        User existingUser = userRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        
+        // 既存ユーザーの情報を更新
+        existingUser.setName(request.getName());
+        existingUser.setEmail(request.getEmail());
+        existingUser.setAge(request.getAge());
+        
+        userRepository.save(existingUser);
+        return existingUser;
     }
     
-    @Transactional
-    public void delete(Long id) {
-        User user = findById(id);
-        userRepository.delete(user);
+    public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new ResourceNotFoundException("User", "id", id));
+        }
+        
+        userRepository.deleteById(id);
     }
 }
 ```
 
-### 5. パスパラメータとクエリパラメータのバリデーション
+**ポイント**:
+- バリデーションはControllerで行われるため、Serviceでの年齢チェックは不要
+- DTOからEntityへの変換をServiceで実施
+
+---
+
+## 🚀 ステップ5: バリデーションエラーのハンドリング
+
+### 5-1. ValidationErrorResponseの作成
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/ValidationErrorResponse.java`に作成します：
 
 ```java
-@RestController
-@RequestMapping("/api/users")
-@Validated  // ⭐ クラスレベルに @Validated が必要
-@RequiredArgsConstructor
-public class UserController {
+package com.example.hellospringboot.dto;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * バリデーションエラーレスポンス
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ValidationErrorResponse {
     
-    private final UserService userService;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime timestamp;
+    
+    private int status;
+    
+    private String error;
+    
+    private String message;
+    
+    private String path;
+    
+    private List<FieldError> errors = new ArrayList<>();
     
     /**
-     * パスパラメータのバリデーション
+     * フィールドエラーの詳細
      */
-    @GetMapping("/{id}")
-    public User getById(@PathVariable @Positive Long id) {
-        return userService.findById(id);
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class FieldError {
+        private String field;
+        private Object rejectedValue;
+        private String message;
+    }
+    
+    /**
+     * バリデーションエラーレスポンスを生成するファクトリメソッド
+     */
+    public static ValidationErrorResponse of(int status, String error, String message, String path) {
+        ValidationErrorResponse response = new ValidationErrorResponse();
+        response.setTimestamp(LocalDateTime.now());
+        response.setStatus(status);
+        response.setError(error);
+        response.setMessage(message);
+        response.setPath(path);
+        response.setErrors(new ArrayList<>());
+        return response;
+    }
+    
+    /**
+     * フィールドエラーを追加
+     */
+    public void addFieldError(String field, Object rejectedValue, String message) {
+        errors.add(new FieldError(field, rejectedValue, message));
     }
 }
 ```
 
-## 🎨 カスタムバリデーション
+---
 
-### 1. カスタムアノテーションの作成
+### 5-2. GlobalExceptionHandlerに追加
+
+既存の`src/main/java/com/example/hellospringboot/exceptions/GlobalExceptionHandler.java`に以下を追加します：
+
+```java
+package com.example.hellospringboot.exceptions;
+
+import com.example.hellospringboot.dto.ErrorResponse;
+import com.example.hellospringboot.dto.ValidationErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
+/**
+ * アプリケーション全体の例外をハンドリングするグローバルハンドラー
+ */
+@ControllerAdvice
+public class GlobalExceptionHandler {
+    
+    /**
+     * バリデーションエラーをハンドリング
+     * HTTPステータス: 400 Bad Request
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ValidationErrorResponse> handleValidationException(
+        MethodArgumentNotValidException ex,
+        HttpServletRequest request
+    ) {
+        ValidationErrorResponse errorResponse = ValidationErrorResponse.of(
+            HttpStatus.BAD_REQUEST.value(),
+            "Validation Failed",
+            "Input validation failed",
+            request.getRequestURI()
+        );
+        
+        // すべてのフィールドエラーを追加
+        ex.getBindingResult().getAllErrors().forEach(error -> {
+            String fieldName = ((FieldError) error).getField();
+            Object rejectedValue = ((FieldError) error).getRejectedValue();
+            String errorMessage = error.getDefaultMessage();
+            errorResponse.addFieldError(fieldName, rejectedValue, errorMessage);
+        });
+        
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(errorResponse);
+    }
+    
+    /**
+     * ResourceNotFoundException をハンドリング
+     * HTTPステータス: 404 Not Found
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+        ResourceNotFoundException ex,
+        HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.NOT_FOUND.value(),
+            HttpStatus.NOT_FOUND.getReasonPhrase(),
+            ex.getMessage(),
+            request.getRequestURI()
+        );
+        
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(errorResponse);
+    }
+    
+    /**
+     * BadRequestException をハンドリング
+     * HTTPステータス: 400 Bad Request
+     */
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequestException(
+        BadRequestException ex,
+        HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.BAD_REQUEST.value(),
+            HttpStatus.BAD_REQUEST.getReasonPhrase(),
+            ex.getMessage(),
+            request.getRequestURI()
+        );
+        
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(errorResponse);
+    }
+    
+    /**
+     * ConflictException をハンドリング
+     * HTTPステータス: 409 Conflict
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflictException(
+        ConflictException ex,
+        HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.CONFLICT.value(),
+            HttpStatus.CONFLICT.getReasonPhrase(),
+            ex.getMessage(),
+            request.getRequestURI()
+        );
+        
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(errorResponse);
+    }
+    
+    /**
+     * その他すべての例外をハンドリング
+     * HTTPステータス: 500 Internal Server Error
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGlobalException(
+        Exception ex,
+        HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
+            "An unexpected error occurred",
+            request.getRequestURI()
+        );
+        
+        ex.printStackTrace();
+        
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(errorResponse);
+    }
+}
+```
+
+---
+
+### 5-3. コードの解説
+
+#### `MethodArgumentNotValidException`
+- `@Valid`でバリデーションエラーが発生した際にスローされる例外
+- `BindingResult`オブジェクトにすべてのエラー情報が含まれる
+
+#### `ex.getBindingResult().getAllErrors()`
+- すべてのバリデーションエラーを取得
+- 各エラーは`FieldError`型
+
+#### `FieldError`
+- フィールド名（`getField()`）
+- 拒否された値（`getRejectedValue()`）
+- エラーメッセージ（`getDefaultMessage()`）
+
+---
+
+## ✅ ステップ6: 動作確認
+
+### 6-1. アプリケーション起動
+
+```bash
+cd workspace/hello-spring-boot
+./mvnw spring-boot:run
+```
+
+---
+
+### 6-2. 正常系のテスト
+
+**正常なユーザー作成（201 Created）**:
+
+```bash
+curl -i -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice",
+    "email": "alice@example.com",
+    "age": 25
+  }'
+```
+
+**期待される結果**:
+```
+HTTP/1.1 201 
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com",
+  "age": 25
+}
+```
+
+---
+
+### 6-3. バリデーションエラーのテスト
+
+**名前が空（400 Bad Request）**:
+
+```bash
+curl -i -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "",
+    "email": "test@example.com",
+    "age": 25
+  }'
+```
+
+**期待される結果**:
+```
+HTTP/1.1 400 
+Content-Type: application/json
+
+{
+  "timestamp": "2025-01-15 13:10:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users",
+  "errors": [
+    {
+      "field": "name",
+      "rejectedValue": "",
+      "message": "Name is required"
+    }
+  ]
+}
+```
+
+---
+
+**メールアドレス形式が不正（400 Bad Request）**:
+
+```bash
+curl -i -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Bob",
+    "email": "invalid-email",
+    "age": 30
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "timestamp": "2025-01-15 13:12:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users",
+  "errors": [
+    {
+      "field": "email",
+      "rejectedValue": "invalid-email",
+      "message": "Email format is invalid"
+    }
+  ]
+}
+```
+
+---
+
+**年齢が範囲外（400 Bad Request）**:
+
+```bash
+curl -i -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Charlie",
+    "email": "charlie@example.com",
+    "age": 999
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "timestamp": "2025-01-15 13:15:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users",
+  "errors": [
+    {
+      "field": "age",
+      "rejectedValue": 999,
+      "message": "Age must be at most 150"
+    }
+  ]
+}
+```
+
+---
+
+**複数のバリデーションエラー（400 Bad Request）**:
+
+```bash
+curl -i -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "",
+    "email": "invalid",
+    "age": -10
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "timestamp": "2025-01-15 13:20:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users",
+  "errors": [
+    {
+      "field": "name",
+      "rejectedValue": "",
+      "message": "Name is required"
+    },
+    {
+      "field": "email",
+      "rejectedValue": "invalid",
+      "message": "Email format is invalid"
+    },
+    {
+      "field": "age",
+      "rejectedValue": -10,
+      "message": "Age must be at least 0"
+    }
+  ]
+}
+```
+
+---
+
+## 🚀 ステップ7: カスタムバリデーターの作成
+
+### 7-1. カスタムアノテーションの作成
+
+電話番号のフォーマット検証を例に、カスタムバリデーターを作成します。
+
+以下のファイルを`src/main/java/com/example/hellospringboot/validation/PhoneNumber.java`に作成します：
 
 ```java
 package com.example.hellospringboot.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
+
 import java.lang.annotation.*;
 
+/**
+ * 電話番号フォーマットを検証するカスタムアノテーション
+ * 形式: XXX-XXXX-XXXX
+ */
 @Documented
-@Constraint(validatedBy = AdultValidator.class)
+@Constraint(validatedBy = PhoneNumberValidator.class)
 @Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Adult {
-    String message() default "18歳以上である必要があります";
+public @interface PhoneNumber {
+    
+    String message() default "Phone number format is invalid (expected: XXX-XXXX-XXXX)";
+    
     Class<?>[] groups() default {};
+    
     Class<? extends Payload>[] payload() default {};
 }
 ```
 
-### 2. バリデータの実装
+---
+
+### 7-2. Validatorクラスの作成
+
+以下のファイルを`src/main/java/com/example/hellospringboot/validation/PhoneNumberValidator.java`に作成します：
 
 ```java
 package com.example.hellospringboot.validation;
@@ -270,282 +961,311 @@ package com.example.hellospringboot.validation;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-public class AdultValidator implements ConstraintValidator<Adult, Integer> {
+import java.util.regex.Pattern;
+
+/**
+ * PhoneNumberアノテーションのValidator実装
+ */
+public class PhoneNumberValidator implements ConstraintValidator<PhoneNumber, String> {
+    
+    // 電話番号の正規表現パターン（XXX-XXXX-XXXX）
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\d{3}-\\d{4}-\\d{4}$");
     
     @Override
-    public boolean isValid(Integer age, ConstraintValidatorContext context) {
-        if (age == null) {
-            return true;  // @NotNull と組み合わせて使う
+    public void initialize(PhoneNumber constraintAnnotation) {
+        // 初期化処理（必要に応じて）
+    }
+    
+    @Override
+    public boolean isValid(String value, ConstraintValidatorContext context) {
+        // nullは@NotNullで検証するため、ここではtrueを返す
+        if (value == null) {
+            return true;
         }
-        return age >= 18;
+        
+        // 正規表現パターンに一致するか検証
+        return PHONE_PATTERN.matcher(value).matches();
     }
 }
 ```
 
-### 3. カスタムアノテーションの使用
+---
+
+### 7-3. DTOで使用
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/UserProfileUpdateRequest.java`に作成します：
 
 ```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @NotBlank
-    private String name;
-    
-    @Email
-    private String email;
-    
-    @NotNull
-    @Adult  // カスタムバリデーション
-    private Integer age;
-    
-    // その他のフィールド...
-}
-```
+package com.example.hellospringboot.dto;
 
-## 🔧 グループバリデーション
-
-### 1. バリデーショングループの定義
-
-```java
-package com.example.hellospringboot.validation;
-
-public interface ValidationGroups {
-    interface Create {}
-    interface Update {}
-}
-```
-
-### 2. グループごとのバリデーション
-
-```java
-import com.example.hellospringboot.validation.ValidationGroups.Create;
-import com.example.hellospringboot.validation.ValidationGroups.Update;
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
+import com.example.hellospringboot.validation.PhoneNumber;
+import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Entity
-@Table(name = "users")
+/**
+ * ユーザープロフィール更新リクエストDTO
+ */
 @Data
-public class User {
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserProfileUpdateRequest {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Null(groups = Create.class, message = "作成時はIDを指定できません")
-    @NotNull(groups = Update.class, message = "更新時はIDが必須です")
-    private Long id;
-    
-    @NotBlank(groups = {Create.class, Update.class}, message = "名前は必須です")
-    @Size(min = 2, max = 50, groups = {Create.class, Update.class})
+    @NotBlank(message = "Name is required")
     private String name;
     
-    @Email(groups = {Create.class, Update.class}, message = "有効なメールアドレスを入力してください")
-    private String email;
-    
-    @NotNull(groups = Create.class, message = "年齢は必須です")
-    @Min(value = 18, groups = {Create.class, Update.class})
-    @Adult(groups = {Create.class, Update.class})
-    private Integer age;
-    
-    // その他のフィールド...
+    @PhoneNumber  // カスタムバリデーション
+    private String phoneNumber;
 }
 ```
 
-### 3. Controllerでの使用
+---
 
-```java
-@RestController
-@RequestMapping("/api/users")
-@RequiredArgsConstructor
-public class UserController {
-    
-    private final UserService userService;
-    
-    @PostMapping
-    public ResponseEntity<User> create(
-            @Validated(ValidationGroups.Create.class) @RequestBody User user) {
-        User created = userService.create(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
-    }
-    
-    @PutMapping("/{id}")
-    public User update(
-            @PathVariable Long id,
-            @Validated(ValidationGroups.Update.class) @RequestBody User user) {
-        return userService.update(id, user);
-    }
-}
-```
+### 7-4. 動作確認
 
-## 📊 バリデーションエラーのレスポンス
-
-Step 17で作成したGlobalExceptionHandlerが以下のように処理します：
-
-```java
-/**
- * バリデーションエラー（@Validアノテーション）
- */
-@ExceptionHandler(MethodArgumentNotValidException.class)
-public ResponseEntity<ErrorResponse> handleValidationException(
-        MethodArgumentNotValidException ex,
-        WebRequest request) {
-    
-    ErrorResponse errorResponse = new ErrorResponse(
-        HttpStatus.BAD_REQUEST.value(),
-        "Validation Failed",
-        "入力値が不正です",
-        request.getDescription(false).replace("uri=", "")
-    );
-
-        // フィールドエラーをMapに変換（シンプルな形式）
-    Map<String, String> errors = new HashMap<>();
-    ex.getBindingResult().getFieldErrors().forEach(error -> {
-        String fieldName = error.getField();
-        String errorMessage = error.getDefaultMessage();
-        errors.put(fieldName, errorMessage);
-    });
-    errorResponse.setErrors(errors);
-    
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-}
-```
-
-## ✅ 動作確認
-
-### 1. バリデーションエラー（複数項目）
+**正常な電話番号**:
 
 ```bash
-curl -X POST http://localhost:8080/api/users \
+curl -i -X PUT http://localhost:8080/api/users/1/profile \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "A",
-    "email": "invalid-email",
-    "age": 15
-  }'
-```
-
-**レスポンス**:
-```json
-{
-  "timestamp": "2024-01-15T11:00:00",
-  "status": 400,
-  "error": "Validation Failed",
-  "message": "入力値が不正です",
-  "path": "/api/users",
-  "errors": {
-    "name": "名前は2文字以上50文字以下で入力してください",
-    "email": "有効なメールアドレスを入力してください",
-    "age": "18歳以上である必要があります"
-  }
-}
-```
-
-### 2. 正常なリクエスト
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "山田太郎",
-    "email": "yamada@example.com",
-    "age": 25,
+    "name": "Alice",
     "phoneNumber": "090-1234-5678"
   }'
 ```
 
-### 3. パスパラメータのバリデーションエラー
+**不正な電話番号**:
 
 ```bash
-curl -X GET http://localhost:8080/api/users/-1
+curl -i -X PUT http://localhost:8080/api/users/1/profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice",
+    "phoneNumber": "090-12345678"
+  }'
 ```
 
-**レスポンス**:
+**期待される結果**:
 ```json
 {
-  "timestamp": "2024-01-15T11:05:00",
+  "timestamp": "2025-01-15 13:30:00",
   "status": 400,
-  "error": "Constraint Violation",
-  "message": "パラメータが不正です",
-  "errors": {
-    "getById.id": "0 より大きな値にしてください"
-  }
+  "error": "Validation Failed",
+  "message": "Input validation failed",
+  "path": "/api/users/1/profile",
+  "errors": [
+    {
+      "field": "phoneNumber",
+      "rejectedValue": "090-12345678",
+      "message": "Phone number format is invalid (expected: XXX-XXXX-XXXX)"
+    }
+  ]
 }
 ```
 
-このエラーには別途ハンドラが必要です：
-
-```java
-@ExceptionHandler(ConstraintViolationException.class)
-public ResponseEntity<ErrorResponse> handleConstraintViolation(
-        ConstraintViolationException ex,
-        WebRequest request) {
-    
-    Map<String, String> errors = new HashMap<>();
-    ex.getConstraintViolations().forEach(violation -> {
-        String propertyPath = violation.getPropertyPath().toString();
-        String message = violation.getMessage();
-        errors.put(propertyPath, message);
-    });
-    
-    ErrorResponse error = new ErrorResponse(
-        HttpStatus.BAD_REQUEST.value(),
-        "Constraint Violation",
-        "パラメータが不正です",
-        request.getDescription(false).replace("uri=", "")
-    );
-    error.setErrors(errors);
-    
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-}
-```
+---
 
 ## 🎨 チャレンジ課題
 
-### 課題1: 日付バリデーション
+### チャレンジ 1: パスワード強度の検証
 
-`User`エンティティに誕生日フィールドを追加し、過去の日付であることを検証してください。
+以下の要件を満たすパスワードバリデーターを作成してください：
+
+**要件**:
+- 最低8文字以上
+- 英大文字、英小文字、数字、記号をそれぞれ1文字以上含む
+
+**ヒント**:
 
 ```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-    // 既存のフィールド...
-    
-    @Past(message = "誕生日は過去の日付である必要があります")
-    private LocalDate birthDate;
+@Target({ElementType.FIELD})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = StrongPasswordValidator.class)
+public @interface StrongPassword {
+    String message() default "Password must contain at least 8 characters, including uppercase, lowercase, number, and special character";
+    Class<?>[] groups() default {};
+    Class<? extends Payload>[] payload() default {};
 }
 ```
 
-### 課題2: 条件付きバリデーション
-
-年齢が18歳未満の場合は保護者の同意が必要、といった条件付きバリデーション。
-
 ```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-    // 既存のフィールド...
-    
-    @NotNull
-    @Min(0)
-    private Integer age;
-    
-    private Boolean parentalConsent;
-    
-    @AssertTrue(message = "18歳未満の場合は保護者の同意が必要です")
-    public boolean isParentalConsentValid() {
-        if (age == null || age >= 18) {
+public class StrongPasswordValidator implements ConstraintValidator<StrongPassword, String> {
+    @Override
+    public boolean isValid(String password, ConstraintValidatorContext context) {
+        if (password == null) {
             return true;
         }
-        return Boolean.TRUE.equals(parentalConsent);
+        
+        return password.length() >= 8
+            && password.matches(".*[A-Z].*")  // 英大文字
+            && password.matches(".*[a-z].*")  // 英小文字
+            && password.matches(".*\\d.*")    // 数字
+            && password.matches(".*[!@#$%^&*].*");  // 記号
     }
+}
+```
+
+---
+
+### チャレンジ 2: グループバリデーション
+
+作成時と更新時で異なるバリデーションルールを適用してください。
+
+**要件**:
+- 作成時: パスワード必須
+- 更新時: パスワード任意
+
+**ヒント**:
+
+```java
+public interface CreateGroup {}
+public interface UpdateGroup {}
+
+@Data
+public class UserRequest {
+    @NotBlank(message = "Name is required")
+    private String name;
+    
+    @NotBlank(message = "Password is required", groups = CreateGroup.class)
+    @StrongPassword(groups = {CreateGroup.class, UpdateGroup.class})
+    private String password;
+}
+
+// Controller
+@PostMapping
+public ResponseEntity<UserResponse> createUser(
+    @Validated(CreateGroup.class) @RequestBody UserRequest request
+) {
+    // ...
+}
+
+@PutMapping("/{id}")
+public ResponseEntity<UserResponse> updateUser(
+    @PathVariable Long id,
+    @Validated(UpdateGroup.class) @RequestBody UserRequest request
+) {
+    // ...
+}
+```
+
+---
+
+### チャレンジ 3: 条件付きバリデーション
+
+特定の条件下でのみバリデーションを実行する実装をしてください。
+
+**要件**:
+- `paymentMethod`が"credit"の場合のみ`creditCardNumber`を必須にする
+
+**ヒント**:
+
+```java
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = ConditionalValidator.class)
+public @interface ConditionalValidation {
+    String message() default "Validation failed";
+    Class<?>[] groups() default {};
+    Class<? extends Payload>[] payload() default {};
+}
+
+@ConditionalValidation
+@Data
+public class PaymentRequest {
+    private String paymentMethod;
+    private String creditCardNumber;
+}
+
+public class ConditionalValidator implements ConstraintValidator<ConditionalValidation, PaymentRequest> {
+    @Override
+    public boolean isValid(PaymentRequest request, ConstraintValidatorContext context) {
+        if ("credit".equals(request.getPaymentMethod())) {
+            return request.getCreditCardNumber() != null && !request.getCreditCardNumber().isBlank();
+        }
+        return true;
+    }
+}
+```
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー 1: "jakarta.validation.ValidationException: HV000030: No validator could be found"
+
+**エラーメッセージ**:
+```
+jakarta.validation.ValidationException: HV000030: No validator could be found for constraint 'jakarta.validation.constraints.Email'
+```
+
+**原因**: `hibernate-validator`が依存関係に含まれていない
+
+**解決策**: `pom.xml`に追加（通常は`spring-boot-starter-web`に含まれる）
+
+```xml
+<dependency>
+    <groupId>org.hibernate.validator</groupId>
+    <artifactId>hibernate-validator</artifactId>
+</dependency>
+```
+
+---
+
+### エラー 2: "Field error in object 'userCreateRequest' on field 'age': rejected value [null]"
+
+**原因**: `@NotNull`が付いているフィールドにnullが渡された
+
+**解決策**: リクエストにフィールドを含めるか、`@NotNull`を外す
+
+```bash
+# ❌ ageフィールドがない
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alice","email":"alice@example.com"}'
+
+# ✅ ageフィールドを含める
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alice","email":"alice@example.com","age":25}'
+```
+
+---
+
+### エラー 3: "カスタムバリデーションが動作しない"
+
+**原因**: `@Constraint`アノテーションの`validatedBy`に正しいValidatorクラスを指定していない
+
+**解決策**:
+
+```java
+// ✅ 正しい
+@Constraint(validatedBy = PhoneNumberValidator.class)
+public @interface PhoneNumber {
+}
+
+// ❌ 間違い（validatedByがない）
+public @interface PhoneNumber {
+}
+```
+
+---
+
+### エラー 4: "バリデーションエラーが返らず、500エラーになる"
+
+**原因**: `@Valid`をControllerに付けていない
+
+**解決策**:
+
+```java
+// ❌ 間違い
+@PostMapping
+public ResponseEntity<UserResponse> createUser(@RequestBody UserCreateRequest request) {
+}
+
+// ✅ 正しい
+@PostMapping
+public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserCreateRequest request) {
 }
 ```
 
@@ -553,171 +1273,104 @@ public class User {
 
 ## 📚 このステップで学んだこと
 
-- ✅ Bean Validation（Jakarta Bean Validation）の基本
-- ✅ 標準バリデーションアノテーション（`@NotBlank`、`@Email`、`@Min`など）
-- ✅ `@Valid`でリクエストDTOのバリデーション実行
-- ✅ `@Validated`によるパスパラメータ・クエリパラメータのバリデーション
-- ✅ カスタムバリデーションアノテーションの作成
-- ✅ クラスレベルのバリデーション（パスワード確認など）
-- ✅ グループバリデーション（Create/Update別ルール）
-- ✅ `MethodArgumentNotValidException`と`ConstraintViolationException`の処理
-
-**バリデーションのメリット**:
-- データの整合性を保つ
-- セキュリティリスクの軽減
-- 不正なデータによるエラーを事前に防ぐ
-- クライアント側へ明確なエラーメッセージを返せる
+- ✅ **Jakarta Bean Validation**: 標準的なバリデーションAPI
+- ✅ **`@Valid`アノテーション**: リクエストボディのバリデーション有効化
+- ✅ **基本的なバリデーションアノテーション**: `@NotNull`, `@NotBlank`, `@Size`, `@Email`, `@Min`, `@Max`
+- ✅ **カスタムバリデーター**: 独自のビジネスルールを実装
+- ✅ **ValidationErrorResponse**: バリデーションエラーの統一フォーマット
+- ✅ **MethodArgumentNotValidException**: バリデーションエラーのハンドリング
+- ✅ **グループバリデーション**: 作成時と更新時で異なるルール
+- ✅ **条件付きバリデーション**: 特定条件下でのみ検証
+- ✅ **エラーメッセージのカスタマイズ**: わかりやすいメッセージ
+- ✅ **DTOパターン**: Entityと分離したリクエスト/レスポンス
 
 ---
 
-## 🐛 トラブルシューティング
+## 💡 補足: バリデーションアノテーション一覧
 
-### エラー: バリデーションが動作しない
+### 文字列検証
 
-**原因**: `@Valid`または`@Validated`が付いていない
-
-**解決策**:
-```java
-// ❌ NG: アノテーションなし
-@PostMapping
-public ResponseEntity<User> create(@RequestBody UserCreateRequest request) {
-    // バリデーションされない
-}
-
-// ✅ OK: @Validを付ける
-@PostMapping
-public ResponseEntity<User> create(@Valid @RequestBody UserCreateRequest request) {
-    // バリデーションされる
-}
-```
-
-### エラー: "HV000030: No validator could be found for constraint"
-
-**原因**: カスタムバリデーターの実装クラスが見つからない、またはジェネリクス型が一致しない
-
-**解決策**:
-```java
-// ✅ アノテーションとバリデーターのジェネリクス型を一致させる
-@Target({ElementType.FIELD})
-@Retention(RetentionPolicy.RUNTIME)
-@Constraint(validatedBy = AdultValidator.class)  // ← ここを指定
-public @interface Adult {
-    // ...
-}
-
-// ✅ バリデーターのジェネリクス型をStringに
-public class AdultValidator implements ConstraintValidator<Adult, Integer> {
-    //                                                      ↑アノテーション ↑検証対象の型
-}
-```
-
-### エラー: パスパラメータのバリデーションが効かない
-
-**原因**: コントローラークラスに`@Validated`が付いていない
-
-**解決策**:
-```java
-@RestController
-@RequestMapping("/api/users")
-@Validated  // ← クラスレベルに必須
-public class UserController {
-    
-    @GetMapping("/{id}")
-    public User getUser(@PathVariable @Min(1) Long id) {
-        // これでバリデーションが効く
-    }
-}
-```
-
-### 問題: エラーメッセージが英語で表示される
-
-**原因**: デフォルトメッセージが使用されている
-
-**解決策**:
-```java
-// ✅ message属性で日本語メッセージを指定
-@NotBlank(message = "名前は必須です")
-@Size(min = 2, max = 50, message = "名前は2文字以上50文字以内で入力してください")
-private String name;
-
-@Email(message = "メールアドレスの形式が正しくありません")
-private String email;
-
-@Min(value = 0, message = "年齢は0以上で入力してください")
-@Max(value = 150, message = "年齢は150以下で入力してください")
-private Integer age;
-```
-
-### 問題: 複数のバリデーションエラーが1つしか表示されない
-
-**原因**: エラーハンドラーが最初のエラーだけ返している
-
-**解決策**:
-```java
-@ExceptionHandler(MethodArgumentNotValidException.class)
-public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
-    // ✅ すべてのフィールドエラーを収集
-    Map<String, String> errors = new HashMap<>();
-    e.getBindingResult().getFieldErrors().forEach(error -> {
-        errors.put(error.getField(), error.getDefaultMessage());
-    });
-    
-    ErrorResponse response = ErrorResponse.builder()
-        .message("入力値に誤りがあります")
-        .errors(errors)  // すべてのエラーを返す
-        .build();
-    
-    return ResponseEntity.badRequest().body(response);
-}
-```
-
-### 問題: ネストしたオブジェクトのバリデーションが効かない
-
-**原因**: ネストしたフィールドに`@Valid`が付いていない
-
-**解決策**:
-```java
-public class OrderRequest {
-    @NotBlank
-    private String orderNumber;
-    
-    @Valid  // ← ネストしたオブジェクトにも@Validが必要
-    @NotNull
-    private AddressRequest address;
-}
-
-public class AddressRequest {
-    @NotBlank
-    private String street;
-    
-    @NotBlank
-    private String city;
-}
-```
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@NotNull` | nullでない | `@NotNull private String name;` |
+| `@NotEmpty` | nullでなく、空でない | `@NotEmpty private String name;` |
+| `@NotBlank` | nullでなく、空白のみでもない | `@NotBlank private String name;` |
+| `@Size(min, max)` | 長さ制約 | `@Size(min=2, max=50) private String name;` |
+| `@Email` | メール形式 | `@Email private String email;` |
+| `@Pattern(regexp)` | 正規表現一致 | `@Pattern(regexp="^[A-Z].*") private String code;` |
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+### 数値検証
 
-進捗を記録してレビューを受けましょう：
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@Min(value)` | 最小値 | `@Min(0) private Integer age;` |
+| `@Max(value)` | 最大値 | `@Max(150) private Integer age;` |
+| `@Positive` | 正の数 | `@Positive private Integer count;` |
+| `@PositiveOrZero` | 0または正の数 | `@PositiveOrZero private Integer stock;` |
+| `@Negative` | 負の数 | `@Negative private Integer debt;` |
+| `@NegativeOrZero` | 0または負の数 | `@NegativeOrZero private Integer balance;` |
+| `@DecimalMin(value)` | 小数の最小値 | `@DecimalMin("0.0") private Double price;` |
+| `@DecimalMax(value)` | 小数の最大値 | `@DecimalMax("100.0") private Double discount;` |
+| `@Digits(integer, fraction)` | 整数部と小数部の桁数 | `@Digits(integer=5, fraction=2) private Double amount;` |
 
-```bash
-# 変更をステージング
-git add .
+---
 
-# コミット
-git commit -m "Step 18: バリデーション完了"
+### 日付検証
 
-# リモートにプッシュ
-git push origin main
-```
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@Past` | 過去の日付 | `@Past private LocalDate birthDate;` |
+| `@PastOrPresent` | 過去または現在 | `@PastOrPresent private LocalDate registeredAt;` |
+| `@Future` | 未来の日付 | `@Future private LocalDate expiryDate;` |
+| `@FutureOrPresent` | 未来または現在 | `@FutureOrPresent private LocalDate deliveryDate;` |
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+---
+
+### コレクション検証
+
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@Size(min, max)` | 要素数制約 | `@Size(min=1, max=10) private List<String> tags;` |
+| `@NotEmpty` | 空でない | `@NotEmpty private List<String> items;` |
+
+---
+
+### ブール検証
+
+| アノテーション | 説明 | 例 |
+|---|---|---|
+| `@AssertTrue` | trueであること | `@AssertTrue private boolean accepted;` |
+| `@AssertFalse` | falseであること | `@AssertFalse private boolean deleted;` |
+
+---
+
+## 📖 参考資料
+
+### 公式ドキュメント
+
+- [Jakarta Bean Validation](https://beanvalidation.org/)
+- [Hibernate Validator Documentation](https://hibernate.org/validator/documentation/)
+- [Spring Boot - Validation](https://docs.spring.io/spring-boot/reference/io/validation.html)
+
+### 関連記事
+
+- [Validation in Spring Boot](https://www.baeldung.com/spring-boot-bean-validation)
+- [Custom Validation in Spring](https://www.baeldung.com/spring-mvc-custom-validator)
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 19: DTOとEntityの分離](STEP_19.md)へ進みましょう！
+[Step 19: DTOとEntityの分離](STEP_19.md)へ進みましょう！
 
-レイヤー間のデータ変換を理解し、セキュアで保守性の高いアプリケーション構造を構築します。
+次のステップでは、DTOとEntityの分離について深く学びます：
+
+- なぜDTOが必要なのか（セキュリティ、柔軟性）
+- DTOとEntityの責務の違い
+- MapStructによる自動マッピング
+- ネストしたオブジェクトのマッピング
+- レスポンス用DTOとリクエスト用DTOの使い分け
+
+データの入出力を適切に制御し、安全で保守性の高いAPIを設計しましょう！

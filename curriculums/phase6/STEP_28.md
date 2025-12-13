@@ -1,36 +1,87 @@
-# Step 28: 統合テストとAPI テスト
+# Step 28: 統合テスト
 
 ## 🎯 このステップの目標
 
-- `@SpringBootTest`を使った統合テストを理解する
-- MockMvcでAPIエンドポイントをテストする
-- TestContainersでデータベーステストを実行する
-- ✅ E2Eテストの書き方
-- ✅ TestRestTemplateの使い方
-- ✅ データベースのテストデータ準備
+- `@SpringBootTest`で統合テストを実装できる
+- `MockMvc`でHTTPリクエストをテストできる
+- `@DataJpaTest`でリポジトリテストを実装できる
+- TestContainersで実際のDBを使ったテストができる
 
-**所要時間**: 約1時間30分
+**所要時間**: 約60分
 
 ---
 
 ## 📋 事前準備
 
-- Step 27のユニットテストが理解できていること
+- [Step 27: ユニットテスト](STEP_27.md)が完了していること
+- Dockerがインストールされていること（TestContainers使用時）
 
 ---
 
-## 🚀 ステップ1: Controller統合テスト
+## 🧪 ユニットテストと統合テストの違い
 
-### 1-1. UserControllerIntegrationTest
+### ユニットテスト
 
-**ファイルパス**: `src/test/java/com/example/hellospringboot/controller/UserControllerIntegrationTest.java`
+**特徴**:
+- モックを使用
+- 単一のクラスをテスト
+- 高速（秒単位）
+- DBやネットワーク不要
+
+**例**:
+```java
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+    @Mock
+    private UserRepository userRepository;
+    
+    @InjectMocks
+    private UserService userService;
+}
+```
+
+### 統合テスト
+
+**特徴**:
+- 実際のSpringコンテキスト
+- 複数のコンポーネントを連携テスト
+- 低速（分単位）
+- DBやネットワークを使用
+
+**例**:
+```java
+@SpringBootTest
+class UserControllerIntegrationTest {
+    @Autowired
+    private UserController userController;
+    
+    @Autowired
+    private UserRepository userRepository;
+}
+```
+
+### 使い分け
+
+| テスト種類 | 対象 | 実行頻度 | 速度 |
+|---|---|---|---|
+| ユニットテスト | ビジネスロジック | コミットごと | 速い |
+| 統合テスト | API全体 | プルリクエスト時 | 遅い |
+| E2Eテスト | UI含む全体 | リリース前 | 最も遅い |
+
+---
+
+## 🚀 ステップ1: MockMvcで統合テスト
+
+### 1-1. UserControllerの統合テストを作成
+
+`src/test/java/com/example/hellospringboot/controllers/UserControllerIntegrationTest.java`:
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.repositories.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,591 +90,661 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * UserController統合テスト
- */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-@Transactional
-@DisplayName("UserController Integration Tests")
+@Transactional  // 各テスト後にロールバック
 class UserControllerIntegrationTest {
-
+    
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
+    
     @Autowired
     private UserRepository userRepository;
-
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    private User testUser;
+    
     @BeforeEach
     void setUp() {
-        userRepository.deleteAll();
+        // テストデータを準備
+        testUser = new User();
+        testUser.setName("Integration Test User");
+        testUser.setEmail("integration@example.com");
+        testUser.setAge(30);
+        testUser = userRepository.save(testUser);
     }
-
+    
     @Test
-    @DisplayName("ユーザーを作成できること")
-    void testCreateUser() throws Exception {
-        // Given
-        UserCreateRequest request = UserCreateRequest.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-
-        // When & Then
-        mockMvc.perform(post("/api/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andDo(print())
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name").value("Test User"))
-                .andExpect(jsonPath("$.email").value("test@example.com"))
-                .andExpect(jsonPath("$.age").value(25));
-    }
-
-    @Test
-    @DisplayName("バリデーションエラーの場合は400を返すこと")
-    void testCreateUserValidationError() throws Exception {
-        // Given - 無効なリクエスト
-        UserCreateRequest request = UserCreateRequest.builder()
-                .name("")  // 空の名前
-                .email("invalid-email")  // 無効なメール
-                .age(-1)  // 無効な年齢
-                .build();
-
-        // When & Then
-        mockMvc.perform(post("/api/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andDo(print())
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors").exists());
-    }
-
-    @Test
-    @DisplayName("全ユーザーを取得できること")
-    void testGetAllUsers() throws Exception {
-        // Given
-        userRepository.save(User.builder()
-                .name("User1")
-                .email("user1@example.com")
-                .age(20)
-                .build());
-        userRepository.save(User.builder()
-                .name("User2")
-                .email("user2@example.com")
-                .age(30)
-                .build());
-
-        // When & Then
+    @DisplayName("全ユーザー取得APIが成功すること")
+    @WithMockUser(roles = "ADMIN")  // 管理者として認証
+    void getAllUsers_Success() throws Exception {
         mockMvc.perform(get("/api/users"))
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].name").value("User1"))
-                .andExpect(jsonPath("$[1].name").value("User2"));
+            .andDo(print())  // リクエスト・レスポンスを出力
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(greaterThan(0))))
+            .andExpect(jsonPath("$[0].name").exists())
+            .andExpect(jsonPath("$[0].email").exists());
     }
-
+    
     @Test
-    @DisplayName("IDでユーザーを取得できること")
-    void testGetUserById() throws Exception {
-        // Given
-        User user = userRepository.save(User.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build());
-
-        // When & Then
-        mockMvc.perform(get("/api/users/{id}", user.getId()))
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(user.getId()))
-                .andExpect(jsonPath("$.name").value("Test User"));
+    @DisplayName("ID指定でユーザー取得APIが成功すること")
+    @WithMockUser(roles = "ADMIN")
+    void getUserById_Success() throws Exception {
+        mockMvc.perform(get("/api/users/{id}", testUser.getId()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(testUser.getId()))
+            .andExpect(jsonPath("$.name").value("Integration Test User"))
+            .andExpect(jsonPath("$.email").value("integration@example.com"))
+            .andExpect(jsonPath("$.age").value(30));
     }
-
+    
     @Test
-    @DisplayName("存在しないIDの場合は404を返すこと")
-    void testGetUserByIdNotFound() throws Exception {
-        // When & Then
-        mockMvc.perform(get("/api/users/999"))
-                .andDo(print())
-                .andExpect(status().isNotFound());
+    @DisplayName("存在しないIDでユーザー取得APIが404を返すこと")
+    @WithMockUser(roles = "ADMIN")
+    void getUserById_NotFound() throws Exception {
+        mockMvc.perform(get("/api/users/{id}", 99999L))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("Not Found"));
     }
-
+    
     @Test
-    @DisplayName("ユーザーを更新できること")
-    void testUpdateUser() throws Exception {
-        // Given
-        User user = userRepository.save(User.builder()
-                .name("Old Name")
-                .email("old@example.com")
-                .age(20)
-                .build());
-
-        UserCreateRequest updateRequest = UserCreateRequest.builder()
-                .name("New Name")
-                .email("new@example.com")
-                .age(30)
-                .build();
-
-        // When & Then
-        mockMvc.perform(put("/api/users/{id}", user.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(updateRequest)))
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("New Name"))
-                .andExpect(jsonPath("$.email").value("new@example.com"))
-                .andExpect(jsonPath("$.age").value(30));
+    @DisplayName("ユーザー作成APIが成功すること")
+    @WithMockUser(roles = "ADMIN")
+    void createUser_Success() throws Exception {
+        UserCreateRequest request = new UserCreateRequest(
+            "New User",
+            "newuser@example.com",
+            25
+        );
+        
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.name").value("New User"))
+            .andExpect(jsonPath("$.email").value("newuser@example.com"))
+            .andExpect(jsonPath("$.age").value(25))
+            .andExpect(jsonPath("$.id").exists());
     }
-
+    
     @Test
-    @DisplayName("ユーザーを削除できること")
-    void testDeleteUser() throws Exception {
-        // Given
-        User user = userRepository.save(User.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build());
-
-        // When & Then
-        mockMvc.perform(delete("/api/users/{id}", user.getId()))
-                .andDo(print())
-                .andExpect(status().isNoContent());
+    @DisplayName("バリデーションエラーで400が返ること")
+    @WithMockUser(roles = "ADMIN")
+    void createUser_ValidationError() throws Exception {
+        UserCreateRequest invalidRequest = new UserCreateRequest(
+            "",  // 空の名前（バリデーションエラー）
+            "invalid-email",  // 不正なメール
+            -1  // 不正な年齢
+        );
+        
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidRequest)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("Bad Request"));
+    }
+    
+    @Test
+    @DisplayName("ユーザー削除APIが成功すること")
+    @WithMockUser(roles = "ADMIN")
+    void deleteUser_Success() throws Exception {
+        mockMvc.perform(delete("/api/users/{id}", testUser.getId()))
+            .andExpect(status().isNoContent());
+        
+        // 削除されたことを確認
+        mockMvc.perform(get("/api/users/{id}", testUser.getId()))
+            .andExpect(status().isNotFound());
+    }
+    
+    @Test
+    @DisplayName("認証なしで401が返ること")
+    void withoutAuth_Returns401() throws Exception {
+        mockMvc.perform(get("/api/users"))
+            .andExpect(status().isUnauthorized());
+    }
+    
+    @Test
+    @DisplayName("一般ユーザーで403が返ること")
+    @WithMockUser(roles = "USER")  // ADMINではなくUSER
+    void withUserRole_Returns403() throws Exception {
+        mockMvc.perform(get("/api/users"))
+            .andExpect(status().isForbidden());
     }
 }
 ```
 
----
+### 1-2. コードの解説
 
-## 🚀 ステップ2: テスト用設定ファイル
-
-### 2-1. application-test.yml
-
-**ファイルパス**: `src/test/resources/application-test.yml`
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/hello_db_test?useSSL=false&serverTimezone=Asia/Tokyo
-    username: appuser
-    password: apppassword
-    driver-class-name: com.mysql.cj.jdbc.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.MySQLDialect
-
-logging:
-  level:
-    com.example.hellospringboot: DEBUG
-    org.springframework.test: INFO
+#### `@SpringBootTest`
+```java
+@SpringBootTest
 ```
+- 実際のSpringコンテキストを起動
+- すべてのBeanが利用可能
 
-> **💡 ヒント**: テスト用に別のデータベース（`hello_db_test`）を使用することで、本番データと分離できます。テスト前に以下のコマンドでテスト用DBを作成してください：
-> ```sql
-> CREATE DATABASE IF NOT EXISTS hello_db_test;
-> ```
+#### `@AutoConfigureMockMvc`
+```java
+@AutoConfigureMockMvc
+```
+- `MockMvc`を自動設定
+- HTTPリクエストをシミュレート
+
+#### `@Transactional`
+```java
+@Transactional
+```
+- 各テスト後に自動ロールバック
+- DBが汚れない
+
+#### `@WithMockUser`
+```java
+@WithMockUser(roles = "ADMIN")
+```
+- Spring Securityの認証をモック
+- 指定したロールでテスト実行
+
+#### `MockMvc`
+```java
+mockMvc.perform(get("/api/users"))
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$[0].name").exists());
+```
+- HTTPリクエストをシミュレート
+- レスポンスを検証
+
+#### `jsonPath()`
+```java
+.andExpect(jsonPath("$.name").value("Test User"))
+.andExpect(jsonPath("$[0].email").exists())
+.andExpect(jsonPath("$", hasSize(3)))
+```
+- JSONレスポンスの値を検証
+- `$`: ルート
+- `$[0]`: 配列の最初の要素
+- `$.name`: nameフィールド
 
 ---
 
-## 🚀 ステップ3: 認証付きAPIテスト
+## 🚀 ステップ2: @DataJpaTestでリポジトリテスト
 
-### 3-1. AuthControllerIntegrationTest
+### 2-1. UserRepositoryのテストを作成
 
-**ファイルパス**: `src/test/java/com/example/hellospringboot/controller/AuthControllerIntegrationTest.java`
+`src/test/java/com/example/hellospringboot/repositories/UserRepositoryTest.java`:
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.repositories;
 
-import com.example.hellospringboot.dto.request.LoginRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.hellospringboot.entities.User;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import java.util.List;
+import java.util.Optional;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-@DisplayName("AuthController Integration Tests")
-class AuthControllerIntegrationTest {
+import static org.assertj.core.api.Assertions.*;
 
+@DataJpaTest
+class UserRepositoryTest {
+    
     @Autowired
-    private MockMvc mockMvc;
-
+    private TestEntityManager entityManager;
+    
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Test
-    @DisplayName("正しい認証情報でログインできること")
-    void testLoginSuccess() throws Exception {
-        // Given
-        LoginRequest request = LoginRequest.builder()
-                .username("user")
-                .password("user123")
-                .build();
-
-        // When & Then
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").exists())
-                .andExpect(jsonPath("$.type").value("Bearer"))
-                .andExpect(jsonPath("$.username").value("user"));
+    private UserRepository userRepository;
+    
+    private User testUser;
+    
+    @BeforeEach
+    void setUp() {
+        testUser = new User();
+        testUser.setName("Repository Test User");
+        testUser.setEmail("repo@example.com");
+        testUser.setAge(28);
     }
-
+    
     @Test
-    @DisplayName("誤った認証情報の場合は401を返すこと")
-    void testLoginFailure() throws Exception {
-        // Given
-        LoginRequest request = LoginRequest.builder()
-                .username("user")
-                .password("wrongpassword")
-                .build();
-
-        // When & Then
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andDo(print())
-                .andExpect(status().isUnauthorized());
+    @DisplayName("ユーザーを保存できること")
+    void save_Success() {
+        // Act
+        User saved = userRepository.save(testUser);
+        
+        // Assert
+        assertThat(saved.getId()).isNotNull();
+        assertThat(saved.getName()).isEqualTo("Repository Test User");
+        assertThat(saved.getCreatedAt()).isNotNull();
+    }
+    
+    @Test
+    @DisplayName("IDでユーザーを検索できること")
+    void findById_Success() {
+        // Arrange
+        User saved = entityManager.persistAndFlush(testUser);
+        
+        // Act
+        Optional<User> found = userRepository.findById(saved.getId());
+        
+        // Assert
+        assertThat(found).isPresent();
+        assertThat(found.get().getName()).isEqualTo("Repository Test User");
+    }
+    
+    @Test
+    @DisplayName("全ユーザーを取得できること")
+    void findAll_Success() {
+        // Arrange
+        entityManager.persist(testUser);
+        
+        User anotherUser = new User();
+        anotherUser.setName("Another User");
+        anotherUser.setEmail("another@example.com");
+        anotherUser.setAge(35);
+        entityManager.persist(anotherUser);
+        
+        entityManager.flush();
+        
+        // Act
+        List<User> users = userRepository.findAll();
+        
+        // Assert
+        assertThat(users).hasSize(2);
+    }
+    
+    @Test
+    @DisplayName("ユーザーを削除できること")
+    void delete_Success() {
+        // Arrange
+        User saved = entityManager.persistAndFlush(testUser);
+        Long id = saved.getId();
+        
+        // Act
+        userRepository.delete(saved);
+        
+        // Assert
+        Optional<User> deleted = userRepository.findById(id);
+        assertThat(deleted).isEmpty();
+    }
+    
+    @Test
+    @DisplayName("名前で検索できること")
+    void findByNameContaining_Success() {
+        // Arrange
+        entityManager.persist(testUser);
+        entityManager.flush();
+        
+        // Act
+        List<User> users = userRepository.findByNameContaining("Repository");
+        
+        // Assert
+        assertThat(users).hasSize(1);
+        assertThat(users.get(0).getName()).contains("Repository");
     }
 }
 ```
 
----
+### 2-2. コードの解説
 
-## 🚀 ステップ4: テスト実行とレポート
-
-### 4-1. すべてのテストを実行
-
-```bash
-./mvnw clean test
+#### `@DataJpaTest`
+```java
+@DataJpaTest
 ```
+- JPA関連のBeanのみロード
+- インメモリDBを使用（H2）
+- 各テスト後に自動ロールバック
 
-### 4-2. 特定のテストクラスのみ実行
-
-```bash
-./mvnw test -Dtest=UserControllerIntegrationTest
+#### `TestEntityManager`
+```java
+@Autowired
+private TestEntityManager entityManager;
 ```
-
-### 4-3. カバレッジレポート確認
-
-```bash
-./mvnw clean test jacoco:report
-open target/site/jacoco/index.html
-```
+- テスト用のEntityManager
+- `persistAndFlush()`: 即座にDBに反映
 
 ---
 
-## 🎨 チャレンジ課題
+## 🚀 ステップ3: TestContainersで実際のMySQLを使用
 
-### チャレンジ 1: PostController統合テスト
+### 3-1. TestContainers依存関係を追加
 
-PostControllerの統合テストを作成してください。
-
-### チャレンジ 2: TestContainersの導入
-
-本物のMySQLを使ったテストを実装してください。
+`pom.xml`に追加：
 
 ```xml
+<!-- TestContainers -->
+<dependency>
+    <groupId>org.testcontainers</groupId>
+    <artifactId>testcontainers</artifactId>
+    <version>1.19.3</version>
+    <scope>test</scope>
+</dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
     <artifactId>mysql</artifactId>
     <version>1.19.3</version>
     <scope>test</scope>
 </dependency>
+<dependency>
+    <groupId>org.testcontainers</groupId>
+    <artifactId>junit-jupiter</artifactId>
+    <version>1.19.3</version>
+    <scope>test</scope>
+</dependency>
 ```
 
-### チャレンジ 3: REST Assuredの使用
+### 3-2. TestContainersを使った統合テスト
 
-REST Assuredライブラリを使ったテストを書いてください。
+`src/test/java/com/example/hellospringboot/controllers/UserControllerTestContainersTest.java`:
+
+```java
+package com.example.hellospringboot.controllers;
+
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.repositories.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Testcontainers
+@Transactional
+class UserControllerTestContainersTest {
+    
+    @Container
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
+        .withDatabaseName("testdb")
+        .withUsername("testuser")
+        .withPassword("testpass");
+    
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", mysql::getJdbcUrl);
+        registry.add("spring.datasource.username", mysql::getUsername);
+        registry.add("spring.datasource.password", mysql::getPassword);
+    }
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @BeforeEach
+    void setUp() {
+        User testUser = new User();
+        testUser.setName("TestContainers User");
+        testUser.setEmail("tc@example.com");
+        testUser.setAge(40);
+        userRepository.save(testUser);
+    }
+    
+    @Test
+    @DisplayName("実際のMySQLでユーザー作成が成功すること")
+    @WithMockUser(roles = "ADMIN")
+    void createUser_WithRealMySQL_Success() throws Exception {
+        UserCreateRequest request = new UserCreateRequest(
+            "Real MySQL User",
+            "mysql@example.com",
+            35
+        );
+        
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.name").value("Real MySQL User"));
+    }
+}
+```
+
+### 3-3. TestContainersの解説
+
+#### `@Testcontainers`
+```java
+@Testcontainers
+```
+- TestContainersを有効化
+
+#### `@Container`
+```java
+@Container
+static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
+```
+- Dockerコンテナを起動
+- テスト終了後に自動停止
+
+#### `@DynamicPropertySource`
+```java
+@DynamicPropertySource
+static void configureProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.datasource.url", mysql::getJdbcUrl);
+}
+```
+- コンテナのURLを動的に設定
+- 実際のMySQLに接続
+
+---
+
+## ✅ 動作確認
+
+### 1. すべてのテストを実行
+
+```bash
+./mvnw test
+```
+
+### 2. 統合テストのみ実行
+
+```bash
+./mvnw test -Dtest=*IntegrationTest
+```
+
+### 3. TestContainersテストを実行
+
+```bash
+# Dockerが起動していることを確認
+docker ps
+
+# テスト実行
+./mvnw test -Dtest=*TestContainersTest
+```
+
+---
+
+## 🎨 チャレンジ課題
+
+### チャレンジ 1: カスタムクエリのテスト
+
+**目標**: `UserRepository`のカスタムクエリをテスト
+
+**ヒント**:
+```java
+@Test
+void findByAgeGreaterThan_Success() {
+    // 30歳以上のユーザーを検索
+    List<User> users = userRepository.findByAgeGreaterThan(30);
+    assertThat(users).allMatch(u -> u.getAge() > 30);
+}
+```
+
+### チャレンジ 2: セキュリティ統合テスト
+
+**目標**: JWT認証のエンドツーエンドテスト
+
+**ヒント**:
+```java
+@Test
+void loginAndAccessProtectedEndpoint_Success() throws Exception {
+    // 1. ログインしてトークン取得
+    String response = mockMvc.perform(post("/api/auth/login")...)
+        .andReturn().getResponse().getContentAsString();
+    
+    String token = JsonPath.parse(response).read("$.token");
+    
+    // 2. トークンを使ってAPIアクセス
+    mockMvc.perform(get("/api/users")
+        .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk());
+}
+```
+
+### チャレンジ 3: パフォーマンステスト
+
+**目標**: 大量データでのパフォーマンステスト
+
+**ヒント**:
+```java
+@Test
+void loadTest_1000Users() {
+    long start = System.currentTimeMillis();
+    
+    // 1000件のユーザーを保存
+    for (int i = 0; i < 1000; i++) {
+        User user = new User();
+        user.setName("User " + i);
+        userRepository.save(user);
+    }
+    
+    long duration = System.currentTimeMillis() - start;
+    assertThat(duration).isLessThan(5000);  // 5秒以内
+}
+```
+
+---
+
+## 🐛 トラブルシューティング
+
+### TestContainersが起動しない
+
+**原因**: Dockerが起動していない
+
+**解決策**:
+```bash
+# Dockerを起動
+sudo service docker start
+
+# 動作確認
+docker ps
+```
+
+### H2とMySQLで動作が異なる
+
+**問題**: H2（テスト）とMySQL（本番）でSQLの挙動が違う
+
+**解決策**: TestContainersで実際のMySQLを使用
+```java
+@Testcontainers
+class UserRepositoryTest {
+    @Container
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
+}
+```
+
+### テストが遅い
+
+**原因**: 毎回Springコンテキストを起動
+
+**解決策**:
+1. ユニットテストを増やす（統合テストを減らす）
+2. テストクラスを分割せず、1つのクラスにまとめる
+3. `@SpringBootTest`の代わりに`@WebMvcTest`を使う
+
+```java
+// 軽量なテスト
+@WebMvcTest(UserController.class)
+class UserControllerTest {
+    @MockBean
+    private UserService userService;
+}
+```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ @SpringBootTestによる統合テスト
-- ✅ MockMvcによるAPIテスト
-- ✅ JSONパスアサーション
-- ✅ テスト用設定ファイル
-- ✅ トランザクションロールバック
+- ✅ `@SpringBootTest`で統合テスト
+- ✅ `MockMvc`でHTTPリクエストテスト
+- ✅ `@WithMockUser`で認証テスト
+- ✅ `@DataJpaTest`でリポジトリテスト
+- ✅ TestContainersで実際のDBテスト
+- ✅ `jsonPath()`でJSON検証
+- ✅ `@Transactional`で自動ロールバック
 
 ---
 
-## � トラブルシューティング
+## 💡 補足: テスト戦略
 
-### エラー1: "Failed to load ApplicationContext"
-
-```
-java.lang.IllegalStateException: Failed to load ApplicationContext
-Caused by: org.springframework.beans.factory.BeanCreationException
-```
-
-**原因**: テスト実行時にSpring Bootアプリケーションコンテキストの起動に失敗している（設定ミス、Bean定義エラーなど）
-
-**解決策**:
-
-1. `application-test.yml`の設定を確認：
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/hello_db_test  # ← テスト用DBが存在するか確認
-    username: appuser
-    password: apppassword
-```
-
-2. テスト用データベースを作成：
-
-```sql
-CREATE DATABASE IF NOT EXISTS hello_db_test;
-```
-
-3. MySQLが起動しているか確認：
-
-```bash
-sudo systemctl status mysql
-```
-
----
-
-### エラー2: "No qualifying bean of type 'MockMvc' available"
+### テストピラミッド
 
 ```
-org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'org.springframework.test.web.servlet.MockMvc' available
+       /\
+      /E2E\       少ない（UIテスト）
+     /------\
+    /統合テスト\    中程度（API全体）
+   /----------\
+  /ユニットテスト\  多い（ビジネスロジック）
+ /--------------\
 ```
 
-**原因**: `@AutoConfigureMockMvc`アノテーションが不足している
+**推奨比率**:
+- ユニットテスト: 70%
+- 統合テスト: 20%
+- E2Eテスト: 10%
 
-**解決策**:
+### テストの命名規則
 
 ```java
-@SpringBootTest
-@AutoConfigureMockMvc  // ← これが必要
-class UserControllerIntegrationTest {
-    
-    @Autowired
-    private MockMvc mockMvc;
-}
-```
-
----
-
-### エラー3: テスト実行時に "401 Unauthorized" が返る
-
-```
-MockHttpServletResponse:
-           Status = 401
-    Error message = Unauthorized
-```
-
-**原因**: Spring Securityが有効で、テストがトークンなしでAPIにアクセスしている
-
-**解決策1**: テスト用にセキュリティを無効化
-
-```java
-@SpringBootTest
-@AutoConfigureMockMvc
-@AutoConfigureTestDatabase
-@TestPropertySource(properties = {
-    "spring.security.enabled=false"  // ← セキュリティ無効化
-})
-class UserControllerIntegrationTest {
-    // ...
-}
-```
-
-**解決策2**: `@WithMockUser`を使う
-
-```java
-import org.springframework.security.test.context.support.WithMockUser;
-
+// 方法1: メソッド名_状態_期待結果
 @Test
-@WithMockUser(username = "testuser", roles = {"USER"})  // ← モックユーザーでテスト
-void testGetAllUsers() throws Exception {
-    mockMvc.perform(get("/api/users"))
-            .andExpect(status().isOk());
-}
-```
+void findById_WithValidId_ReturnsUser() {}
 
-**解決策3**: JWTトークンを生成してヘッダーに含める
-
-```java
+// 方法2: Given_When_Then
 @Test
-void testGetAllUsersWithToken() throws Exception {
-    // トークン生成（実際のログインAPIを呼ぶか、JwtUtilで直接生成）
-    String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
-    
-    mockMvc.perform(get("/api/users")
-                    .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk());
-}
-```
+void givenValidId_whenFindById_thenReturnsUser() {}
 
----
-
-### エラー4: JSONパスアサーションが失敗する
-
-```
-java.lang.AssertionError: JSON path "$.name" expected:<Test User> but was:<null>
-```
-
-**原因**: レスポンスボディのJSONフィールド名が期待と異なる、またはnullが返っている
-
-**解決策**:
-
-1. レスポンスボディをデバッグ出力で確認：
-
-```java
-mockMvc.perform(get("/api/users/1"))
-        .andDo(print())  // ← レスポンス全体を出力
-        .andExpect(status().isOk());
-```
-
-2. 実際のJSONフィールド名を確認：
-
-```json
-{
-  "userId": 1,        // ← フィールド名が "name" ではなく "userId"
-  "userName": "Test"  // ← "name" ではなく "userName"
-}
-```
-
-3. JSONパスを修正：
-
-```java
-mockMvc.perform(get("/api/users/1"))
-        .andExpect(jsonPath("$.userId").value(1))
-        .andExpect(jsonPath("$.userName").value("Test"));  // ← 正しいフィールド名
-```
-
----
-
-### エラー5: トランザクションロールバックされない
-
-```java
+// 方法3: 日本語
 @Test
-void testCreateUser() {
-    // テスト実行後もDBにデータが残っている
-}
+@DisplayName("有効なIDでユーザーが取得できること")
+void test1() {}
 ```
-
-**原因**: `@Transactional`アノテーションが不足しているか、テストメソッドがトランザクション外で実行されている
-
-**解決策**:
-
-```java
-@SpringBootTest
-@AutoConfigureMockMvc
-@Transactional  // ← クラスレベルで追加（各テスト後に自動ロールバック）
-class UserControllerIntegrationTest {
-    
-    @BeforeEach
-    void setUp() {
-        userRepository.deleteAll();  // ← 念のため明示的にクリア
-    }
-    
-    @Test
-    void testCreateUser() {
-        // テスト実行
-    }
-}
-```
-
-**または**、各テスト前にDBをクリーンアップ：
-
-```java
-@BeforeEach
-void setUp() {
-    userRepository.deleteAll();
-}
-
-@AfterEach
-void tearDown() {
-    userRepository.deleteAll();
-}
-```
-
----
-
-### エラー6: MockMvcでPOST/PUTリクエストが "415 Unsupported Media Type" になる
-
-```
-MockHttpServletResponse:
-           Status = 415
-    Error message = Unsupported Media Type
-```
-
-**原因**: リクエストに`Content-Type`ヘッダーが設定されていない
-
-**解決策**:
-
-```java
-// ❌ Content-Typeなし
-mockMvc.perform(post("/api/users")
-                .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isCreated());
-
-// ✅ Content-Typeを指定
-mockMvc.perform(post("/api/users")
-                .contentType(MediaType.APPLICATION_JSON)  // ← 必須
-                .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isCreated());
-```
-
----
-
-## �🔄 Gitへのコミットとレビュー依頼
-
-```bash
-git add .
-git commit -m "Step 28: 統合テスト完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 29: テストカバレッジ](STEP_29.md)へ進みましょう！
+[Step 29: テストカバレッジ](STEP_29.md)へ進みましょう！
 
-JaCoCoを使ってテストの網羅性を確認し、品質を向上させます。
-
----
-
-お疲れさまでした！ 🎉
-
-統合テストを習得しました！実際のHTTPリクエストをテストする方法が
+次のステップでは、JaCoCoを使ってテストカバレッジを測定し、テストの網羅性を可視化します。カバレッジレポートの見方と改善方法を学びます。

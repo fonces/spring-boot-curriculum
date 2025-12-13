@@ -2,1124 +2,748 @@
 
 ## 🎯 このステップの目標
 
-- JavaScriptでREST APIを呼び出す方法を理解する
-- Fetch APIを使ったJSON形式のデータ取得・送信ができる
-- DOM操作でページを動的に更新できる
-- ThymeleafとREST APIの使い分けを理解する
+- ThymeleafページからJavaScriptでREST APIを呼び出せる
+- Fetch APIを使った非同期通信（AJAX）を実装できる
+- サーバーサイドレンダリングとクライアントサイドレンダリングを使い分けられる
+- リアルタイムな画面更新（ページリロードなし）を実装できる
 
-**所要時間**: 約1時間
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-このステップを始める前に、以下が完了していることを確認してください：
-
-- Step 21: Thymeleafの基礎（テンプレート構文の理解）
-- Step 22: フォーム送信とバリデーション
-- Step 23: レイアウトとフラグメント
-- JavaScriptの基本的な構文理解
+- [Step 23: レイアウトとフラグメント](STEP_23.md)が完了していること
+- JavaScriptの基礎知識（変数、関数、async/await）があること
+- REST APIの概念（Phase 1-4）を理解していること
 
 ---
 
-## 🎨 完成イメージ
+## 🎓 なぜThymeleafとREST APIを組み合わせるのか
 
-このステップでは、**リロードなしで動作するタスク管理画面**を作成します：
+### サーバーサイドレンダリング（SSR）の限界
 
-### 機能一覧
-- ✅ タスク一覧の表示（初回はThymeleafでレンダリング）
-- ✅ タスクの追加（Fetch APIでPOST → DOM更新）
-- ✅ タスクの完了/未完了切り替え（Fetch APIでPUT → DOM更新）
-- ✅ タスクの削除（Fetch APIでDELETE → DOM更新）
-- ✅ ページリロードなしですべての操作が完了
-
-**技術構成**:
-- **サーバーサイド**: Spring Boot + Thymeleaf（初回表示）
-- **クライアントサイド**: JavaScript（Fetch API）+ REST API（動的操作）
-
----
-
-## 🚀 ステップ1: プロジェクトの準備
-
-### 1-1. 依存関係の確認
-
-`pom.xml`に以下の依存関係が含まれていることを確認：
-
-```xml
-<dependencies>
-    <!-- Spring Boot Web -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-    
-    <!-- Thymeleaf -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-thymeleaf</artifactId>
-    </dependency>
-    
-    <!-- Spring Data JPA -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>
-    
-    <!-- MySQL Driver -->
-    <dependency>
-        <groupId>com.mysql</groupId>
-        <artifactId>mysql-connector-j</artifactId>
-        <scope>runtime</scope>
-    </dependency>
-    
-    <!-- Lombok -->
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <optional>true</optional>
-    </dependency>
-    
-    <!-- Validation -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-validation</artifactId>
-    </dependency>
-</dependencies>
+**従来のThymeleafのみの実装**:
+```
+ユーザー操作 → フォーム送信 → サーバー処理 → ページ全体リロード
 ```
 
-### 1-2. データベース設定
+**問題点**:
+- ページ全体がリロードされる（体感速度が遅い）
+- 部分的な更新ができない
+- リアルタイム性がない
 
-`src/main/resources/application.yml`:
+### ハイブリッドアプローチ
 
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/task_db?createDatabaseIfNotExist=true
-    username: root
-    password: password
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-  thymeleaf:
-    cache: false  # 開発中はキャッシュOFF
+**SSR（Thymeleaf）の利点**:
+- 初期表示が速い
+- SEOに有利
+- JavaScriptなしでも動作
 
-server:
-  port: 8080
+**CSR（JavaScript + REST API）の利点**:
+- ページリロードなしで部分更新
+- リアルタイムな操作性
+- リッチなUI
 
-logging:
-  level:
-    org.hibernate.SQL: DEBUG
+**組み合わせ**:
+```
+初期表示: Thymeleafで高速レンダリング
+動的操作: JavaScriptでREST API呼び出し
 ```
 
 ---
 
-## 🗄️ ステップ2: タスクエンティティとリポジトリの作成
+## 🚀 ステップ1: 非同期ユーザー検索の実装
 
-### 2-1. Taskエンティティ
+### 1-1. 検索フォーム付きユーザー一覧
 
-**ファイルパス**: `src/main/java/com/example/taskapp/entity/Task.java`
-
-```java
-package com.example.taskapp.entity;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "tasks")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Task {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false)
-    private String title;
-    
-    @Column(length = 1000)
-    private String description;
-    
-    @Column(nullable = false)
-    private Boolean completed = false;
-    
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-    
-    private LocalDateTime updatedAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-}
-```
-
-### 2-2. Taskリポジトリ
-
-**ファイルパス**: `src/main/java/com/example/taskapp/repository/TaskRepository.java`
-
-```java
-package com.example.taskapp.repository;
-
-import com.example.taskapp.entity.Task;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface TaskRepository extends JpaRepository<Task, Long> {
-    
-    // 完了状態で絞り込み
-    List<Task> findByCompleted(Boolean completed);
-    
-    // 作成日時の降順で全件取得
-    List<Task> findAllByOrderByCreatedAtDesc();
-}
-```
-
----
-
-## 🎯 ステップ3: DTO（データ転送オブジェクト）の作成
-
-### 3-1. TaskRequestDTO
-
-**ファイルパス**: `src/main/java/com/example/taskapp/dto/TaskRequestDTO.java`
-
-```java
-package com.example.taskapp.dto;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class TaskRequestDTO {
-    
-    @NotBlank(message = "タイトルは必須です")
-    @Size(max = 100, message = "タイトルは100文字以内で入力してください")
-    private String title;
-    
-    @Size(max = 1000, message = "説明は1000文字以内で入力してください")
-    private String description;
-}
-```
-
-### 3-2. TaskResponseDTO
-
-**ファイルパス**: `src/main/java/com/example/taskapp/dto/TaskResponseDTO.java`
-
-```java
-package com.example.taskapp.dto;
-
-import com.example.taskapp.entity.Task;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class TaskResponseDTO {
-    
-    private Long id;
-    private String title;
-    private String description;
-    private Boolean completed;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    
-    // Entityから変換するコンストラクタ
-    public TaskResponseDTO(Task task) {
-        this.id = task.getId();
-        this.title = task.getTitle();
-        this.description = task.getDescription();
-        this.completed = task.getCompleted();
-        this.createdAt = task.getCreatedAt();
-        this.updatedAt = task.getUpdatedAt();
-    }
-}
-```
-
----
-
-## 💼 ステップ4: サービス層の実装
-
-**ファイルパス**: `src/main/java/com/example/taskapp/service/TaskService.java`
-
-```java
-package com.example.taskapp.service;
-
-import com.example.taskapp.dto.TaskRequestDTO;
-import com.example.taskapp.dto.TaskResponseDTO;
-import com.example.taskapp.entity.Task;
-import com.example.taskapp.repository.TaskRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.stream.Collectors;
-
-@Service
-@RequiredArgsConstructor
-public class TaskService {
-    
-    private final TaskRepository taskRepository;
-    
-    // 全件取得（新しい順）
-    public List<TaskResponseDTO> getAllTasks() {
-        return taskRepository.findAllByOrderByCreatedAtDesc()
-                .stream()
-                .map(TaskResponseDTO::new)
-                .collect(Collectors.toList());
-    }
-    
-    // ID指定で1件取得
-    public TaskResponseDTO getTaskById(Long id) {
-        Task task = taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("タスクが見つかりません: ID=" + id));
-        return new TaskResponseDTO(task);
-    }
-    
-    // タスク作成
-    @Transactional
-    public TaskResponseDTO createTask(TaskRequestDTO requestDTO) {
-        Task task = new Task();
-        task.setTitle(requestDTO.getTitle());
-        task.setDescription(requestDTO.getDescription());
-        task.setCompleted(false);
-        
-        Task savedTask = taskRepository.save(task);
-        return new TaskResponseDTO(savedTask);
-    }
-    
-    // タスク更新
-    @Transactional
-    public TaskResponseDTO updateTask(Long id, TaskRequestDTO requestDTO) {
-        Task task = taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("タスクが見つかりません: ID=" + id));
-        
-        task.setTitle(requestDTO.getTitle());
-        task.setDescription(requestDTO.getDescription());
-        
-        Task updatedTask = taskRepository.save(task);
-        return new TaskResponseDTO(updatedTask);
-    }
-    
-    // 完了状態の切り替え
-    @Transactional
-    public TaskResponseDTO toggleTaskCompletion(Long id) {
-        Task task = taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("タスクが見つかりません: ID=" + id));
-        
-        task.setCompleted(!task.getCompleted());
-        
-        Task updatedTask = taskRepository.save(task);
-        return new TaskResponseDTO(updatedTask);
-    }
-    
-    // タスク削除
-    @Transactional
-    public void deleteTask(Long id) {
-        if (!taskRepository.existsById(id)) {
-            throw new RuntimeException("タスクが見つかりません: ID=" + id);
-        }
-        taskRepository.deleteById(id);
-    }
-}
-```
-
----
-
-## 🎮 ステップ5: コントローラーの実装
-
-### 5-1. REST APIコントローラー
-
-**ファイルパス**: `src/main/java/com/example/taskapp/controller/TaskApiController.java`
-
-```java
-package com.example.taskapp.controller;
-
-import com.example.taskapp.dto.TaskRequestDTO;
-import com.example.taskapp.dto.TaskResponseDTO;
-import com.example.taskapp.service.TaskService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequestMapping("/api/tasks")
-@RequiredArgsConstructor
-public class TaskApiController {
-    
-    private final TaskService taskService;
-    
-    // 全件取得
-    @GetMapping
-    public ResponseEntity<List<TaskResponseDTO>> getAllTasks() {
-        List<TaskResponseDTO> tasks = taskService.getAllTasks();
-        return ResponseEntity.ok(tasks);
-    }
-    
-    // ID指定で取得
-    @GetMapping("/{id}")
-    public ResponseEntity<TaskResponseDTO> getTaskById(@PathVariable Long id) {
-        TaskResponseDTO task = taskService.getTaskById(id);
-        return ResponseEntity.ok(task);
-    }
-    
-    // タスク作成
-    @PostMapping
-    public ResponseEntity<TaskResponseDTO> createTask(@Valid @RequestBody TaskRequestDTO requestDTO) {
-        TaskResponseDTO createdTask = taskService.createTask(requestDTO);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdTask);
-    }
-    
-    // タスク更新
-    @PutMapping("/{id}")
-    public ResponseEntity<TaskResponseDTO> updateTask(
-            @PathVariable Long id,
-            @Valid @RequestBody TaskRequestDTO requestDTO) {
-        TaskResponseDTO updatedTask = taskService.updateTask(id, requestDTO);
-        return ResponseEntity.ok(updatedTask);
-    }
-    
-    // 完了状態の切り替え
-    @PatchMapping("/{id}/toggle")
-    public ResponseEntity<TaskResponseDTO> toggleTaskCompletion(@PathVariable Long id) {
-        TaskResponseDTO updatedTask = taskService.toggleTaskCompletion(id);
-        return ResponseEntity.ok(updatedTask);
-    }
-    
-    // タスク削除
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        taskService.deleteTask(id);
-        return ResponseEntity.noContent().build();
-    }
-}
-```
-
-### 5-2. Thymeleafコントローラー
-
-**ファイルパス**: `src/main/java/com/example/taskapp/controller/TaskViewController.java`
-
-```java
-package com.example.taskapp.controller;
-
-import com.example.taskapp.dto.TaskResponseDTO;
-import com.example.taskapp.service.TaskService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-
-import java.util.List;
-
-@Controller
-@RequiredArgsConstructor
-public class TaskViewController {
-    
-    private final TaskService taskService;
-    
-    @GetMapping("/tasks")
-    public String taskPage(Model model) {
-        List<TaskResponseDTO> tasks = taskService.getAllTasks();
-        model.addAttribute("tasks", tasks);
-        return "tasks";
-    }
-}
-```
-
----
-
-## 🎨 ステップ6: Thymeleafテンプレートの作成
-
-**ファイルパス**: `src/main/resources/templates/tasks.html`
+`users/list.html`に検索フォームを追加:
 
 ```html
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layouts/base :: layout(~{::title}, ~{::main})}">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>タスク管理アプリ</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 30px;
-        }
-        
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-        }
-        
-        .task-form {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-        
-        #task-title {
-            flex: 1;
-            padding: 12px 20px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        
-        #task-title:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        #add-task-btn {
-            padding: 12px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        
-        #add-task-btn:hover {
-            transform: translateY(-2px);
-        }
-        
-        #add-task-btn:active {
-            transform: translateY(0);
-        }
-        
-        .task-list {
-            list-style: none;
-        }
-        
-        .task-item {
-            background: #f8f9fa;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 0.3s;
-        }
-        
-        .task-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        
-        .task-item.completed {
-            background: #e8f5e9;
-        }
-        
-        .task-content {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .task-checkbox {
-            width: 24px;
-            height: 24px;
-            cursor: pointer;
-        }
-        
-        .task-title {
-            font-size: 18px;
-            color: #333;
-        }
-        
-        .task-item.completed .task-title {
-            text-decoration: line-through;
-            color: #999;
-        }
-        
-        .task-actions {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .delete-btn {
-            padding: 8px 16px;
-            background: #f44336;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        
-        .delete-btn:hover {
-            background: #d32f2f;
-        }
-        
-        .empty-message {
-            text-align: center;
-            color: #999;
-            font-size: 18px;
-            padding: 40px;
-        }
-        
-        .error-message {
-            background: #ffebee;
-            color: #c62828;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        
-        .success-message {
-            background: #e8f5e9;
-            color: #2e7d32;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-    </style>
+    <title>ユーザー一覧</title>
 </head>
 <body>
-    <div class="container">
-        <h1>📝 タスク管理</h1>
+    <main>
+        <h1>ユーザー一覧</h1>
         
-        <!-- メッセージ表示エリア -->
-        <div id="error-message" class="error-message"></div>
-        <div id="success-message" class="success-message"></div>
-        
-        <!-- タスク追加フォーム -->
-        <div class="task-form">
-            <input 
-                type="text" 
-                id="task-title" 
-                placeholder="新しいタスクを入力..."
-                maxlength="100">
-            <button id="add-task-btn">追加</button>
+        <!-- 検索フォーム -->
+        <div style="margin-bottom: 20px;">
+            <input type="text" 
+                   id="searchInput" 
+                   placeholder="名前で検索..."
+                   style="padding: 10px; width: 300px; border: 1px solid #ddd; border-radius: 4px;">
+            <button onclick="searchUsers()" 
+                    style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                検索
+            </button>
+            <button onclick="resetSearch()" 
+                    style="padding: 10px 20px; background-color: #999; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+                リセット
+            </button>
         </div>
         
-        <!-- タスク一覧 -->
-        <ul id="task-list" class="task-list">
-            <!-- 初回表示: Thymeleafでレンダリング -->
-            <li th:each="task : ${tasks}" 
-                th:id="'task-' + ${task.id}"
-                th:class="${task.completed} ? 'task-item completed' : 'task-item'"
-                th:data-task-id="${task.id}">
-                <div class="task-content">
-                    <input 
-                        type="checkbox" 
-                        class="task-checkbox"
-                        th:checked="${task.completed}"
-                        th:onchange="'toggleTask(' + ${task.id} + ')'">
-                    <span class="task-title" th:text="${task.title}"></span>
-                </div>
-                <div class="task-actions">
-                    <button 
-                        class="delete-btn" 
-                        th:onclick="'deleteTask(' + ${task.id} + ')'">
-                        削除
-                    </button>
-                </div>
-            </li>
-            
-            <!-- タスクがない場合のメッセージ -->
-            <li th:if="${#lists.isEmpty(tasks)}" class="empty-message">
-                タスクがありません。上のフォームから追加してください！
-            </li>
-        </ul>
-    </div>
-    
-    <script>
-        // タスク追加
-        document.getElementById('add-task-btn').addEventListener('click', addTask);
-        document.getElementById('task-title').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                addTask();
-            }
-        });
+        <!-- 検索結果表示エリア -->
+        <div id="loading" style="display: none; text-align: center; padding: 20px; color: #999;">
+            <p>検索中...</p>
+        </div>
         
-        async function addTask() {
-            const titleInput = document.getElementById('task-title');
-            const title = titleInput.value.trim();
-            
-            if (!title) {
-                showError('タスクのタイトルを入力してください');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/tasks', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ title: title, description: '' })
-                });
-                
-                if (!response.ok) {
-                    throw new Error('タスクの追加に失敗しました');
-                }
-                
-                const task = await response.json();
-                
-                // DOMに追加
-                addTaskToDOM(task);
-                
-                // 入力欄をクリア
-                titleInput.value = '';
-                
-                // 空メッセージを削除
-                removeEmptyMessage();
-                
-                showSuccess('タスクを追加しました！');
-                
-            } catch (error) {
-                showError(error.message);
-            }
-        }
+        <div id="userTableContainer">
+            <table th:unless="${users.empty}" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">ID</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">名前</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">メールアドレス</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">年齢</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="userTableBody">
+                    <tr th:each="user : ${users}">
+                        <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.id}">1</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.name}">田中太郎</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.email}">tanaka@example.com</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.age}">25</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">
+                            <a href="javascript:void(0)" 
+                               th:data-user-id="${user.id}"
+                               onclick="showUserDetail(this.getAttribute('data-user-id'))" 
+                               style="color: #4CAF50; text-decoration: none;">
+                                詳細
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
         
-        // タスクの完了/未完了切り替え
-        async function toggleTask(taskId) {
-            try {
-                const response = await fetch(`/api/tasks/${taskId}/toggle`, {
-                    method: 'PATCH'
-                });
-                
-                if (!response.ok) {
-                    throw new Error('ステータスの更新に失敗しました');
-                }
-                
-                const task = await response.json();
-                
-                // DOMを更新
-                const taskElement = document.getElementById(`task-${taskId}`);
-                if (task.completed) {
-                    taskElement.classList.add('completed');
-                } else {
-                    taskElement.classList.remove('completed');
-                }
-                
-            } catch (error) {
-                showError(error.message);
-            }
-        }
+        <p>合計: <span id="userCount" th:text="${users.size()}">0</span> 件</p>
         
-        // タスク削除
-        async function deleteTask(taskId) {
-            if (!confirm('このタスクを削除してもよろしいですか？')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tasks/${taskId}`, {
-                    method: 'DELETE'
-                });
+        <script>
+            // 非同期でユーザー検索
+            async function searchUsers() {
+                const searchInput = document.getElementById('searchInput');
+                const keyword = searchInput.value.trim();
                 
-                if (!response.ok) {
-                    throw new Error('タスクの削除に失敗しました');
+                if (!keyword) {
+                    alert('検索キーワードを入力してください');
+                    return;
                 }
                 
-                // DOMから削除
-                const taskElement = document.getElementById(`task-${taskId}`);
-                taskElement.style.transition = 'all 0.3s';
-                taskElement.style.opacity = '0';
-                taskElement.style.transform = 'translateX(-100%)';
+                // ローディング表示
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('userTableContainer').style.display = 'none';
                 
-                setTimeout(() => {
-                    taskElement.remove();
+                try {
+                    // REST APIを呼び出し
+                    const response = await fetch(`/api/users/search?name=${encodeURIComponent(keyword)}`);
                     
-                    // タスクが0件になったら空メッセージを表示
-                    const taskList = document.getElementById('task-list');
-                    if (taskList.children.length === 0) {
-                        showEmptyMessage();
+                    if (!response.ok) {
+                        throw new Error('検索に失敗しました');
                     }
-                }, 300);
-                
-                showSuccess('タスクを削除しました');
-                
-            } catch (error) {
-                showError(error.message);
+                    
+                    const users = await response.json();
+                    
+                    // テーブルを更新
+                    updateUserTable(users);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('検索中にエラーが発生しました');
+                } finally {
+                    // ローディング非表示
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('userTableContainer').style.display = 'block';
+                }
             }
-        }
-        
-        // DOMにタスクを追加
-        function addTaskToDOM(task) {
-            const taskList = document.getElementById('task-list');
             
-            const li = document.createElement('li');
-            li.id = `task-${task.id}`;
-            li.className = task.completed ? 'task-item completed' : 'task-item';
-            li.dataset.taskId = task.id;
-            
-            li.innerHTML = `
-                <div class="task-content">
-                    <input 
-                        type="checkbox" 
-                        class="task-checkbox"
-                        ${task.completed ? 'checked' : ''}
-                        onchange="toggleTask(${task.id})">
-                    <span class="task-title">${escapeHtml(task.title)}</span>
-                </div>
-                <div class="task-actions">
-                    <button class="delete-btn" onclick="deleteTask(${task.id})">削除</button>
-                </div>
-            `;
-            
-            // リストの先頭に追加（新しいタスクを上に表示）
-            taskList.insertBefore(li, taskList.firstChild);
-        }
-        
-        // 空メッセージを削除
-        function removeEmptyMessage() {
-            const emptyMessage = document.querySelector('.empty-message');
-            if (emptyMessage) {
-                emptyMessage.remove();
+            // テーブルを更新
+            function updateUserTable(users) {
+                const tbody = document.getElementById('userTableBody');
+                const countSpan = document.getElementById('userCount');
+                
+                // テーブルをクリア
+                tbody.innerHTML = '';
+                
+                // 検索結果がない場合
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #999;">該当するユーザーが見つかりませんでした</td></tr>';
+                    countSpan.textContent = '0';
+                    return;
+                }
+                
+                // 各ユーザーを行として追加
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="border: 1px solid #ddd; padding: 12px;">${user.id}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">${escapeHtml(user.name)}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">${escapeHtml(user.email)}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">${user.age}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">
+                            <a href="/views/users/${user.id}" style="color: #4CAF50; text-decoration: none;">詳細</a>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                // 件数を更新
+                countSpan.textContent = users.length;
             }
-        }
-        
-        // 空メッセージを表示
-        function showEmptyMessage() {
-            const taskList = document.getElementById('task-list');
-            const li = document.createElement('li');
-            li.className = 'empty-message';
-            li.textContent = 'タスクがありません。上のフォームから追加してください！';
-            taskList.appendChild(li);
-        }
-        
-        // エラーメッセージ表示
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
             
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 3000);
-        }
-        
-        // 成功メッセージ表示
-        function showSuccess(message) {
-            const successDiv = document.getElementById('success-message');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
+            // XSS対策: HTMLエスケープ
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
             
-            setTimeout(() => {
-                successDiv.style.display = 'none';
-            }, 3000);
-        }
-        
-        // XSS対策: HTMLエスケープ
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-    </script>
+            // 検索をリセット
+            function resetSearch() {
+                document.getElementById('searchInput').value = '';
+                window.location.reload();
+            }
+            
+            // Enterキーで検索
+            document.getElementById('searchInput').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    searchUsers();
+                }
+            });
+        </script>
+    </main>
 </body>
 </html>
 ```
 
----
+### 1-2. JavaScriptコードの解説
 
-## ▶️ ステップ7: アプリケーションの起動と確認
+#### Fetch API
+```javascript
+const response = await fetch('/api/users/search?name=' + keyword);
+const users = await response.json();
+```
+- `fetch()`: 非同期HTTPリクエストを送信
+- `await`: Promiseの結果を待つ（async関数内でのみ使用可能）
+- `response.json()`: レスポンスをJSON形式でパース
 
-### 7-1. MySQLの起動
-
-Docker Composeを使用している場合：
-
-```bash
-docker-compose up -d
+#### DOM操作
+```javascript
+tbody.innerHTML = '';  // 既存の行を削除
+tbody.appendChild(row);  // 新しい行を追加
 ```
 
-### 7-2. アプリケーションの起動
-
-```bash
-./mvnw spring-boot:run
+#### XSS対策
+```javascript
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 ```
-
-### 7-3. 動作確認
-
-ブラウザで以下にアクセス：
-
-```
-http://localhost:8080/tasks
-```
-
-**確認すべき動作**:
-1. ✅ ページが表示される
-2. ✅ タスクを追加できる（リロードなし）
-3. ✅ チェックボックスで完了/未完了を切り替えられる
-4. ✅ 削除ボタンでタスクが削除される
-5. ✅ すべての操作でページリロードが発生しない
+- ユーザー入力をそのままHTMLに挿入すると危険
+- `textContent`を使ってエスケープ
 
 ---
 
-## 🧪 ステップ8: REST APIの単体テスト
+## 🚀 ステップ2: インライン削除機能
 
-### 8-1. curlでAPIテスト
+### 2-1. 削除ボタンの追加
 
-```bash
-# 全件取得
-curl http://localhost:8080/api/tasks
+`users/list.html`の操作列を修正:
 
-# タスク作成
-curl -X POST http://localhost:8080/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title":"カリキュラムを完了する","description":"Step 24まで頑張る"}'
-
-# 完了状態の切り替え（IDは作成時のレスポンスから取得）
-curl -X PATCH http://localhost:8080/api/tasks/1/toggle
-
-# タスク削除
-curl -X DELETE http://localhost:8080/api/tasks/1
+```html
+<td style="border: 1px solid #ddd; padding: 12px;">
+    <a href="javascript:void(0)" 
+       th:data-user-id="${user.id}"
+       onclick="showUserDetail(this.getAttribute('data-user-id'))" 
+       style="color: #4CAF50; text-decoration: none; margin-right: 10px;">
+        詳細
+    </a>
+    <button th:data-user-id="${user.id}"
+            th:data-user-name="${user.name}"
+            onclick="deleteUser(this.getAttribute('data-user-id'), this.getAttribute('data-user-name'))" 
+            style="background-color: #d32f2f; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+        削除
+    </button>
+</td>
 ```
 
-### 8-2. ブラウザの開発者ツールで確認
+### 2-2. 削除処理JavaScript
 
-1. ブラウザでF12キーを押して開発者ツールを開く
-2. 「Network」タブを選択
-3. タスクを追加・削除してみる
-4. 送信されたリクエストとレスポンスを確認
+`<script>`タグに以下を追加:
 
-**確認ポイント**:
-- リクエストメソッド（POST, PATCH, DELETE）
-- リクエストボディ（JSON形式）
-- レスポンスステータス（200, 201, 204）
-- レスポンスボディ（JSON形式）
+```javascript
+// ユーザーを削除
+async function deleteUser(userId, userName) {
+    // 確認ダイアログ
+    if (!confirm(`${userName} を削除しますか？`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/users/${userId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            throw new Error('削除に失敗しました');
+        }
+        
+        // 成功: 該当行を削除
+        alert('削除しました');
+        
+        // テーブルから行を削除（DOM操作）
+        const row = event.target.closest('tr');
+        row.remove();
+        
+        // 件数を更新
+        const countSpan = document.getElementById('userCount');
+        const currentCount = parseInt(countSpan.textContent);
+        countSpan.textContent = currentCount - 1;
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('削除中にエラーが発生しました');
+    }
+}
+```
+
+### 2-3. Thymeleafインライン式の解説
+
+#### `th:data-*`属性を使う理由
+
+Thymeleaf 3.xでは、セキュリティ上の理由から`th:onclick`内で変数を文字列連結することが禁止されています。
+
+**NG: エラーになる**:
+```html
+<!-- ❌ Thymeleafがセキュリティエラーを出す -->
+<button th:onclick="'deleteUser(' + ${user.id} + ', \'' + ${user.name} + '\')'">
+```
+
+**エラーメッセージ**:
+```
+TemplateProcessingException: Only variable expressions returning numbers or booleans 
+are allowed in this context
+```
+
+**OK: data属性を使う**:
+```html
+<!-- ✅ data属性でデータを渡し、JavaScriptで取得 -->
+<button th:data-user-id="${user.id}"
+        th:data-user-name="${user.name}"
+        onclick="deleteUser(this.getAttribute('data-user-id'), this.getAttribute('data-user-name'))">
+```
+
+#### data属性のメリット
+
+1. **XSS対策**: HTMLエスケープが自動的に適用される
+2. **セキュリティ**: Thymeleafの厳格なチェックを通過
+3. **可読性**: データと処理が分離される
+
+#### JavaScriptでの取得方法
+
+```javascript
+// 方法1: getAttribute()
+const userId = this.getAttribute('data-user-id');
+
+// 方法2: dataset API（推奨）
+const userId = this.dataset.userId;  // data-user-id → userId
+```
+
+---
+
+## 🚀 ステップ3: モーダルダイアログで詳細表示
+
+### 3-1. モーダルHTML構造
+
+`users/list.html`の`<main>`内に追加:
+
+```html
+<!-- モーダルダイアログ -->
+<div id="userModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="background-color: white; width: 500px; margin: 100px auto; padding: 30px; border-radius: 8px; position: relative;">
+        <button onclick="closeModal()" 
+                style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">
+            &times;
+        </button>
+        
+        <h2>ユーザー詳細</h2>
+        
+        <div id="modalContent" style="margin-top: 20px;">
+            <p><strong>ID:</strong> <span id="modalId"></span></p>
+            <p><strong>名前:</strong> <span id="modalName"></span></p>
+            <p><strong>メールアドレス:</strong> <span id="modalEmail"></span></p>
+            <p><strong>年齢:</strong> <span id="modalAge"></span></p>
+            <p><strong>登録日時:</strong> <span id="modalCreatedAt"></span></p>
+            <p><strong>更新日時:</strong> <span id="modalUpdatedAt"></span></p>
+        </div>
+        
+        <div style="margin-top: 20px; text-align: right;">
+            <button onclick="closeModal()" 
+                    style="padding: 10px 20px; background-color: #999; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                閉じる
+            </button>
+        </div>
+    </div>
+</div>
+```
+
+### 3-2. モーダル制御JavaScript
+
+```javascript
+// モーダルでユーザー詳細を表示
+async function showUserDetail(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        
+        if (!response.ok) {
+            throw new Error('ユーザー情報の取得に失敗しました');
+        }
+        
+        const user = await response.json();
+        
+        // モーダルに値をセット
+        document.getElementById('modalId').textContent = user.id;
+        document.getElementById('modalName').textContent = user.name;
+        document.getElementById('modalEmail').textContent = user.email;
+        document.getElementById('modalAge').textContent = user.age;
+        document.getElementById('modalCreatedAt').textContent = formatDateTime(user.createdAt);
+        document.getElementById('modalUpdatedAt').textContent = formatDateTime(user.updatedAt);
+        
+        // モーダルを表示
+        document.getElementById('userModal').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('ユーザー情報の取得に失敗しました');
+    }
+}
+
+// モーダルを閉じる
+function closeModal() {
+    document.getElementById('userModal').style.display = 'none';
+}
+
+// 日時フォーマット
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return '-';
+    const date = new Date(dateTimeStr);
+    return date.toLocaleString('ja-JP');
+}
+
+// モーダル外クリックで閉じる
+document.getElementById('userModal').addEventListener('click', function(event) {
+    if (event.target === this) {
+        closeModal();
+    }
+});
+```
+
+### 3-3. テーブルの詳細リンクを修正
+
+```html
+<td style="border: 1px solid #ddd; padding: 12px;">
+    <a href="javascript:void(0)" 
+       onclick="showUserDetail([[${user.id}]])" 
+       style="color: #4CAF50; text-decoration: none; margin-right: 10px;">
+        詳細
+    </a>
+    <button onclick="deleteUser([[${user.id}]], '[[${user.name}]]')" 
+            style="background-color: #d32f2f; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+        削除
+    </button>
+</td>
+```
+
+---
+
+## 🚀 ステップ4: リアルタイムバリデーション
+
+### 4-1. フォームにリアルタイムチェック追加
+
+`users/form.html`の名前フィールドを修正:
+
+```html
+<div class="form-group">
+    <label for="name">名前</label>
+    <input type="text" 
+           id="name" 
+           th:field="*{name}"
+           th:errorclass="error-border"
+           placeholder="山田太郎"
+           oninput="validateName()">
+    <div class="error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></div>
+    <div id="nameValidation" class="error" style="display: none;"></div>
+</div>
+
+<script>
+    let nameCheckTimeout;
+    
+    // 名前のリアルタイムバリデーション
+    function validateName() {
+        const nameInput = document.getElementById('name');
+        const validationDiv = document.getElementById('nameValidation');
+        const name = nameInput.value.trim();
+        
+        // 入力がクリアされた場合
+        if (!name) {
+            validationDiv.style.display = 'none';
+            return;
+        }
+        
+        // 文字数チェック（ローカル）
+        if (name.length < 2 || name.length > 50) {
+            validationDiv.textContent = '名前は2〜50文字で入力してください';
+            validationDiv.style.display = 'block';
+            nameInput.classList.add('error-border');
+            return;
+        }
+        
+        // デバウンス処理（連続入力を待つ）
+        clearTimeout(nameCheckTimeout);
+        nameCheckTimeout = setTimeout(async () => {
+            try {
+                // サーバーサイドで重複チェック
+                const response = await fetch(`/api/users/check-name?name=${encodeURIComponent(name)}`);
+                const result = await response.json();
+                
+                if (result.exists) {
+                    validationDiv.textContent = 'この名前は既に使用されています';
+                    validationDiv.style.display = 'block';
+                    nameInput.classList.add('error-border');
+                } else {
+                    validationDiv.style.display = 'none';
+                    nameInput.classList.remove('error-border');
+                }
+                
+            } catch (error) {
+                console.error('Validation error:', error);
+            }
+        }, 500);  // 500ms待ってからチェック
+    }
+</script>
+```
+
+### 4-2. チェック用APIエンドポイント（参考）
+
+`UserController.java`に追加（実装は任意）:
+
+```java
+@GetMapping("/check-name")
+public ResponseEntity<Map<String, Boolean>> checkNameExists(
+        @RequestParam String name) {
+    // 簡易実装（実際はDBチェック）
+    boolean exists = name.equals("admin") || name.equals("test");
+    return ResponseEntity.ok(Map.of("exists", exists));
+}
+```
+
+---
+
+## ✅ 動作確認
+
+### 1. 非同期検索の確認
+
+1. ユーザー一覧にアクセス: `http://localhost:8080/views/users`
+2. 検索フォームに名前の一部を入力
+3. 「検索」ボタンをクリック
+
+**期待される結果**:
+- ページがリロードされない
+- 該当するユーザーのみが表示される
+- 件数が更新される
+
+### 2. 削除機能の確認
+
+1. ユーザー一覧で「削除」ボタンをクリック
+2. 確認ダイアログで「OK」
+
+**期待される結果**:
+- ページがリロードされない
+- 該当の行がテーブルから消える
+- 件数が1減る
+
+### 3. モーダル表示の確認
+
+1. ユーザー一覧で「詳細」リンクをクリック
+
+**期待される結果**:
+- モーダルダイアログが表示される
+- ユーザー情報が表示される
+- 背景がグレーアウトされる
+- モーダル外をクリックで閉じる
 
 ---
 
 ## 🎨 チャレンジ課題
 
-基本が理解できたら、以下にチャレンジしてみましょう：
+### チャレンジ 1: オートコンプリート検索
 
-### チャレンジ 1: タスクの編集機能を追加
-
-タスクのタイトルをクリックすると、インラインで編集できるようにしてみましょう。
+入力中に候補を表示するオートコンプリートを実装してみましょう。
 
 **ヒント**:
-- `contenteditable="true"` 属性を使う
-- `blur` イベントで変更を検知
-- PUT `/api/tasks/{id}` で更新
+- `oninput`イベントで入力を検知
+- デバウンス処理で無駄なリクエストを減らす
+- ドロップダウンリストで候補を表示
 
-### チャレンジ 2: フィルター機能を追加
+### チャレンジ 2: インライン編集
 
-「全て」「未完了」「完了済み」でタスクを絞り込めるボタンを追加してみましょう。
-
-**ヒント**:
-- クライアントサイドで配列をフィルタリング
-- または、APIに `?completed=true` のようなクエリパラメータを追加
-
-### チャレンジ 3: ローディング表示を追加
-
-API通信中に「読み込み中...」というメッセージを表示してみましょう。
+テーブルの行をダブルクリックでそのまま編集できる機能を追加してみましょう。
 
 **ヒント**:
-```javascript
-async function addTask() {
-    showLoading(true);
-    try {
-        // API呼び出し
-    } finally {
-        showLoading(false);
-    }
-}
-```
+- `contenteditable="true"`属性を使用
+- 編集完了時にPUT APIを呼び出し
 
-### チャレンジ 4: タスクの詳細情報を表示
+### チャレンジ 3: ページネーション
 
-タスクをクリックすると、モーダルで説明文や作成日時を表示してみましょう。
+大量データをページング表示する機能を実装してみましょう。
+
+**ヒント**:
+- URLパラメータ`?page=1&size=10`
+- ページ番号ボタンで非同期にデータ取得
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "Failed to fetch"
+### CORSエラー: "Access-Control-Allow-Origin"
 
-**原因**: APIサーバーが起動していない、またはURLが間違っている
-
-**解決策**:
-1. Spring Bootアプリケーションが起動しているか確認
-2. ブラウザのコンソールでエラー詳細を確認
-3. `/api/tasks` のパスが正しいか確認
-
-### タスクが追加されない
-
-**原因**: バリデーションエラー、またはデータベース接続エラー
+**原因**: 異なるオリジンからのリクエストがブロックされる
 
 **解決策**:
-1. ブラウザの開発者ツールでレスポンスを確認
-2. サーバー側のログを確認
-3. MySQLコンテナが起動しているか確認
-
-### CORSエラーが発生する
-
-**原因**: 異なるオリジン（ポート）からのアクセス
-
-**解決策**: 今回は同一オリジンなので発生しないはずですが、もし発生したら以下を追加：
+同じサーバーからHTMLとAPIを配信している場合は発生しない。外部APIを呼び出す場合は`@CrossOrigin`が必要:
 
 ```java
-@Configuration
-public class WebConfig implements WebMvcConfigurer {
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:8080")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH");
-    }
+@CrossOrigin(origins = "http://localhost:8080")
+@RestController
+public class UserController {
+    // ...
 }
 ```
+
+### Thymeleafセキュリティエラー: "Only variable expressions returning numbers or booleans"
+
+**原因**: `th:onclick`内で文字列を連結している
+
+**NGコード**:
+```html
+<!-- ❌ エラー: 文字列連結は許可されない -->
+<button th:onclick="'deleteUser(' + ${user.id} + ')'">削除</button>
+```
+
+**解決策**: `data-*`属性を使う
+```html
+<!-- ✅ data属性でデータを渡す -->
+<button th:data-user-id="${user.id}"
+        onclick="deleteUser(this.getAttribute('data-user-id'))">
+    削除
+</button>
+```
+
+### GlobalExceptionHandlerとの競合
+
+**原因**: `@ControllerAdvice`がThymeleafコントローラーにも適用され、HTML応答できない
+
+**解決策**: REST APIのみに適用するよう制限
+```java
+// ✅ @RestControllerのみに適用
+@ControllerAdvice(annotations = org.springframework.web.bind.annotation.RestController.class)
+public class GlobalExceptionHandler {
+    // ...
+}
+```
+
+### Promiseエラー: "Uncaught (in promise)"
+
+**原因**: async/awaitのエラーハンドリング不足
+
+**解決策**:
+```javascript
+try {
+    const response = await fetch('/api/users');
+    // ...
+} catch (error) {
+    console.error('Error:', error);  // 必ずログ出力
+    alert('エラーが発生しました');
+}
+```
+
+### DOM要素が見つからない
+
+**原因**: `document.getElementById()`が`null`を返す
+
+**解決策**:
+1. IDが正しいか確認
+2. スクリプトがDOMより後に配置されているか確認
+3. `DOMContentLoaded`イベントで初期化
+
+```javascript
+document.addEventListener('DOMContentLoaded', function() {
+    // 初期化処理
+});
+```
+
+### XSS脆弱性
+
+**原因**: ユーザー入力をエスケープせずにHTMLに挿入
+
+**解決策**:
+```javascript
+// NG: XSS脆弱性あり
+element.innerHTML = user.name;
+
+// OK: エスケープして安全に
+element.textContent = user.name;
+
+// または
+element.innerHTML = escapeHtml(user.name);
+```
+
+**重要**: Thymeleafの`data-*`属性は自動的にエスケープされるので安全です。
 
 ---
 
 ## 📚 このステップで学んだこと
 
-### ThymeleafとREST APIの使い分け
-
-| 用途 | Thymeleaf | REST API + JavaScript |
-|------|-----------|------------------------|
-| **初回ページ表示** | ⭕ 適している | ❌ 遅い（2往復必要） |
-| **動的な更新** | ❌ ページリロードが必要 | ⭕ リロードなし |
-| **SEO** | ⭕ サーバーサイドレンダリング | ❌ 初回はコンテンツなし |
-| **開発の容易さ** | ⭕ シンプル | △ JavaScriptの知識が必要 |
-| **保守性** | ⭕ テンプレートで一元管理 | △ フロントとバックで分離 |
-
-**ベストプラクティス**:
-- **初回表示**: Thymeleafでサーバーサイドレンダリング
-- **動的操作**: JavaScriptでREST APIを呼び出し
-
-### Fetch APIの基本
-
-```javascript
-// GET
-const response = await fetch('/api/tasks');
-const data = await response.json();
-
-// POST
-const response = await fetch('/api/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'タスク' })
-});
-
-// PATCH
-await fetch(`/api/tasks/${id}/toggle`, { method: 'PATCH' });
-
-// DELETE
-await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-```
-
-### DOM操作のポイント
-
-- `createElement()`: 新しい要素を作成
-- `appendChild()`: 子要素として追加
-- `insertBefore()`: 指定位置に挿入
-- `remove()`: 要素を削除
-- `classList.add/remove()`: クラスの追加・削除
+- ✅ Fetch APIを使った非同期通信
+- ✅ async/awaitでPromiseを処理
+- ✅ Thymeleafインライン式でJavaScriptに値を渡す
+- ✅ DOM操作で動的にテーブルを更新
+- ✅ モーダルダイアログの実装
+- ✅ デバウンス処理でパフォーマンス最適化
+- ✅ XSS対策（HTMLエスケープ）
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 💡 補足: SSRとCSRのハイブリッド戦略
 
-進捗を記録してレビューを受けましょう：
+### 使い分けの基準
 
-```bash
-git add .
-git commit -m "Step 24: Thymeleaf + REST API連携完了"
-git push origin main
-```
+| 機能 | 推奨手法 | 理由 |
+|---|---|---|
+| 初期表示 | SSR（Thymeleaf） | SEO、高速表示 |
+| 検索・フィルタ | CSR（JavaScript） | リアルタイム性 |
+| フォーム送信 | SSR（POST） | セキュリティ、確実性 |
+| 削除・部分更新 | CSR（AJAX） | UX向上 |
+| 一覧ページング | ハイブリッド | 状況に応じて |
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+### パフォーマンス最適化
+
+1. **デバウンス**: 連続入力を待ってからリクエスト送信
+2. **キャッシュ**: 一度取得したデータを再利用
+3. **楽観的UI更新**: サーバー応答を待たずにUIを更新
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、**Phase 6: セキュリティとテスト**へ進みましょう！
+これでPhase 5（Thymeleafでサーバーサイドレンダリング）は完了です！
 
-[Step 25: Spring Securityの基礎](../phase6/STEP_25.md)で、認証・認可の基本を学びます。
+次は[Phase 6: セキュリティとテスト](../phase6/STEP_25.md)へ進みましょう。
 
----
-
-## 💡 補足: SPAとSSRの違い
-
-### SPA (Single Page Application)
-- **例**: React, Vue.js, Angular
-- **特徴**: 初回にHTMLを1つ読み込み、以降はAPIでデータのみ取得
-- **メリット**: 高速、UX良好
-- **デメリット**: SEO対策が必要、初回読み込みが遅い
-
-### SSR (Server Side Rendering)
-- **例**: Thymeleaf, JSP, PHP
-- **特徴**: サーバーでHTMLを生成してクライアントに送信
-- **メリット**: SEO対策不要、初回表示が速い
-- **デメリット**: ページ遷移で全体リロード
-
-### ハイブリッド（今回の実装）
-- **初回**: ThymeleafでSSR
-- **以降**: JavaScriptでAPI呼び出し
-- **メリット**: 両方の良いとこ取り
-- **ユースケース**: ブログ、EC サイト、管理画面など
-
----
-
-お疲れさまでした！ 🎉
-
-Thymeleaf + REST APIの連携により、モダンなWebアプリケーションの開発手法を習得できました！
-
-次のPhase 6では、セキュリティとテストについて学んでいきます。
+Phase 6では、Spring Securityを使った認証・認可、JWTトークン、ユニットテスト、統合テストを学びます。

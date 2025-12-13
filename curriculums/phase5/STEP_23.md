@@ -2,805 +2,792 @@
 
 ## 🎯 このステップの目標
 
-- `th:fragment`で共通部品を定義する方法を学ぶ
-- `th:replace`と`th:insert`でフラグメントを再利用する
-- Thymeleaf Layout Dialectでレイアウトを構築する
-- BootstrapなどのCSSフレームワークを統合する
-- DRY原則に基づいたテンプレート設計を実践する
+- Thymeleafフラグメントで共通部品を作成できる
+- `th:fragment`と`th:replace`で部品を再利用できる
+- レイアウトテンプレートでページ全体の構造を統一できる
+- パラメータ付きフラグメントで柔軟な部品化ができる
 
-**所要時間**: 約1時間30分
+**所要時間**: 約45分
 
 ---
 
 ## 📋 事前準備
 
-- Step 21、22の完了
-- HTMLとCSSの基礎知識
-- Bootstrapの基本的な理解（オプション）
+- [Step 22: フォーム送信とバリデーション](STEP_22.md)が完了していること
+- HTMLの構造（header, nav, main, footer）を理解していること
 
 ---
 
-## 💡 なぜフラグメントが必要なのか？
+## 🎓 フラグメントとレイアウトの必要性
 
 ### 問題: コードの重複
 
-各ページで同じヘッダー・フッターをコピペ:
-
+**各ページで同じコードを書く**:
 ```html
 <!-- users/list.html -->
-<header>...</header>  <!-- 重複 -->
-<main>ユーザー一覧</main>
-<footer>...</footer>  <!-- 重複 -->
+<head>
+    <meta charset="UTF-8">
+    <title>ユーザー一覧</title>
+    <style>/* 共通スタイル */</style>
+</head>
 
-<!-- products/list.html -->
-<header>...</header>  <!-- 重複 -->
-<main>商品一覧</main>
-<footer>...</footer>  <!-- 重複 -->
+<!-- users/detail.html -->
+<head>
+    <meta charset="UTF-8">
+    <title>ユーザー詳細</title>
+    <style>/* 同じスタイル */</style>
+</head>
 ```
 
 **問題点**:
-- ヘッダーを変更すると全ページ修正が必要
-- メンテナンス性が悪い
-- ミスが発生しやすい
+- 同じコードが複数ファイルに散らばる
+- 修正時にすべてのファイルを変更する必要がある
+- ヘッダー/フッターの一貫性を保つのが困難
 
-### 解決: フラグメント化
+### 解決策: フラグメントとレイアウト
 
-```html
-<!-- fragments/layout.html -->
-<header th:fragment="header">...</header>
-<footer th:fragment="footer">...</footer>
-
-<!-- users/list.html -->
-<div th:replace="~{fragments/layout :: header}"></div>
-<main>ユーザー一覧</main>
-<div th:replace="~{fragments/layout :: footer}"></div>
 ```
-
-**メリット**:
-- 1箇所修正すれば全ページに反映
-- DRY原則（Don't Repeat Yourself）
-- 保守性向上
+layouts/
+├── base.html          # 基本レイアウト
+└── fragments/
+    ├── header.html    # ヘッダー部品
+    ├── nav.html       # ナビゲーション部品
+    └── footer.html    # フッター部品
+```
 
 ---
 
-## 🏗️ 実装手順
+## 🚀 ステップ1: 共通フラグメントの作成
 
-### Step 1: 基本的なフラグメントの作成
+### 1-1. ディレクトリ作成
 
-`src/main/resources/templates/fragments/layout.html`:
+```bash
+mkdir -p src/main/resources/templates/layouts/fragments
+```
+
+### 1-2. ヘッダーフラグメント
+
+`src/main/resources/templates/layouts/fragments/header.html`を作成:
 
 ```html
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head th:fragment="head(title)">
+<head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- 動的にタイトルを設定 -->
-    <title th:text="${title}">デフォルトタイトル</title>
-    
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" 
-          rel="stylesheet">
-    
-    <!-- カスタムCSS -->
-    <style>
-        body {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        main {
-            flex: 1;
-        }
-        footer {
-            margin-top: auto;
-        }
-    </style>
 </head>
-
 <body>
-    <!-- ヘッダー部分 -->
+    <!-- ヘッダーフラグメント -->
     <header th:fragment="header">
-        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-            <div class="container">
-                <a class="navbar-brand" th:href="@{/}">
-                    Spring Boot カリキュラム
-                </a>
-                <button class="navbar-toggler" type="button" 
-                        data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav ms-auto">
-                        <li class="nav-item">
-                            <a class="nav-link" th:href="@{/}">ホーム</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" th:href="@{/users}">ユーザー管理</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" th:href="@{/api/products}">商品管理</a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
+        <div class="header-container">
+            <h1 class="logo">
+                <a th:href="@{/views/users}">Spring Boot App</a>
+            </h1>
+            <nav class="main-nav">
+                <ul>
+                    <li><a th:href="@{/views/users}">ユーザー一覧</a></li>
+                    <li><a th:href="@{/views/users/new}">新規登録</a></li>
+                    <li><a th:href="@{/views/hello}">Hello</a></li>
+                </ul>
+            </nav>
+        </div>
     </header>
     
-    <!-- フッター部分 -->
-    <footer th:fragment="footer" class="bg-dark text-white py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-0">&copy; 2025 Spring Boot Curriculum. All rights reserved.</p>
-            <p class="mb-0 small">
-                Powered by 
-                <a href="https://spring.io/" target="_blank" class="text-white">Spring Boot</a> &amp; 
-                <a href="https://www.thymeleaf.org/" target="_blank" class="text-white">Thymeleaf</a>
-            </p>
+    <style>
+        .header-container {
+            background-color: #4CAF50;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo a {
+            color: white;
+            text-decoration: none;
+            font-size: 1.5rem;
+        }
+        .main-nav ul {
+            list-style: none;
+            display: flex;
+            gap: 2rem;
+            margin: 0;
+            padding: 0;
+        }
+        .main-nav a {
+            color: white;
+            text-decoration: none;
+        }
+        .main-nav a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</body>
+</html>
+```
+
+### 1-3. フッターフラグメント
+
+`src/main/resources/templates/layouts/fragments/footer.html`を作成:
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <!-- フッターフラグメント -->
+    <footer th:fragment="footer">
+        <div class="footer-container">
+            <p>&copy; 2024 Spring Boot Application. All rights reserved.</p>
+            <p>Powered by Spring Boot 3.5.8 & Thymeleaf</p>
         </div>
     </footer>
     
-    <!-- Bootstrap JS -->
-    <script th:fragment="scripts">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </script>
+    <style>
+        .footer-container {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+        .footer-container p {
+            margin: 0.5rem 0;
+        }
+    </style>
 </body>
 </html>
 ```
 
-### Step 2: アラートメッセージのフラグメント
+### 1-4. フラグメント構文の解説
 
-`src/main/resources/templates/fragments/messages.html`:
-
+#### `th:fragment="fragmentName"`
 ```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<body>
-    <!-- 成功メッセージ -->
-    <div th:fragment="success" th:if="${successMessage}">
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle-fill"></i>
-            <span th:text="${successMessage}">成功メッセージ</span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    </div>
-    
-    <!-- エラーメッセージ -->
-    <div th:fragment="error" th:if="${errorMessage}">
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle-fill"></i>
-            <span th:text="${errorMessage}">エラーメッセージ</span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    </div>
-    
-    <!-- 情報メッセージ -->
-    <div th:fragment="info" th:if="${infoMessage}">
-        <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="bi bi-info-circle-fill"></i>
-            <span th:text="${infoMessage}">情報メッセージ</span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    </div>
-</body>
-</html>
+<header th:fragment="header">
+    <!-- ヘッダーの内容 -->
+</header>
 ```
+- フラグメントの定義
+- `fragmentName`で他のテンプレートから参照可能
+- 1つのファイルに複数のフラグメントを定義可能
 
-### Step 3: ページネーションのフラグメント
+---
 
-`src/main/resources/templates/fragments/pagination.html`:
+## 🚀 ステップ2: フラグメントの使用
 
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<body>
-    <!-- 
-        パラメータ:
-        - page: Pageオブジェクト
-        - url: ベースURL
-    -->
-    <nav th:fragment="paging(page, url)" th:if="${page.totalPages > 1}">
-        <ul class="pagination justify-content-center">
-            <!-- 前へ -->
-            <li class="page-item" th:classappend="${page.first} ? 'disabled'">
-                <a class="page-link" 
-                   th:href="${page.first} ? '#' : ${url + '?page=' + (page.number - 1)}">
-                    前へ
-                </a>
-            </li>
-            
-            <!-- ページ番号 -->
-            <li class="page-item" 
-                th:each="i : ${#numbers.sequence(0, page.totalPages - 1)}"
-                th:classappend="${i == page.number} ? 'active'">
-                <a class="page-link" th:href="${url + '?page=' + i}" th:text="${i + 1}">1</a>
-            </li>
-            
-            <!-- 次へ -->
-            <li class="page-item" th:classappend="${page.last} ? 'disabled'">
-                <a class="page-link" 
-                   th:href="${page.last} ? '#' : ${url + '?page=' + (page.number + 1)}">
-                    次へ
-                </a>
-            </li>
-        </ul>
-    </nav>
-</body>
-</html>
-```
+### 2-1. ユーザー一覧ページにフラグメントを適用
 
-### Step 4: フラグメントを使ったページの作成
-
-`src/main/resources/templates/users/list.html`を更新:
+`users/list.html`を以下のように修正:
 
 ```html
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <!-- headフラグメントを使用（タイトルを渡す） -->
-    <th:block th:replace="~{fragments/layout :: head('ユーザー一覧')}"></th:block>
+    <meta charset="UTF-8">
+    <title>ユーザー一覧</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
 </head>
 <body>
-    <!-- ヘッダー -->
-    <div th:replace="~{fragments/layout :: header}"></div>
+    <!-- ヘッダーを挿入 -->
+    <div th:replace="~{layouts/fragments/header :: header}"></div>
     
-    <main class="container my-5">
-        <h1 class="mb-4">ユーザー一覧</h1>
+    <div class="container">
+        <h1>ユーザー一覧</h1>
         
-        <!-- メッセージ表示 -->
-        <div th:replace="~{fragments/messages :: success}"></div>
-        <div th:replace="~{fragments/messages :: error}"></div>
-        
-        <!-- 新規登録ボタン -->
-        <div class="mb-3">
-            <a th:href="@{/users/new}" class="btn btn-primary">
-                <i class="bi bi-plus-circle"></i> 新規登録
-            </a>
+        <div th:if="${users.empty}" class="no-users">
+            <p>ユーザーが登録されていません</p>
         </div>
         
-        <!-- ユーザーテーブル -->
-        <div class="card">
-            <div class="card-body">
-                <div th:if="${users.isEmpty()}" class="alert alert-info">
-                    ユーザーが登録されていません。
-                </div>
-                
-                <table th:unless="${users.isEmpty()}" class="table table-hover">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>名前</th>
-                            <th>メールアドレス</th>
-                            <th>登録日時</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr th:each="user : ${users}">
-                            <td th:text="${user.id}">1</td>
-                            <td th:text="${user.name}">山田太郎</td>
-                            <td th:text="${user.email}">yamada@example.com</td>
-                            <td th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">
-                                2025-10-29 10:00
-                            </td>
-                            <td>
-                                <a th:href="@{/users/{id}(id=${user.id})}" 
-                                   class="btn btn-sm btn-info">詳細</a>
-                                <a th:href="@{/users/{id}/edit(id=${user.id})}" 
-                                   class="btn btn-sm btn-warning">編集</a>
-                                <form th:action="@{/users/{id}/delete(id=${user.id})}" 
-                                      method="post" 
-                                      style="display: inline;"
-                                      onsubmit="return confirm('本当に削除しますか？');">
-                                    <button type="submit" class="btn btn-sm btn-danger">削除</button>
-                                </form>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </main>
+        <table th:unless="${users.empty}">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>名前</th>
+                    <th>メールアドレス</th>
+                    <th>年齢</th>
+                    <th>登録日時</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="user : ${users}">
+                    <td th:text="${user.id}">1</td>
+                    <td>
+                        <a th:href="@{/views/users/{id}(id=${user.id})}" 
+                           th:text="${user.name}">田中太郎</a>
+                    </td>
+                    <td th:text="${user.email}">tanaka@example.com</td>
+                    <td th:text="${user.age}">25</td>
+                    <td th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p>合計: <span th:text="${users.size()}">0</span> 件</p>
+    </div>
     
-    <!-- フッター -->
-    <div th:replace="~{fragments/layout :: footer}"></div>
-    
-    <!-- JavaScript -->
-    <div th:replace="~{fragments/layout :: scripts}"></div>
+    <!-- フッターを挿入 -->
+    <div th:replace="~{layouts/fragments/footer :: footer}"></div>
 </body>
 </html>
 ```
 
-### Step 5: Thymeleaf Layout Dialectを使った高度なレイアウト
+### 2-2. フラグメント挿入構文の解説
 
-`src/main/resources/templates/layouts/default.html`:
+#### `th:replace`
+```html
+<div th:replace="~{layouts/fragments/header :: header}"></div>
+```
+- **フラグメント式**: `~{テンプレートパス :: フラグメント名}`
+- `th:replace`: 要素ごと置き換える（`<div>`タグも置換される）
+- パス: `templates/`からの相対パス（拡張子`.html`は省略可能）
+
+#### `th:insert` vs `th:replace`
+
+```html
+<!-- 元のHTML -->
+<div th:insert="~{fragments/header :: header}">挿入先</div>
+<div th:replace="~{fragments/header :: header}">置換先</div>
+
+<!-- 結果 -->
+<!-- th:insert: 子要素として挿入 -->
+<div>
+    <header>ヘッダーの内容</header>
+</div>
+
+<!-- th:replace: 要素ごと置換 -->
+<header>ヘッダーの内容</header>
+```
+
+**推奨**: 通常は`th:replace`を使用（余分なタグが増えない）
+
+---
+
+## 🚀 ステップ3: 共通レイアウトの作成
+
+### 3-1. 基本レイアウトテンプレート
+
+`src/main/resources/templates/layouts/base.html`を作成:
 
 ```html
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
+<html xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content)">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title layout:title-pattern="$CONTENT_TITLE - $LAYOUT_TITLE">Spring Boot App</title>
+    <title th:replace="${title}">Default Title</title>
     
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" 
-          rel="stylesheet">
-    <link rel="stylesheet" 
-          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
-    <!-- ページ固有のCSS -->
-    <th:block layout:fragment="extra-css"></th:block>
+    <!-- 共通CSS -->
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: white;
+            min-height: calc(100vh - 200px);
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #999;
+            color: white;
+        }
+    </style>
 </head>
 <body>
     <!-- ヘッダー -->
-    <div th:replace="~{fragments/layout :: header}"></div>
+    <div th:replace="~{layouts/fragments/header :: header}"></div>
     
-    <!-- メインコンテンツ（各ページで置き換え） -->
-    <main class="container my-5" layout:fragment="content">
-        <p>ここにコンテンツが入ります</p>
-    </main>
+    <!-- メインコンテンツ -->
+    <div class="container">
+        <!-- フラッシュメッセージ -->
+        <div th:if="${message}" class="alert alert-success">
+            <p th:text="${message}">メッセージ</p>
+        </div>
+        
+        <!-- ページ固有のコンテンツ -->
+        <div th:replace="${content}">
+            <p>コンテンツがここに入ります</p>
+        </div>
+    </div>
     
     <!-- フッター -->
-    <div th:replace="~{fragments/layout :: footer}"></div>
-    
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- ページ固有のJS -->
-    <th:block layout:fragment="extra-js"></th:block>
+    <div th:replace="~{layouts/fragments/footer :: footer}"></div>
 </body>
 </html>
 ```
 
-### Step 6: レイアウトを使ったページ
+### 3-2. レイアウトを使用したページ
 
-`src/main/resources/templates/users/list-with-layout.html`:
+`users/list.html`をレイアウトベースに書き換えます:
 
 ```html
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
-      layout:decorate="~{layouts/default}">
+      th:replace="~{layouts/base :: layout(~{::title}, ~{::main})}">
 <head>
     <title>ユーザー一覧</title>
-    
-    <!-- ページ固有のCSS -->
-    <th:block layout:fragment="extra-css">
-        <style>
-            .user-table {
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-        </style>
-    </th:block>
 </head>
 <body>
-    <!-- contentフラグメントの内容がレイアウトのmainに挿入される -->
-    <div layout:fragment="content">
-        <h1 class="mb-4">ユーザー一覧</h1>
+    <main>
+        <h1>ユーザー一覧</h1>
         
-        <div th:replace="~{fragments/messages :: success}"></div>
-        
-        <div class="mb-3">
-            <a th:href="@{/users/new}" class="btn btn-primary">
-                <i class="bi bi-plus-circle"></i> 新規登録
-            </a>
+        <div th:if="${users.empty}" style="text-align: center; padding: 40px; color: #999;">
+            <p>ユーザーが登録されていません</p>
         </div>
         
-        <div class="card user-table">
-            <div class="card-body">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>名前</th>
-                            <th>メールアドレス</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr th:each="user : ${users}">
-                            <td th:text="${user.id}">1</td>
-                            <td th:text="${user.name}">山田太郎</td>
-                            <td th:text="${user.email}">email@example.com</td>
-                            <td>
-                                <a th:href="@{/users/{id}(id=${user.id})}" 
-                                   class="btn btn-sm btn-info">詳細</a>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <table th:unless="${users.empty}" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">ID</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">名前</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">メールアドレス</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">年齢</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background-color: #4CAF50; color: white;">登録日時</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="user, iterStat : ${users}" 
+                    th:style="${iterStat.even} ? 'background-color: #f2f2f2;' : ''">
+                    <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.id}">1</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">
+                        <a th:href="@{/views/users/{id}(id=${user.id})}" 
+                           th:text="${user.name}">田中太郎</a>
+                    </td>
+                    <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.email}">tanaka@example.com</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;" th:text="${user.age}">25</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;" 
+                        th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p>合計: <span th:text="${users.size()}">0</span> 件</p>
+    </main>
+</body>
+</html>
+```
+
+### 3-3. レイアウト構文の解説
+
+#### パラメータ付きフラグメント
+```html
+th:fragment="layout(title, content)"
+```
+- フラグメントにパラメータを渡せる
+- `title`と`content`をプレースホルダーとして受け取る
+
+#### フラグメント式でセレクタ指定
+```html
+th:replace="~{layouts/base :: layout(~{::title}, ~{::main})}"
+```
+- `~{::title}`: 現在のテンプレートの`<title>`要素
+- `~{::main}`: 現在のテンプレートの`<main>`要素
+- これらを`layout`フラグメントのパラメータとして渡す
+
+**動作**:
+1. `users/list.html`の`<title>`タグを抽出
+2. `users/list.html`の`<main>`タグを抽出
+3. `layouts/base.html`の`${title}`と`${content}`に挿入
+
+---
+
+## 🚀 ステップ4: パラメータ付きフラグメント
+
+### 4-1. ボタンコンポーネントフラグメント
+
+`src/main/resources/templates/layouts/fragments/components.html`を作成:
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <!-- ボタンコンポーネント -->
+    <a th:fragment="button(url, text, type)" 
+       th:href="${url}" 
+       th:classappend="'btn btn-' + ${type}"
+       th:text="${text}">
+        Button
+    </a>
+    
+    <!-- カードコンポーネント -->
+    <div th:fragment="card(title, content)" class="card">
+        <div class="card-header">
+            <h3 th:text="${title}">タイトル</h3>
+        </div>
+        <div class="card-body" th:utext="${content}">
+            コンテンツ
         </div>
     </div>
     
-    <!-- ページ固有のJavaScript -->
-    <th:block layout:fragment="extra-js">
-        <script>
-            console.log('ユーザー一覧ページが読み込まれました');
-        </script>
-    </th:block>
+    <style>
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .card-header h3 {
+            margin: 0;
+        }
+        .card-body {
+            padding: 20px;
+        }
+    </style>
+</body>
+</html>
+```
+
+### 4-2. パラメータ付きフラグメントの使用
+
+`users/detail.html`を修正:
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layouts/base :: layout(~{::title}, ~{::main})}">
+<head>
+    <title>ユーザー詳細</title>
+</head>
+<body>
+    <main>
+        <h1>ユーザー詳細</h1>
+        
+        <!-- カードコンポーネントを使用 -->
+        <div th:replace="~{layouts/fragments/components :: card(
+            'ユーザー情報',
+            ~{::user-info}
+        )}">
+            <div th:fragment="user-info">
+                <p><strong>ID:</strong> <span th:text="${user.id}">1</span></p>
+                <p><strong>名前:</strong> <span th:text="${user.name}">田中太郎</span></p>
+                <p><strong>メールアドレス:</strong> <span th:text="${user.email}">tanaka@example.com</span></p>
+                <p><strong>年齢:</strong> <span th:text="${user.age}">25</span></p>
+                <p><strong>登録日時:</strong> 
+                   <span th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm:ss')}">2024-01-01 12:00:00</span>
+                </p>
+            </div>
+        </div>
+        
+        <!-- ボタンコンポーネントを使用 -->
+        <div style="margin-top: 20px;">
+            <span th:replace="~{layouts/fragments/components :: button(
+                @{/views/users/{id}/edit(id=${user.id})},
+                '編集',
+                'primary'
+            )}"></span>
+            
+            <span th:replace="~{layouts/fragments/components :: button(
+                @{/views/users},
+                '一覧に戻る',
+                'secondary'
+            )}"></span>
+        </div>
+    </main>
 </body>
 </html>
 ```
 
 ---
 
-## 🔍 フラグメントの構文
+## 🚀 ステップ5: 条件付きフラグメント
 
-### 1. フラグメントの定義
+### 5-1. アラートコンポーネント
+
+`components.html`にアラートフラグメントを追加:
 
 ```html
-<!-- 基本 -->
-<div th:fragment="fragmentName">内容</div>
-
-<!-- パラメータ付き -->
-<div th:fragment="greeting(name)">
-    <p th:text="'こんにちは、' + ${name} + 'さん'"></p>
+<!-- アラートコンポーネント -->
+<div th:fragment="alert(type, message)" 
+     th:if="${message != null and !message.isEmpty()}"
+     th:classappend="'alert alert-' + ${type}">
+    <p th:text="${message}">メッセージ</p>
 </div>
 ```
 
-### 2. フラグメントの使用
+### 5-2. 複数メッセージタイプに対応したレイアウト
+
+`layouts/base.html`のメッセージ部分を修正:
 
 ```html
-<!-- th:replace: 要素ごと置き換え -->
-<div th:replace="~{fragments/layout :: header}"></div>
-<!-- 結果: <header>...</header> -->
-
-<!-- th:insert: 要素の中に挿入 -->
-<div th:insert="~{fragments/layout :: header}"></div>
-<!-- 結果: <div><header>...</header></div> -->
-
-<!-- th:include: 内容だけコピー（非推奨） -->
-<div th:include="~{fragments/layout :: header}"></div>
-```
-
-### 3. パラメータ渡し
-
-```html
-<!-- フラグメント定義 -->
-<div th:fragment="card(title, content)">
-    <div class="card">
-        <h5 th:text="${title}"></h5>
-        <p th:text="${content}"></p>
+<div class="container">
+    <!-- 成功メッセージ -->
+    <div th:replace="~{layouts/fragments/components :: alert('success', ${successMessage})}"></div>
+    
+    <!-- エラーメッセージ -->
+    <div th:replace="~{layouts/fragments/components :: alert('danger', ${errorMessage})}"></div>
+    
+    <!-- 情報メッセージ -->
+    <div th:replace="~{layouts/fragments/components :: alert('info', ${infoMessage})}"></div>
+    
+    <!-- ページ固有のコンテンツ -->
+    <div th:replace="${content}">
+        <p>コンテンツがここに入ります</p>
     </div>
 </div>
-
-<!-- 使用 -->
-<div th:replace="~{fragments/card :: card('タイトル', '本文')}"></div>
 ```
 
-### 4. セレクター式
+CSS追加:
 
-```html
-<!-- ID指定 -->
-<div th:replace="~{fragments/layout :: #header}"></div>
-
-<!-- クラス指定 -->
-<div th:replace="~{fragments/layout :: .alert}"></div>
-
-<!-- タグ指定 -->
-<div th:replace="~{fragments/layout :: nav}"></div>
-```
-
----
-
-## 📊 th:replace vs th:insert の違い
-
-| 記法 | 動作 | 使いどころ |
-|------|------|-----------|
-| `th:replace` | 要素ごと置き換え | ヘッダー、フッターなど |
-| `th:insert` | 要素の中に挿入 | コンテンツを包む場合 |
-| `th:include` | 内容だけコピー | **非推奨** |
-
-**例**:
-
-```html
-<!-- フラグメント -->
-<footer th:fragment="copy">
-    &copy; 2025 Example
-</footer>
-
-<!-- th:replace -->
-<div th:replace="~{:: copy}"></div>
-<!-- 結果: <footer>&copy; 2025 Example</footer> -->
-
-<!-- th:insert -->
-<div th:insert="~{:: copy}"></div>
-<!-- 結果: <div><footer>&copy; 2025 Example</footer></div> -->
+```css
+.alert-danger {
+    background-color: #f8d7da;
+    border: 1px solid #f5c2c7;
+    color: #842029;
+}
+.alert-info {
+    background-color: #d1ecf1;
+    border: 1px solid #b9dadf;
+    color: #055160;
+}
 ```
 
 ---
 
 ## ✅ 動作確認
 
-### 1. ユーザー一覧にアクセス
+### 1. レイアウトの適用確認
 
+ブラウザで以下にアクセス:
 ```
-http://localhost:8080/users
+http://localhost:8080/views/users
 ```
 
-確認ポイント:
-- ヘッダーが表示されているか
-- フッターが表示されているか
-- Bootstrapが適用されているか
+**期待される結果**:
+- 緑色のヘッダーが表示される
+- ナビゲーションメニューが表示される
+- フッターが表示される
+- ページ全体が統一されたレイアウトになっている
 
-### 2. ソースコードを表示
+### 2. フラグメントの再利用確認
 
-ブラウザで「ページのソースを表示」:
-- `th:fragment`, `th:replace`などのThymeleaf属性が消えているか
-- フラグメントの内容が正しく展開されているか
+複数のページ（一覧、詳細、フォーム）にアクセス:
+```
+http://localhost:8080/views/users
+http://localhost:8080/views/users/1
+http://localhost:8080/views/users/new
+```
 
-### 3. 別のページでも同じレイアウト
+**期待される結果**:
+- すべてのページで同じヘッダー/フッターが表示される
+- ナビゲーションメニューが共通
 
-商品一覧など他のページでも同じヘッダー・フッターが表示されることを確認
+### 3. パラメータ付きコンポーネントの確認
+
+詳細画面で「編集」と「一覧に戻る」ボタンを確認:
+
+**期待される結果**:
+- ボタンの色が異なる（primary: 緑、secondary: グレー）
+- ボタンのスタイルが統一されている
 
 ---
 
-## 🎨 Bootstrap統合の例
+## 🎨 チャレンジ課題
 
-### カード一覧
+### チャレンジ 1: パンくずリスト
 
+パンくずリスト（breadcrumb）コンポーネントを作成してみましょう。
+
+**ヒント**:
 ```html
-<div class="row">
-    <div class="col-md-4" th:each="product : ${products}">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title" th:text="${product.name}">商品名</h5>
-                <p class="card-text" th:text="${product.description}">説明</p>
-                <p class="text-primary fw-bold" 
-                   th:text="'¥' + ${#numbers.formatInteger(product.price, 0, 'COMMA')}">
-                    ¥1,000
-                </p>
-                <a th:href="@{/products/{id}(id=${product.id})}" 
-                   class="btn btn-primary">詳細</a>
-            </div>
-        </div>
-    </div>
-</div>
+<nav th:fragment="breadcrumb(items)">
+    <ol>
+        <li th:each="item, iterStat : ${items}">
+            <a th:if="${!iterStat.last}" 
+               th:href="${item.url}" 
+               th:text="${item.text}"></a>
+            <span th:if="${iterStat.last}" th:text="${item.text}"></span>
+        </li>
+    </ol>
+</nav>
 ```
 
-### モーダル
+### チャレンジ 2: サイドバー付きレイアウト
 
+2カラムレイアウト（メインコンテンツ + サイドバー）を作成してみましょう。
+
+**ヒント**:
 ```html
-<!-- モーダルトリガー -->
-<button type="button" class="btn btn-primary" 
-        data-bs-toggle="modal" data-bs-target="#deleteModal"
-        th:attr="data-user-id=${user.id}, data-user-name=${user.name}">
-    削除
-</button>
-
-<!-- モーダル本体 -->
-<div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">削除確認</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>本当に削除しますか？</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    キャンセル
-                </button>
-                <form th:action="@{/users/{id}/delete(id=${user.id})}" method="post">
-                    <button type="submit" class="btn btn-danger">削除</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+th:fragment="layout-with-sidebar(title, main, sidebar)"
 ```
 
----
+### チャレンジ 3: テーブルコンポーネント
 
-## 📝 理解度チェック
+データテーブルを共通化してみましょう。
 
-1. **`th:fragment`の役割は何ですか？**
-2. **`th:replace`と`th:insert`の違いは何ですか？**
-3. **Thymeleaf Layout Dialectのメリットは何ですか？**
-4. **フラグメントにパラメータを渡せますか？**
-5. **Bootstrapなどの外部CSSをどう読み込みますか？**
-
----
-
-## 💡 ベストプラクティス
-
-1. **共通部品は積極的にフラグメント化**: DRY原則
-2. **レイアウトは階層化**: layouts/default.html → fragments/header.html
-3. **パラメータで柔軟に**: 再利用性を高める
-4. **命名規則を統一**: fragments/, layouts/など
-5. **Bootstrap活用**: 独自CSSは最小限に
-
----
-
-## 📚 このステップで学んだこと
-
-このステップでは、Thymeleafレイアウトについて学びました：
-
-- ✅ Thymeleaf Layout Dialectの導入と設定
-- ✅ layout:decorator（またはlayout:decorate）で共通レイアウト適用
-- ✅ layout:fragmentで部分テンプレートを定義
-- ✅ th:replaceとth:insertでフラグメント挿入
-- ✅ 共通ヘッダー・フッター・ナビゲーションの作成
-- ✅ スタイルシート（CSS）と静的リソースの配置
+**ヒント**:
+- ヘッダー配列とデータリストをパラメータで受け取る
+- `th:each`でヘッダーとデータを動的に生成
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "Error resolving template [fragments/header]"
+### エラー: "Error resolving template fragment"
 
-**原因**: フラグメントファイルのパスが間違っている
-
-**解決策**:
-```html
-<!-- ファイル構成 -->
-<!-- templates/
-       fragments/
-         header.html
-       users/
-         list.html
--->
-
-<!-- ❌ NG: パスが間違っている -->
-<div th:replace="header :: header"></div>
-
-<!-- ✅ OK: fragments/から始める -->
-<div th:replace="fragments/header :: header"></div>
-
-<!-- ✅ OK: ~{...}で明示的に -->
-<div th:replace="~{fragments/header :: header}"></div>
-```
-
-### エラー: "Fragment [header] not found in template"
-
-**原因**: フラグメント名が一致していない
+**原因**: フラグメント名やパスが間違っている
 
 **解決策**:
 ```html
-<!-- fragments/header.html -->
-<header th:fragment="headerContent">  <!-- フラグメント名: headerContent -->
-    ...
-</header>
+<!-- NG: スペルミス -->
+<div th:replace="~{layouts/fragments/header :: hedar}"></div>
 
-<!-- ❌ NG: フラグメント名が違う -->
-<div th:replace="fragments/header :: header"></div>
-
-<!-- ✅ OK: 正しいフラグメント名 -->
-<div th:replace="fragments/header :: headerContent"></div>
+<!-- OK -->
+<div th:replace="~{layouts/fragments/header :: header}"></div>
 ```
 
-### 問題: layout:decorateが効かない
+### レイアウトが適用されない
 
-**原因**: Thymeleaf Layout Dialectの依存関係がない、またはバージョンが古い
-
-**解決策**:
-```xml
-<!-- pom.xml -->
-<dependency>
-    <groupId>nz.net.ultraq.thymeleaf</groupId>
-    <artifactId>thymeleaf-layout-dialect</artifactId>
-</dependency>
-```
-
-```html
-<!-- ✅ 正しい名前空間を使用 -->
-<html xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
-      layout:decorate="~{layouts/default}">
-```
-
-### 問題: th:replaceとth:insertの違いがわからない
-
-**違いの説明**:
-
-```html
-<!-- フラグメント定義 -->
-<div th:fragment="content">
-    <p>コンテンツ</p>
-</div>
-
-<!-- th:replace: 要素ごと置き換え -->
-<div th:replace="fragments/content :: content"></div>
-<!-- 結果 -->
-<div>
-    <p>コンテンツ</p>
-</div>
-
-<!-- th:insert: 子要素として挿入 -->
-<div th:insert="fragments/content :: content"></div>
-<!-- 結果 -->
-<div>
-    <div>
-        <p>コンテンツ</p>
-    </div>
-</div>
-```
-
-**推奨**: 通常は`th:replace`を使用（余分なdivが増えない）
-
-### 問題: Bootstrapが適用されない
-
-**原因**: CSSファイルのパスが間違っている、またはWebjarsが設定されていない
-
-**解決策**:
-
-**方法1: Webjarsを使用（推奨）**
-```xml
-<!-- pom.xml -->
-<dependency>
-    <groupId>org.webjars</groupId>
-    <artifactId>bootstrap</artifactId>
-    <version>5.3.0</version>
-</dependency>
-```
-
-```html
-<!-- HTMLで使用 -->
-<link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}">
-```
-
-**方法2: CDNを使用**
-```html
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-```
-
-**方法3: ローカルファイル**
-```
-src/main/resources/static/css/bootstrap.min.css
-```
-
-```html
-<link rel="stylesheet" th:href="@{/css/bootstrap.min.css}">
-```
-
-### 問題: フラグメントにパラメータを渡せない
-
-**原因**: パラメータの渡し方が間違っている
+**原因**: `th:replace`の位置が間違っている
 
 **解決策**:
 ```html
-<!-- フラグメント定義（パラメータ付き） -->
-<div th:fragment="alert(type, message)">
-    <div th:class="'alert alert-' + ${type}" th:text="${message}"></div>
-</div>
+<!-- NG: bodyタグに配置 -->
+<body th:replace="~{layouts/base :: layout(...)}">
 
-<!-- 呼び出し側 -->
-<div th:replace="fragments/alert :: alert('success', 'ユーザーを登録しました')"></div>
+<!-- OK: htmlタグに配置 -->
+<html th:replace="~{layouts/base :: layout(...)}">
+```
 
-<!-- 変数を渡す場合 -->
-<div th:replace="fragments/alert :: alert(${alertType}, ${alertMessage})"></div>
+### パラメータが渡らない
+
+**原因**: フラグメント式の構文エラー
+
+**解決策**:
+```html
+<!-- NG: クォートが不足 -->
+<div th:replace="~{components :: button(@{/users}, 編集, primary)}"></div>
+
+<!-- OK: 文字列は引用符で囲む -->
+<div th:replace="~{components :: button(@{/users}, '編集', 'primary')}"></div>
+```
+
+### CSSが適用されない
+
+**原因**: フラグメント内のCSSがスコープ外
+
+**解決策**:
+1. 共通CSSは`layouts/base.html`に配置
+2. または、外部CSSファイルに分離
+
+```html
+<!-- static/css/style.css -->
+<link rel="stylesheet" th:href="@{/css/style.css}">
 ```
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 📚 このステップで学んだこと
 
-進捗を記録してレビューを受けましょう：
+- ✅ `th:fragment`でフラグメント（部品）を定義
+- ✅ `th:replace`でフラグメントを挿入
+- ✅ パラメータ付きフラグメントで柔軟な部品化
+- ✅ レイアウトテンプレートでページ構造を統一
+- ✅ フラグメント式`~{...}`の使い方
+- ✅ 共通コンポーネント（ボタン、カード、アラート）の作成
 
-```bash
-git add .
-git commit -m "Step 23: レイアウトとフラグメント完了"
-git push origin main
+---
+
+## 💡 補足: フラグメントのベストプラクティス
+
+### ディレクトリ構成
+
+```
+templates/
+├── layouts/
+│   ├── base.html              # 基本レイアウト
+│   ├── base-admin.html        # 管理画面用レイアウト
+│   └── fragments/
+│       ├── header.html        # ヘッダー
+│       ├── footer.html        # フッター
+│       └── components.html    # 再利用可能な部品
+├── users/
+│   ├── list.html
+│   ├── detail.html
+│   └── form.html
+└── errors/
+    ├── 404.html
+    └── 500.html
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+### 命名規則
+
+- **レイアウト**: `base-*.html`
+- **フラグメント**: 機能単位で分割（`header.html`, `nav.html`）
+- **コンポーネント**: `components.html`にまとめる
+
+### パフォーマンス
+
+- フラグメントはキャッシュされる（開発時は`spring.thymeleaf.cache=false`で無効化）
+- 過度なネストは避ける（可読性とパフォーマンス）
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 24: Thymeleaf + REST API連携](STEP_24.md)へ進みましょう！
+[Step 24: Thymeleaf + REST API連携](STEP_24.md)へ進みましょう！
 
-次のStep 24では、**Thymeleaf + REST API連携**を学びます:
-- JavaScriptでREST APIを呼び出す
-- 非同期でデータを取得・更新
-- DOM操作で動的にページを更新
-- ThymeleafとSPAの融合
-
----
-
-お疲れ様でした！🎉 レイアウトとフラグメントをマスターできたら、次のステップに進みましょう。
+次のステップでは、ThymeleafとREST APIを組み合わせて、非同期通信（AJAX）を実装する方法を学びます。

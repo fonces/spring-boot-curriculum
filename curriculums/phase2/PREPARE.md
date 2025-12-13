@@ -1,501 +1,721 @@
-# Phase 2 事前準備: Docker環境のセットアップ
+# Phase 2 事前準備: Docker ComposeでMySQL環境構築
 
-## 🎯 この準備の目標
+## 🎯 この事前準備の目標
 
-Phase 2では、データベース（MySQL）を使ったアプリケーション開発を学びます。
-DockerでMySQLやPostgreSQLを起動して、Spring BootアプリケーションからDB接続を行います。
+Phase 2では、Spring BootアプリケーションとMySQLデータベースを連携させる方法を学びます。そのために、Docker Composeを使ってMySQL環境を構築します。
 
-このガイドでは、以下の環境をセットアップします：
-
-- ✅ Docker Desktopのインストール
-- ✅ Dockerの動作確認
-- ✅ Docker Composeの理解
+- Docker Desktopのインストールと起動確認ができる
+- Docker Composeの基本的な使い方を理解できる
+- `docker-compose.yml`を作成してMySQL環境を構築できる
+- MySQLコンテナに接続してデータベース操作ができる
 
 **所要時間**: 約30分
 
 ---
 
-## 📋 必要な環境
+## 📋 前提条件
 
-### Phase 1の完了
-
-Phase 2を始める前に、Phase 1（Step 1〜5）を完了していることを確認してください。
-
-- [x] Spring Bootプロジェクトの作成ができる
-- [x] REST APIの実装ができる
-- [x] DTOとLombokを使える
-
-### 開発環境
-
-Phase 1で構築した環境：
-- OpenJDK 21
-- Maven 3.8+
-- Visual Studio Code (VSCode)
+- Phase 1が完了していること
+- ターミナル操作の基本的な知識
+- macOSまたはWSL2（Ubuntu）環境
 
 ---
 
-## 🐳 Docker Desktopのインストール
+## 🐳 Dockerとは
 
-### Dockerとは？
+### コンテナ技術の基礎
 
-**Docker** は、アプリケーションとその実行環境をコンテナとして管理するプラットフォームです。
+**Docker** は、アプリケーションとその実行環境を**コンテナ**という単位でパッケージ化する技術です。
 
-**メリット**:
-- 環境構築が簡単（MySQLを数秒で起動）
-- 環境の再現性が高い
-- ローカル環境を汚さない
-
-### インストール手順
-
-#### Windows の場合
-
-1. **システム要件の確認**
-   - Windows 10 64bit: Pro, Enterprise, Education (Build 16299以降)
-   - または Windows 11
-   - WSL 2が有効になっていること
-
-2. **Docker Desktopのダウンロード**
-   - https://www.docker.com/products/docker-desktop にアクセス
-   - 「Download for Windows」をクリック
-
-3. **インストール**
-   - ダウンロードした`Docker Desktop Installer.exe`を実行
-   - 「Use WSL 2 instead of Hyper-V」にチェックを入れる
-   - インストール完了後、PCを再起動
-
-4. **Docker Desktopの起動**
-   - Windowsメニューから「Docker Desktop」を起動
-   - 利用規約に同意
-   - サインインはスキップ可能（オプション）
-
-#### macOS の場合
-
-1. **チップの確認**
-   - Apple Menu > About This Mac
-   - 「Chip」を確認（Intel または Apple Silicon）
-
-2. **Docker Desktopのダウンロード**
-   - https://www.docker.com/products/docker-desktop にアクセス
-   - 自分のチップに合ったバージョンをダウンロード
-     - Intel Chip → Docker Desktop for Mac (Intel)
-     - Apple Silicon → Docker Desktop for Mac (Apple Silicon)
-
-3. **インストール**
-   - ダウンロードした`.dmg`ファイルを開く
-   - Docker.appをApplicationsフォルダにドラッグ
-   - Applicationsフォルダから「Docker」を起動
-
-4. **初回起動**
-   - 権限の許可を求められたら「OK」
-   - サインインはスキップ可能
-
-#### Linux の場合
-
-Linuxディストリビューションによって手順が異なります。
-
-**Ubuntu/Debianの例**:
-
-```bash
-# 古いバージョンの削除
-sudo apt-get remove docker docker-engine docker.io containerd runc
-
-# 依存関係のインストール
-sudo apt-get update
-sudo apt-get install \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
-
-# Docker公式GPGキーの追加
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-# リポジトリの設定
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Dockerのインストール
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# 現在のユーザーをdockerグループに追加（sudoなしで実行するため）
-sudo usermod -aG docker $USER
-
-# ログアウトして再ログイン（またはPC再起動）
+```
+┌──────────────────────────────────┐
+│   ホストマシン（あなたのPC）        │
+│                                  │
+│  ┌────────────────────────────┐  │
+│  │  Docker Engine             │  │
+│  │                            │  │
+│  │  ┌──────────┐ ┌──────────┐ │  │
+│  │  │ MySQL    │ │ Redis    │ │  │
+│  │  │ コンテナ  │ │ コンテナ  │ │  │
+│  │  └──────────┘ └──────────┘ │  │
+│  └────────────────────────────┘  │
+└──────────────────────────────────┘
 ```
 
-詳細は公式ドキュメントを参照：
-- Ubuntu: https://docs.docker.com/engine/install/ubuntu/
-- CentOS: https://docs.docker.com/engine/install/centos/
+**メリット**:
+- **環境の再現性**: どのPCでも同じ環境を構築できる
+- **クリーンな環境**: ホストマシンを汚さない（アンインストールも簡単）
+- **バージョン管理**: 複数のMySQLバージョンを共存させられる
+- **開発と本番の環境差を減らせる**: 本番環境でもDockerを使うケースが多い
+
+### Docker Composeとは
+
+**Docker Compose** は、複数のDockerコンテナをまとめて管理するツールです。
+
+- **単一ファイルで定義**: `docker-compose.yml`に全ての設定を記述
+- **コマンド1つで起動**: `docker compose up`で全コンテナが起動
+- **ネットワーク自動構成**: コンテナ間の通信を自動設定
+
+**使用例**:
+- MySQL + Spring Boot + Redis
+- PostgreSQL + Node.js + Nginx
+- MongoDB + Python + RabbitMQ
 
 ---
 
-## ✅ Dockerの動作確認
+## 🚀 ステップ1: Docker Desktopのインストール
 
-### 1. バージョン確認
+### 1-1. macOSの場合
 
-ターミナル（コマンドプロンプト）を開いて以下を実行：
+公式サイトからDocker Desktopをダウンロードしてインストールします。
+
+**ダウンロード**: [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+
+1. DMGファイルをダウンロード
+2. `Docker.app`を`Applications`フォルダにドラッグ
+3. Launchpadから「Docker」を起動
+4. メニューバーにDockerアイコンが表示されればOK
+
+**確認**:
 
 ```bash
 docker --version
-```
-
-**期待される出力**:
-```
-Docker version 24.0.x, build xxxxxxx
-```
-
-```bash
 docker compose version
 ```
 
-**期待される出力**:
+**期待される結果**:
+
 ```
-Docker Compose version v2.20.x
+Docker version 24.0.x, build xxxxxx
+Docker Compose version v2.23.x
 ```
 
-> **注意**: 古いバージョンでは`docker-compose`（ハイフン付き）でしたが、
-> 現在は`docker compose`（スペース区切り）が推奨です。
+### 1-2. WSL2（Ubuntu）の場合
 
-### 2. Hello Worldコンテナの実行
+WSL2環境では、Windows側にDocker Desktopをインストールし、WSL2統合を有効にします。
 
-Dockerが正しく動作するか確認します：
+**手順**:
+
+1. **Docker Desktop for Windowsをインストール**
+   - [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)からダウンロード
+   - インストーラーを実行
+   - 「Use WSL 2 instead of Hyper-V」にチェック
+
+2. **Docker Desktopを起動**
+   - Windowsのスタートメニューから「Docker Desktop」を起動
+   - 初回起動時に設定ウィザードが表示されるので、指示に従う
+
+3. **WSL2統合を有効化**
+   - Docker Desktopの設定を開く（歯車アイコン）
+   - 「Resources」→「WSL Integration」を選択
+   - 使用しているUbuntuディストリビューションを有効化
+   - 「Apply & Restart」をクリック
+
+4. **WSL2のUbuntuターミナルで確認**
 
 ```bash
-docker run hello-world
+docker --version
+docker compose version
 ```
 
-**期待される出力**:
+**期待される結果**:
+
 ```
-Unable to find image 'hello-world:latest' locally
-latest: Pulling from library/hello-world
-...
-Hello from Docker!
-This message shows that your installation appears to be working correctly.
-...
+Docker version 24.0.x, build xxxxxx
+Docker Compose version v2.23.x
 ```
-
-このメッセージが表示されればDocker is ready!
-
-### 3. Docker Desktopの確認
-
-Docker Desktop（GUIアプリ）を開いて：
-- 左下の「Engine running」が緑色になっていることを確認
-- Containersタブで実行中/停止中のコンテナを確認できます
 
 ---
 
-## 🚀 MySQLコンテナを試してみる（オプション）
+## 🚀 ステップ2: docker-compose.ymlの作成
 
-Phase 2のStep 12で使用するMySQLを事前に試してみましょう。
+### 2-1. プロジェクトルートにファイルを作成
 
-### 1. MySQLコンテナの起動
-
-```bash
-docker run --name test-mysql \
-  -e MYSQL_ROOT_PASSWORD=password \
-  -e MYSQL_DATABASE=testdb \
-  -p 3306:3306 \
-  -d mysql:8.0
-```
-
-**解説**:
-- `--name test-mysql`: コンテナに名前を付ける
-- `-e MYSQL_ROOT_PASSWORD=password`: rootパスワードを設定
-- `-e MYSQL_DATABASE=testdb`: 初期データベースを作成
-- `-p 3306:3306`: ホストの3306ポートをコンテナの3306ポートにマッピング
-- `-d`: バックグラウンドで実行
-- `mysql:8.0`: MySQL 8.0のイメージを使用
-
-### 2. コンテナの確認
+Phase 1で作成した`hello-spring-boot`プロジェクトのルートディレクトリに`docker-compose.yml`を作成します。
 
 ```bash
-docker ps
+cd /path/to/hello-spring-boot
 ```
 
-**期待される出力**:
-```
-CONTAINER ID   IMAGE       COMMAND                  CREATED          STATUS          PORTS                               NAMES
-abc123def456   mysql:8.0   "docker-entrypoint.s…"   10 seconds ago   Up 9 seconds    0.0.0.0:3306->3306/tcp, 33060/tcp   test-mysql
+**ファイルパス**: `docker-compose.yml`
+
+```yaml
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: hello-spring-boot-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: hello_spring_boot
+      MYSQL_USER: springuser
+      MYSQL_PASSWORD: springpass
+      TZ: 'Asia/Tokyo'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:
 ```
 
-### 3. MySQLに接続（オプション）
+### 2-2. 設定の解説
+
+#### `version: '3.8'`
+
+Docker Composeファイルのバージョンです。`3.8`は広くサポートされている安定版です。
+
+#### `services:`
+
+起動するコンテナのリストを定義します。今回は`mysql`のみです。
+
+#### `image: mysql:8.0`
+
+使用するDockerイメージを指定します。
+
+- `mysql`: 公式MySQLイメージ
+- `8.0`: バージョンタグ（最新の8.0系を使用）
+
+#### `container_name: hello-spring-boot-mysql`
+
+コンテナに付ける名前です。これによりコマンドで特定しやすくなります。
+
+#### `environment:`
+
+コンテナ内の環境変数を設定します。
+
+| 環境変数 | 説明 | 値 |
+|---|---|---|
+| `MYSQL_ROOT_PASSWORD` | rootユーザーのパスワード | `rootpassword` |
+| `MYSQL_DATABASE` | 初回起動時に作成するデータベース | `hello_spring_boot` |
+| `MYSQL_USER` | 作成するユーザー名 | `springuser` |
+| `MYSQL_PASSWORD` | 作成するユーザーのパスワード | `springpass` |
+| `TZ` | タイムゾーン | `Asia/Tokyo` |
+
+#### `ports:`
+
+ホスト側とコンテナ側のポートをマッピングします。
+
+```yaml
+- "3306:3306"
+```
+
+- 左側（`3306`）: ホスト側（あなたのPC）のポート
+- 右側（`3306`）: コンテナ側のポート
+
+これにより、`localhost:3306`でMySQLに接続できます。
+
+#### `volumes:`
+
+データの永続化を設定します。
+
+```yaml
+volumes:
+  - mysql_data:/var/lib/mysql
+```
+
+- `mysql_data`: Dockerが管理するボリューム名
+- `/var/lib/mysql`: コンテナ内のMySQLデータディレクトリ
+
+**ポイント**:
+コンテナを削除してもデータが消えないようにします。
+
+#### `command:`
+
+MySQLサーバーの起動オプションを指定します。
+
+- `--default-authentication-plugin=mysql_native_password`: 認証プラグインを従来の方式に設定
+
+**理由**:
+MySQL 8.0のデフォルト認証プラグイン（`caching_sha2_password`）ではなく、従来の`mysql_native_password`を使用することで、接続時のトラブルを回避します。
+
+#### `healthcheck:`
+
+コンテナの健全性を定期的にチェックします。
+
+```yaml
+healthcheck:
+  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+```
+
+- `test`: 健全性チェックコマンド（MySQLが応答するかを確認）
+- `interval`: チェックの間隔
+- `timeout`: タイムアウト時間
+- `retries`: 失敗時のリトライ回数
+
+**ポイント**:
+`docker compose ps`で`STATUS`が`healthy`になっていれば、MySQLが正常に起動しています。
+
+---
+
+## 🚀 ステップ3: MySQLコンテナの起動
+
+### 3-1. コンテナを起動
 
 ```bash
-docker exec -it test-mysql mysql -uroot -ppassword
+docker compose up -d
 ```
 
-MySQLプロンプトが表示されたら成功です：
+**オプション**:
+- `up`: コンテナを作成して起動
+- `-d`: バックグラウンドで実行（デタッチモード）
+
+**初回実行時の出力例**:
+
+```
+[+] Running 8/8
+ ⠿ mysql Pulled
+ ⠿ Container spring-boot-mysql  Started
+```
+
+**2回目以降の出力例**:
+
+```
+[+] Running 1/1
+ ⠿ Container spring-boot-mysql  Started
+```
+
+### 3-2. コンテナの状態を確認
+
+```bash
+docker compose ps
+```
+
+**期待される結果**:
+
+```
+NAME                 IMAGE       COMMAND                  SERVICE   CREATED         STATUS         PORTS
+spring-boot-mysql    mysql:8.0   "docker-entrypoint.s…"   mysql     2 minutes ago   Up 2 minutes   0.0.0.0:3306->3306/tcp, 33060/tcp
+```
+
+**STATUS**が`Up`になっていればOKです。
+
+### 3-3. ログを確認
+
+```bash
+docker compose logs mysql
+```
+
+以下のようなログが出力されていれば起動成功です:
+
+```
+mysql  | 2025-12-13T10:00:00.000000Z 0 [System] [MY-010931] [Server] /usr/sbin/mysqld: ready for connections.
+```
+
+---
+
+## ✅ ステップ4: MySQLに接続
+
+### 4-1. コンテナ内でMySQLクライアントを起動
+
+```bash
+docker compose exec mysql mysql -u springuser -p
+```
+
+**コマンド解説**:
+- `docker compose exec mysql`: `mysql`サービスのコンテナ内でコマンドを実行
+- `mysql -u springuser -p`: MySQLクライアントを起動（ユーザー名: `springuser`）
+
+**パスワード入力**: `springpass`
+
+**期待される結果**:
+
+```
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 8
+Server version: 8.0.35 MySQL Community Server - GPL
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql>
+```
+
+### 4-2. データベースを確認
 
 ```sql
-mysql> SHOW DATABASES;
+SHOW DATABASES;
+```
+
+**期待される結果**:
+
+```
 +--------------------+
 | Database           |
 +--------------------+
 | information_schema |
-| mysql              |
 | performance_schema |
-| sys                |
-| testdb             |
+| hello_spring_boot     |
 +--------------------+
-5 rows in set (0.00 sec)
-
-mysql> exit
 ```
 
-### 4. コンテナの停止と削除
+`hello_spring_boot`が作成されていればOKです。
 
-テストが終わったら、コンテナを停止・削除します：
+### 4-3. データベースを使用
 
-```bash
-# 停止
-docker stop test-mysql
+```sql
+USE hello_spring_boot;
+```
 
-# 削除
-docker rm test-mysql
+**期待される結果**:
 
-# イメージも削除する場合（オプション）
-docker rmi mysql:8.0
+```
+Database changed
+```
+
+### 4-4. テーブル一覧を確認
+
+```sql
+SHOW TABLES;
+```
+
+**期待される結果**（まだテーブルがない状態）:
+
+```
+Empty set (0.00 sec)
+```
+
+### 4-5. MySQLクライアントを終了
+
+```sql
+EXIT;
 ```
 
 ---
 
-## 📚 Docker Composeとは？
+## 🔧 ステップ5: Docker Composeの基本操作
 
-**Docker Compose** は、複数のコンテナを定義・管理するツールです。
-
-### 通常のdocker runコマンド
+### 5-1. コンテナの停止
 
 ```bash
-docker run --name mysql \
-  -e MYSQL_ROOT_PASSWORD=password \
-  -e MYSQL_DATABASE=mydb \
-  -p 3306:3306 \
-  -d mysql:8.0
+docker compose stop
 ```
 
-長くて覚えにくい...
+これによりコンテナは停止しますが、削除はされません（データも保持されます）。
 
-### Docker Composeを使う場合
-
-`docker-compose.yml`ファイルに設定を記述：
-
-```yaml
-version: '3.8'
-services:
-  mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: mydb
-    ports:
-      - "3306:3306"
-```
-
-起動は簡単：
+### 5-2. コンテナの再起動
 
 ```bash
-docker compose up -d
+docker compose start
 ```
 
-**メリット**:
-- 設定をファイルで管理（Git管理可能）
-- 複数コンテナを一括管理
-- チーム全員が同じ環境を構築できる
+停止したコンテナを再起動します。
 
-**Phase 2のStep 12で実際に使用します！**
-
----
-
-## 🎨 Docker基本コマンド早見表
-
-Phase 2で使うコマンドをまとめました：
-
-### イメージ関連
+### 5-3. コンテナの停止と削除
 
 ```bash
-# イメージ一覧
-docker images
-
-# イメージのダウンロード
-docker pull mysql:8.0
-
-# イメージの削除
-docker rmi mysql:8.0
-```
-
-### コンテナ関連
-
-```bash
-# 実行中のコンテナ一覧
-docker ps
-
-# すべてのコンテナ一覧（停止中も含む）
-docker ps -a
-
-# コンテナの起動
-docker start <コンテナ名>
-
-# コンテナの停止
-docker stop <コンテナ名>
-
-# コンテナの削除
-docker rm <コンテナ名>
-
-# コンテナのログ表示
-docker logs <コンテナ名>
-
-# コンテナ内でコマンド実行
-docker exec -it <コンテナ名> bash
-```
-
-### Docker Compose関連
-
-```bash
-# コンテナの起動（バックグラウンド）
-docker compose up -d
-
-# コンテナの停止
 docker compose down
-
-# ログ表示
-docker compose logs
-
-# コンテナの状態確認
-docker compose ps
 ```
+
+**注意**:
+コンテナは削除されますが、**ボリュームのデータは保持**されます。
+
+### 5-4. ボリュームも含めて完全削除
+
+```bash
+docker compose down -v
+```
+
+**警告**:
+`-v`オプションを付けると、**データベースのデータも削除**されます。
+
+### 5-5. ログのリアルタイム表示
+
+```bash
+docker compose logs -f mysql
+```
+
+**オプション**:
+- `-f`: ログをフォロー（リアルタイム表示）
+- `Ctrl + C`で終了
+
+---
+
+## 🎨 オプション: MySQLクライアントツール
+
+コンテナ内のMySQLクライアントだけでなく、GUIツールでも接続できます。
+
+### オプション1: MySQL Workbench
+
+公式のGUIツールです。
+
+- **ダウンロード**: [MySQL Workbench](https://dev.mysql.com/downloads/workbench/)
+- **接続情報**:
+  - Hostname: `127.0.0.1`（または`localhost`）
+  - Port: `3306`
+  - Username: `springuser`
+  - Password: `springpass`
+  - Default Schema: `hello_spring_boot`
+
+### オプション2: DBeaver
+
+無料で多機能なデータベースクライアントです。
+
+- **ダウンロード**: [DBeaver Community](https://dbeaver.io/download/)
+- **対応DB**: MySQL, PostgreSQL, SQLiteなど多数
+
+### オプション3: VSCode拡張機能
+
+VSCode内でMySQLを操作できます。
+
+**拡張機能のインストール**:
+
+1. VSCodeの拡張機能タブを開く
+2. 「MySQL」で検索
+3. 「MySQL」（cweijan製）をインストール
+
+**接続設定**:
+
+1. サイドバーで「DATABASE」アイコンをクリック
+2. 「+」ボタンで新しい接続を追加
+3. 接続情報を入力:
+   - Host: `localhost`
+   - Port: `3306`
+   - Username: `springuser`
+   - Password: `springpass`
+   - Database: `hello_spring_boot`
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### Docker Desktopが起動しない（Windows）
-
-**原因**: WSL 2が有効になっていない
-
-**解決策**:
-1. PowerShellを管理者として実行
-2. 以下を実行：
-   ```powershell
-   wsl --install
-   ```
-3. PCを再起動
-
-### "Cannot connect to the Docker daemon"
+### エラー: "Cannot connect to the Docker daemon"
 
 **原因**: Docker Desktopが起動していない
 
 **解決策**:
-- Docker Desktopアプリを起動
-- 左下が「Engine running」になるまで待つ
 
-### ポート3306が既に使用されている
+- **macOS**: Docker Desktopを起動（メニューバーにアイコンが表示される）
+- **WSL2**: Windows側でDocker Desktopを起動
 
-**エラー**: `Bind for 0.0.0.0:3306 failed: port is already allocated`
-
-**原因**: 既にMySQLがローカルで動いている
-
-**解決策1**: ローカルのMySQLを停止
+確認:
 
 ```bash
-# Windowsの場合
-net stop MySQL80
-
-# macOSの場合
-brew services stop mysql
-
-# Linuxの場合
-sudo systemctl stop mysql
+docker ps
 ```
 
-**解決策2**: 異なるポートを使用
+正常な場合、コンテナ一覧が表示されます。
+
+### エラー: "port is already allocated"
+
+**エラーメッセージ**:
+
+```
+Error response from daemon: driver failed programming external connectivity on endpoint spring-boot-mysql: 
+Bind for 0.0.0.0:3306 failed: port is already allocated.
+```
+
+**原因**: ポート3306が既に使用されている
+
+**解決策1**: 既存のMySQLを停止
+
+```bash
+# macOS
+brew services stop mysql
+
+# WSL2
+sudo service mysql stop
+```
+
+**解決策2**: docker-compose.ymlのポート番号を変更
 
 ```yaml
 ports:
   - "3307:3306"  # ホスト側を3307に変更
 ```
 
-### Dockerコンテナが起動しない
+この場合、Spring Bootの接続設定も`localhost:3307`に変更が必要です。
 
-**確認方法**:
+### エラー: "no configuration file provided"
+
+**原因**: `docker-compose.yml`がないディレクトリで実行している
+
+**解決策**:
 
 ```bash
-# ログを確認
-docker logs <コンテナ名>
+# docker-compose.ymlがあるディレクトリに移動
+cd /path/to/hello-spring-boot
+
+# ファイルの存在を確認
+ls -la docker-compose.yml
 ```
 
-よくある原因：
-- メモリ不足（Docker Desktopの設定でメモリを増やす）
-- ディスク容量不足
-- イメージの破損（イメージを削除して再ダウンロード）
+### コンテナが起動しない
+
+**確認コマンド**:
+
+```bash
+docker compose logs mysql
+```
+
+**よくある原因**:
+
+1. **メモリ不足**: Docker Desktopのメモリ設定を増やす
+2. **YAML構文エラー**: インデントを確認（スペース2個）
+3. **イメージのダウンロード失敗**: ネットワーク接続を確認
+
+### WSL2でDocker Desktopが認識されない
+
+**原因**: WSL2統合が有効化されていない
+
+**解決策**:
+
+1. Docker Desktop for Windowsの設定を開く
+2. 「Resources」→「WSL Integration」
+3. 使用しているUbuntuディストリビューションを有効化
+4. 「Apply & Restart」
+5. WSL2ターミナルを再起動
+
+### データが消えてしまった
+
+**原因**: `docker compose down -v`を実行した
+
+**対策**:
+
+- **通常の停止**: `docker compose stop`を使用
+- **コンテナ削除時**: `docker compose down`（`-v`なし）
+
+**復旧**:
+
+データベースのバックアップがない場合、データは復旧できません。重要なデータは定期的にバックアップしましょう。
+
+---
+
+## 📚 Docker Composeの便利なコマンド
+
+### よく使うコマンド一覧
+
+```bash
+# 起動（バックグラウンド）
+docker compose up -d
+
+# 停止
+docker compose stop
+
+# 起動
+docker compose start
+
+# 再起動
+docker compose restart
+
+# 停止して削除
+docker compose down
+
+# ログ表示（リアルタイム）
+docker compose logs -f
+
+# コンテナの状態確認
+docker compose ps
+
+# コンテナ内でコマンド実行
+docker compose exec mysql bash
+
+# イメージの再ビルド
+docker compose build
+
+# 最新イメージを取得して起動
+docker compose pull
+docker compose up -d
+```
+
+### データベースのバックアップ
+
+```bash
+# ダンプを作成
+docker compose exec mysql mysqldump -u springuser -pspringpass hello_spring_boot > backup.sql
+
+# リストア
+docker compose exec -T mysql mysql -u springuser -pspringpass hello_spring_boot < backup.sql
+```
+
+---
+
+## 💡 補足: Dockerボリュームの管理
+
+### ボリューム一覧の確認
+
+```bash
+docker volume ls
+```
+
+**期待される結果**:
+
+```
+DRIVER    VOLUME NAME
+local     hello-spring-boot_mysql_data
+```
+
+### ボリュームの詳細情報
+
+```bash
+docker volume inspect hello-spring-boot_mysql_data
+```
+
+### 使用していないボリュームの削除
+
+```bash
+docker volume prune
+```
+
+**警告**:
+使用していない全てのボリュームが削除されます。
+
+### 特定のボリュームを削除
+
+```bash
+docker volume rm hello-spring-boot_mysql_data
+```
+
+**注意**:
+コンテナが起動している場合は削除できません。先に`docker compose down`を実行してください。
+
+---
+
+## 📊 Dockerのベストプラクティス
+
+### 開発環境での推奨設定
+
+1. **ポート番号は標準を使用**: `3306`（競合時のみ変更）
+2. **ボリューム名は明示的に**: プロジェクトごとに区別しやすい名前
+3. **環境変数はファイルで管理**: `.env`ファイルを使用（後のステップで説明）
+4. **ログレベルを調整**: 開発時は詳細、本番は最小限
+
+### 本番環境への移行
+
+Docker Composeは開発環境向けです。本番環境では以下を検討してください：
+
+- **Kubernetes**: コンテナオーケストレーション
+- **Docker Swarm**: Dockerネイティブのクラスタリング
+- **マネージドサービス**: AWS RDS, Google Cloud SQLなど
 
 ---
 
 ## ✅ 準備完了チェックリスト
 
-Phase 2を始める前に、以下を確認してください：
+以下をすべて確認できたら、Phase 2のステップに進む準備完了です！
 
-- [ ] Docker Desktopがインストールされている
-- [ ] `docker --version`でバージョンが表示される
-- [ ] `docker compose version`でバージョンが表示される
-- [ ] `docker run hello-world`が成功する
-- [ ] Docker Desktopで「Engine running」が緑色
-- [ ] Phase 1（Step 1〜5）が完了している
-
----
-
-## 📖 参考リソース
-
-### 公式ドキュメント
-
-- Docker Desktop: https://docs.docker.com/desktop/
-- Docker Compose: https://docs.docker.com/compose/
-- MySQL Docker Image: https://hub.docker.com/_/mysql
-
-### 学習リソース
-
-- Docker公式チュートリアル: https://docs.docker.com/get-started/
-- Docker Compose入門: https://docs.docker.com/compose/gettingstarted/
-
----
-
-## 💡 補足: なぜDockerを使うのか？
-
-### 従来の方法（ローカルにMySQLインストール）
-
-**デメリット**:
-- インストールが面倒
-- バージョン管理が難しい
-- 環境の再現が困難
-- アンインストールが面倒
-- 複数バージョンの共存が難しい
-
-### Dockerを使う方法
-
-**メリット**:
-- ✅ 数秒で起動・停止
-- ✅ 環境を汚さない（削除も簡単）
-- ✅ チーム全員が同じ環境
-- ✅ バージョンの切り替えが簡単
-- ✅ 設定をコードで管理（docker-compose.yml）
-
-**実務でもDockerは標準的に使われています！**
+- [ ] Docker Desktopがインストールされている（`docker --version`で確認）
+- [ ] Docker Composeが使える（`docker compose version`で確認）
+- [ ] `docker-compose.yml`を作成した
+- [ ] MySQLコンテナが起動している（`docker compose ps`で確認）
+- [ ] `docker compose exec mysql mysql -u springuser -p`でログインできる
+- [ ] データベース`hello_spring_boot`が存在する（`SHOW DATABASES;`で確認）
+- [ ] `docker compose stop`と`docker compose start`でコンテナを制御できる
 
 ---
 
 ## ➡️ 次のステップ
 
-Docker環境の準備が整ったら、Phase 2のStep 6へ進みましょう！
+環境構築が完了したら、[Step 6: Spring BootとMySQLの接続](STEP_6.md)へ進みましょう！
 
-[Step 6: MySQL環境構築](STEP_6.md)
-
-Docker ComposeでMySQLを起動して、Spring BootからDB接続する方法を学びます。
-
----
-
-お疲れさまでした！ 🐳
-
-Docker環境が整ったら、いよいよデータベースを使った開発に入ります。
-Phase 2で実践的なアプリケーション開発のスキルを身につけましょう！
+次のステップでは、Spring BootプロジェクトからDockerコンテナで動作しているMySQLに接続し、最初のエンティティとテーブルを作成します。

@@ -1,42 +1,73 @@
-# Step 26: JWT認証
+# Step 26: JWTトークン認証
 
 ## 🎯 このステップの目標
 
-- JWT（JSON Web Token）の仕組みを理解する
-- JWTベースの認証システムを実装する
-- ログイン・ログアウト機能を実装する
-- JWTフィルターを作成してリクエストを検証する
+- JWT（JSON Web Token）の仕組みを理解できる
+- ログインエンドポイントでトークンを発行できる
+- トークン検証フィルターを実装できる
+- ステートレスな認証を実現できる
 
-**所要時間**: 約1時間30分
+**所要時間**: 約60分
 
 ---
 
 ## 📋 事前準備
 
-- Step 19のSpring Security基礎が理解できていること
-- 認証と認可の違いを理解していること
-
-**Step 19をまだ完了していない場合**: [Step 19: Spring Security基礎](STEP_19.md)を先に進めてください。
+- [Step 25: Spring Securityの基礎](STEP_25.md)が完了していること
+- JWTの概念を理解していること（推奨）
 
 ---
 
-## 💡 JWTとは？
+## 🔑 JWTとは
 
-### JWT (JSON Web Token)
+### Basic認証の問題点
 
-**構造**:
-```
-Header.Payload.Signature
-
-例:
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.
-eyJzdWIiOiJ1c2VyMTIzIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.
-SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+**問題1**: 毎回認証情報を送信
+```bash
+# 毎回username:passwordを送る
+curl -u admin:admin123 http://localhost:8080/api/users
+curl -u admin:admin123 http://localhost:8080/api/users/1
+curl -u admin:admin123 http://localhost:8080/api/users/2
 ```
 
-**3つの部分**:
+**問題2**: サーバーに状態を保存
+- セッション管理が必要
+- スケールアウトしにくい
 
-1. **Header（ヘッダー）**:
+### JWTの仕組み
+
+**ステップ1**: ログインでトークン取得
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+
+# レスポンス
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**ステップ2**: トークンを使ってアクセス
+```bash
+curl -H "Authorization: Bearer eyJhbGci..." http://localhost:8080/api/users
+```
+
+### JWTのメリット
+
+1. **ステートレス**: サーバーに状態を保存しない
+2. **スケーラブル**: 複数サーバーで動作
+3. **自己完結**: トークン内にユーザー情報を含む
+4. **有効期限**: トークンの期限切れを設定可能
+
+### JWTの構造
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGVzIjpbIlJPTEVfQURNSU4iXX0.signature
+│        Header (Base64)        │       Payload (Base64)        │ Signature │
+```
+
+**Header**: アルゴリズム情報
 ```json
 {
   "alg": "HS256",
@@ -44,18 +75,16 @@ SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
 }
 ```
 
-2. **Payload（ペイロード）**:
+**Payload**: ユーザー情報
 ```json
 {
-  "sub": "user123",
-  "name": "John Doe",
-  "role": "USER",
-  "iat": 1516239022,
-  "exp": 1516242622
+  "sub": "admin",
+  "roles": ["ROLE_ADMIN"],
+  "exp": 1702468800
 }
 ```
 
-3. **Signature（署名）**:
+**Signature**: 改ざん防止
 ```
 HMACSHA256(
   base64UrlEncode(header) + "." + base64UrlEncode(payload),
@@ -63,73 +92,48 @@ HMACSHA256(
 )
 ```
 
-### JWTのメリット
-
-| 比較項目 | セッション認証 | JWT認証 |
-|----------|---------------|---------|
-| **ステート** | ステートフル | ステートレス |
-| **保存場所** | サーバー | クライアント |
-| **スケーラビリティ** | 低い | 高い |
-| **REST API** | 不向き | 最適 |
-
 ---
 
 ## 🚀 ステップ1: JWT依存関係の追加
 
-### 1-1. pom.xmlの更新
+### 1-1. pom.xmlに追加
 
-**ファイルパス**: `pom.xml`
+`pom.xml`の`<dependencies>`セクションに追加：
 
 ```xml
-<dependencies>
-    <!-- 既存の依存関係 -->
-    
-    <!-- JWT Library -->
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-api</artifactId>
-        <version>0.12.3</version>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-impl</artifactId>
-        <version>0.12.3</version>
-        <scope>runtime</scope>
-    </dependency>
-    <dependency>
-        <groupId>io.jsonwebtoken</groupId>
-        <artifactId>jjwt-jackson</artifactId>
-        <version>0.12.3</version>
-        <scope>runtime</scope>
-    </dependency>
-</dependencies>
+<!-- JWT (JSON Web Token) -->
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-api</artifactId>
+    <version>0.12.3</version>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-impl</artifactId>
+    <version>0.12.3</version>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-jackson</artifactId>
+    <version>0.12.3</version>
+    <scope>runtime</scope>
+</dependency>
 ```
 
-### 1-2. application.ymlにJWT設定追加
+### 1-2. 依存関係を反映
 
-**ファイルパス**: `src/main/resources/application.yml`
-
-```yaml
-# JWT設定
-jwt:
-  secret: mySecretKeyForJWT1234567890123456789012345678901234567890
-  expiration: 86400000  # 24時間（ミリ秒）
-```
-
-**注意**: 本番環境では環境変数を使用
-```yaml
-jwt:
-  secret: ${JWT_SECRET:defaultSecretKey}
-  expiration: ${JWT_EXPIRATION:86400000}
+```bash
+./mvnw clean compile
 ```
 
 ---
 
 ## 🚀 ステップ2: JWTユーティリティクラスの作成
 
-### 2-1. JwtUtil
+### 2-1. JwtUtilsクラスを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/JwtUtil.java`
+`src/main/java/com/example/hellospringboot/security/JwtUtils.java`を作成：
 
 ```java
 package com.example.hellospringboot.security;
@@ -137,8 +141,8 @@ package com.example.hellospringboot.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -148,20 +152,17 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
-/**
- * JWTトークンの生成・検証を行うユーティリティクラス
- */
 @Component
-@Slf4j
-public class JwtUtil {
-
+public class JwtUtils {
+    
     @Value("${jwt.secret}")
     private String secret;
-
+    
     @Value("${jwt.expiration}")
-    private Long expiration;
-
+    private Long expiration;  // ミリ秒
+    
     /**
      * 秘密鍵を取得
      */
@@ -169,166 +170,234 @@ public class JwtUtil {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         return Keys.hmacShaKeyFor(keyBytes);
     }
-
+    
     /**
-     * ユーザー名を取得
+     * トークンからユーザー名を取得
      */
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
+    public String getUsernameFromToken(String token) {
+        return getClaimFromToken(token, Claims::getSubject);
     }
-
+    
     /**
-     * 有効期限を取得
+     * トークンから有効期限を取得
      */
-    public Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
+    public Date getExpirationDateFromToken(String token) {
+        return getClaimFromToken(token, Claims::getExpiration);
     }
-
+    
     /**
-     * クレームを抽出
+     * トークンからクレーム（属性）を取得
      */
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
+    public <T> T getClaimFromToken(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = getAllClaimsFromToken(token);
         return claimsResolver.apply(claims);
     }
-
+    
     /**
-     * すべてのクレームを抽出
+     * トークンからすべてのクレームを取得
      */
-    private Claims extractAllClaims(String token) {
+    private Claims getAllClaimsFromToken(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+            .verifyWith(getSigningKey())
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
     }
-
+    
     /**
-     * トークンが期限切れかチェック
+     * トークンの有効期限が切れているかチェック
      */
     private Boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        final Date expiration = getExpirationDateFromToken(token);
+        return expiration.before(new Date());
     }
-
+    
     /**
      * トークンを生成
      */
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("authorities", userDetails.getAuthorities());
+        // ロール情報をクレームに追加
+        claims.put("roles", userDetails.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toList()));
+        
         return createToken(claims, userDetails.getUsername());
     }
-
+    
     /**
      * トークンを作成
      */
     private String createToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expiration);
-
+        
         return Jwts.builder()
-                .claims(claims)
-                .subject(subject)
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(getSigningKey())
-                .compact();
+            .claims(claims)
+            .subject(subject)
+            .issuedAt(now)
+            .expiration(expiryDate)
+            .signWith(getSigningKey())
+            .compact();
     }
-
+    
     /**
      * トークンを検証
      */
     public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
+        final String username = getUsernameFromToken(token);
         return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
     }
 }
 ```
 
+### 2-2. application.ymlに設定を追加
+
+`src/main/resources/application.yml`に追加：
+
+```yaml
+jwt:
+  secret: "my-very-secure-secret-key-that-is-at-least-256-bits-long-for-hs256-algorithm"
+  expiration: 86400000  # 24時間（ミリ秒）
+```
+
+**重要**: 
+- `secret`は**256ビット（32文字）以上**必要
+- 本番環境では環境変数から読み込む
+
 ---
 
-## 🚀 ステップ3: 認証用DTOの作成
+## 🚀 ステップ3: ログインエンドポイントの実装
 
-### 3-1. LoginRequest
+### 3-1. LoginRequestとLoginResponseを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/LoginRequest.java`
+`src/main/java/com/example/hellospringboot/dto/LoginRequest.java`:
 
 ```java
-package com.example.hellospringboot.dto.request;
+package com.example.hellospringboot.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * ログインリクエストDTO
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class LoginRequest {
-
-    @NotBlank(message = "ユーザー名は必須です")
+    
+    @NotBlank(message = "Username is required")
     private String username;
-
-    @NotBlank(message = "パスワードは必須です")
+    
+    @NotBlank(message = "Password is required")
     private String password;
 }
 ```
 
-### 3-2. AuthResponse
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/response/AuthResponse.java`
+`src/main/java/com/example/hellospringboot/dto/LoginResponse.java`:
 
 ```java
-package com.example.hellospringboot.dto.response;
+package com.example.hellospringboot.dto;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 認証レスポンスDTO
- */
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class AuthResponse {
-
-    /**
-     * JWTトークン
-     */
+public class LoginResponse {
+    
     private String token;
-
-    /**
-     * トークンタイプ（通常は"Bearer"）
-     */
-    private String type;
-
-    /**
-     * ユーザー名
-     */
+    private String type = "Bearer";
     private String username;
+    private List<String> roles;
+    
+    public LoginResponse(String token, String username, List<String> roles) {
+        this.token = token;
+        this.username = username;
+        this.roles = roles;
+    }
+}
+```
 
+### 3-2. AuthControllerを作成
+
+`src/main/java/com/example/hellospringboot/controllers/AuthController.java`:
+
+```java
+package com.example.hellospringboot.controllers;
+
+import com.example.hellospringboot.dto.LoginRequest;
+import com.example.hellospringboot.dto.LoginResponse;
+import com.example.hellospringboot.security.JwtUtils;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+    
+    private final AuthenticationManager authenticationManager;
+    private final JwtUtils jwtUtils;
+    
     /**
-     * ロール
+     * ログイン
      */
-    private String role;
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        log.info("Login attempt for user: {}", loginRequest.getUsername());
+        
+        // 認証
+        Authentication authentication = authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(
+                loginRequest.getUsername(),
+                loginRequest.getPassword()
+            )
+        );
+        
+        // SecurityContextに認証情報を設定
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        
+        // JWT生成
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String token = jwtUtils.generateToken(userDetails);
+        
+        // ロール情報を取得
+        List<String> roles = userDetails.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toList());
+        
+        log.info("Login successful for user: {}", loginRequest.getUsername());
+        
+        return ResponseEntity.ok(new LoginResponse(token, userDetails.getUsername(), roles));
+    }
 }
 ```
 
 ---
 
-## 🚀 ステップ4: JWTフィルターの作成
+## 🚀 ステップ4: JWT認証フィルターの実装
 
-### 4-1. JwtAuthenticationFilter
+### 4-1. JwtAuthenticationFilterを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/JwtAuthenticationFilter.java`
+`src/main/java/com/example/hellospringboot/security/JwtAuthenticationFilter.java`:
 
 ```java
 package com.example.hellospringboot.security;
@@ -345,293 +414,279 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/**
- * JWTトークンを検証するフィルター
- */
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    private final JwtUtil jwtUtil;
+    
+    private final JwtUtils jwtUtils;
     private final UserDetailsService userDetailsService;
-
+    
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-
-        // Authorizationヘッダーを取得
-        final String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
+        
         try {
-            // トークンを抽出
-            final String jwt = authHeader.substring(7);
-            final String username = jwtUtil.extractUsername(jwt);
-
-            // ユーザーが未認証の場合
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            // Authorizationヘッダーからトークンを取得
+            String jwt = parseJwt(request);
+            
+            if (jwt != null) {
+                // トークンからユーザー名を取得
+                String username = jwtUtils.getUsernameFromToken(jwt);
+                
+                // ユーザー詳細を取得
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-
+                
                 // トークンを検証
-                if (jwtUtil.validateToken(jwt, userDetails)) {
-                    UsernamePasswordAuthenticationToken authToken = 
+                if (jwtUtils.validateToken(jwt, userDetails)) {
+                    // 認証情報を作成
+                    UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,
                             userDetails.getAuthorities()
                         );
-
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    
+                    authentication.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                    );
                     
                     // SecurityContextに認証情報を設定
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
                     
-                    log.debug("User {} authenticated successfully", username);
+                    log.debug("JWT authentication successful for user: {}", username);
                 }
             }
-        } catch (Exception ex) {
-            log.error("JWT authentication failed: {}", ex.getMessage());
+        } catch (Exception e) {
+            log.error("Cannot set user authentication: {}", e.getMessage());
         }
-
+        
+        // 次のフィルターへ
         filterChain.doFilter(request, response);
     }
-}
-```
-
----
-
-## 🚀 ステップ5: AuthControllerの作成
-
-### 5-1. AuthController
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/AuthController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.dto.request.LoginRequest;
-import com.example.hellospringboot.dto.response.AuthResponse;
-import com.example.hellospringboot.security.JwtUtil;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-/**
- * 認証コントローラー
- */
-@RestController
-@RequestMapping("/api/auth")
-@RequiredArgsConstructor
-@Slf4j
-public class AuthController {
-
-    private final AuthenticationManager authenticationManager;
-    private final JwtUtil jwtUtil;
-
+    
     /**
-     * ログイン
-     * POST /api/auth/login
+     * リクエストからJWTトークンを抽出
      */
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        log.info("Login attempt for user: {}", request.getUsername());
-
-        try {
-            // 認証
-            Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                    request.getUsername(),
-                    request.getPassword()
-                )
-            );
-
-            // UserDetails取得
-            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
-            // JWTトークン生成
-            String token = jwtUtil.generateToken(userDetails);
-
-            // ロール取得（最初の1つ）
-            String role = userDetails.getAuthorities().stream()
-                    .findFirst()
-                    .map(GrantedAuthority::getAuthority)
-                    .orElse("ROLE_USER");
-
-            log.info("Login successful for user: {}", request.getUsername());
-
-            AuthResponse response = AuthResponse.builder()
-                    .token(token)
-                    .type("Bearer")
-                    .username(userDetails.getUsername())
-                    .role(role)
-                    .build();
-
-            return ResponseEntity.ok(response);
-
-        } catch (BadCredentialsException ex) {
-            log.warn("Login failed for user: {} - Bad credentials", request.getUsername());
-            throw new BadCredentialsException("ユーザー名またはパスワードが正しくありません");
+    private String parseJwt(HttpServletRequest request) {
+        String headerAuth = request.getHeader("Authorization");
+        
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            return headerAuth.substring(7);  // "Bearer " を除去
         }
+        
+        return null;
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ6: SecurityConfigの更新
+## 🚀 ステップ5: SecurityConfigの更新
 
-### 6-1. JWT用のSecurityConfig
+### 5-1. SecurityConfigを修正
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/SecurityConfig.java`
+`src/main/java/com/example/hellospringboot/config/SecurityConfig.java`を更新：
 
 ```java
 package com.example.hellospringboot.config;
 
 import com.example.hellospringboot.security.JwtAuthenticationFilter;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Securityの設定クラス（JWT対応）
+ * Spring Security設定
  */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
-
-    private final JwtAuthenticationFilter jwtAuthFilter;
-    private final UserDetailsService userDetailsService;
-
+    
+    /**
+     * セキュリティフィルターチェーンの設定
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
-            // CSRF無効化
+            // CSRF保護を無効化（REST APIのため）
             .csrf(csrf -> csrf.disable())
             
-            // エンドポイントのアクセス制御
+            // 認可設定
             .authorizeHttpRequests(auth -> auth
-                // 公開エンドポイント
+                // 公開エンドポイント（認証不要）
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/public/**").permitAll()
+                .requestMatchers("/views/**").permitAll()
+                .requestMatchers("/hello").permitAll()
                 
-                // 管理者のみ
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                
-                // 認証が必要
+                // それ以外は認証が必要
                 .anyRequest().authenticated()
             )
             
-            // セッションをステートレスに設定
+            // Basic認証を有効化
+            .httpBasic(basic -> {})
+            
+            // セッションをステートレスに（JWTを使うため）
             .sessionManagement(session -> 
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            
-            // 認証プロバイダー
-            .authenticationProvider(authenticationProvider())
-            
-            // JWTフィルターを追加
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
+            );
+        
+        // JWTフィルターを追加
+        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        
         return http.build();
     }
-
+    
+    /**
+     * パスワードエンコーダー
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
+    
+    /**
+     * インメモリユーザー管理
+     */
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
+    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+        UserDetails admin = User.builder()
+            .username("admin")
+            .password(passwordEncoder.encode("admin123"))
+            .roles("ADMIN")
+            .build();
+        
+        UserDetails user = User.builder()
+            .username("user")
+            .password(passwordEncoder.encode("user123"))
+            .roles("USER")
+            .build();
+        
+        return new InMemoryUserDetailsManager(admin, user);
     }
-
+    
+    /**
+     * AuthenticationManager
+     */
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) 
-            throws Exception {
-        return config.getAuthenticationManager();
+    public AuthenticationManager authenticationManager(
+            UserDetailsService userDetailsService,
+            PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider(passwordEncoder);
+        authenticationProvider.setUserDetailsService(userDetailsService);
+        
+        return new ProviderManager(authenticationProvider);
     }
 }
 ```
 
+### 5-2. コードの解説
+
+#### メソッドパラメータインジェクション
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter)
+```
+- `JwtAuthenticationFilter`をメソッドパラメータとして注入
+- コンストラクタインジェクションではなく、メソッドパラメータで注入することで**循環依存を回避**
+- Spring が自動的に Bean を解決して注入
+
+#### `SessionCreationPolicy.STATELESS`
+```java
+.sessionManagement(session -> 
+    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+)
+```
+- **STATELESS**: セッションを作成しない
+- JWTはステートレスなのでセッション不要
+
+#### JWTフィルターの追加
+```java
+.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+```
+- `UsernamePasswordAuthenticationFilter`の**前**に実行
+- リクエストごとにトークンを検証
+
+#### AuthenticationManager
+```java
+@Bean
+public AuthenticationManager authenticationManager(
+        UserDetailsService userDetailsService,
+        PasswordEncoder passwordEncoder) {
+    DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider(passwordEncoder);
+    authenticationProvider.setUserDetailsService(userDetailsService);
+    
+    return new ProviderManager(authenticationProvider);
+}
+```
+- ログイン時の認証に必要
+- `DaoAuthenticationProvider`を使用してユーザー認証を実行
+- `AuthController`で使用
+
 ---
 
-## ✅ ステップ7: 動作確認
+## ✅ 動作確認
 
-### 7-1. ログイン
+### 1. ログインしてトークン取得
 
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "user",
-    "password": "user123"
-  }'
+  -d '{"username":"admin","password":"admin123"}'
 ```
 
-**期待されるレスポンス**:
+**期待される結果**:
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJhdXRob3JpdGllcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9VU0VSIn1dLCJzdWIiOiJ1c2VyIiwiaWF0IjoxNjk4NDEyMzAwLCJleHAiOjE2OTg0OTg3MDB9.xxx",
+  "token": "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlcyI6WyJST0xFX0FETUlOIl0sInN1YiI6ImFkbWluIiwiaWF0IjoxNzAyNDY1MjAwLCJleHAiOjE3MDI1NTE2MDB9.signature",
   "type": "Bearer",
-  "username": "user",
-  "role": "ROLE_USER"
+  "username": "admin",
+  "roles": ["ROLE_ADMIN"]
 }
 ```
 
-### 7-2. トークンを使ってAPIアクセス
+### 2. トークンを使ってAPIアクセス
+
+**トークンをコピー**して以下を実行：
 
 ```bash
-# トークンを変数に保存
-TOKEN="eyJhbGciOiJIUzI1NiJ9.xxx..."
+TOKEN="eyJhbGciOiJIUzI1NiJ9..."
 
-# APIリクエスト
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/api/users
 ```
 
-**期待される結果**: 200 OK
+**期待される結果**: ユーザー一覧が取得できる
 
-### 7-3. 無効なトークンでアクセス
+### 3. トークンなしでアクセス
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+**期待される結果**: 401 Unauthorized
+
+### 4. 無効なトークンでアクセス
 
 ```bash
 curl -H "Authorization: Bearer invalid-token" \
@@ -640,135 +695,22 @@ curl -H "Authorization: Bearer invalid-token" \
 
 **期待される結果**: 401 Unauthorized
 
-### 7-4. トークンなしでアクセス
+### 5. 一般ユーザーでログイン
 
 ```bash
-curl http://localhost:8080/api/users
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"user","password":"user123"}'
 ```
 
-**期待される結果**: 401 Unauthorized
+取得したトークンで管理者エンドポイントにアクセス：
 
----
-
-## 🚀 ステップ8: データベースユーザー認証への移行
-
-### 8-1. UserDetailsServiceの実装（JPA版）
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/security/CustomUserDetailsService.java`
-
-```java
-package com.example.hellospringboot.security;
-
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-
-import java.util.Collections;
-
-/**
- * データベースからユーザー情報を取得するUserDetailsService
- */
-@Service
-@RequiredArgsConstructor
-public class CustomUserDetailsService implements UserDetailsService {
-
-    private final UserRepository userRepository;
-
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                    "ユーザーが見つかりません: " + email
-                ));
-
-        return org.springframework.security.core.userdetails.User.builder()
-                .username(user.getEmail())
-                .password(user.getPassword())  // 暗号化されたパスワード
-                .authorities(Collections.singletonList(
-                    new SimpleGrantedAuthority("ROLE_" + user.getRole())
-                ))
-                .build();
-    }
-}
+```bash
+curl -H "Authorization: Bearer $USER_TOKEN" \
+  http://localhost:8080/api/users
 ```
 
-### 8-2. MyBatisを使う場合のUserDetailsService
-
-**Phase 3でMyBatisを学習した場合**、MyBatis Mapperを使ったUserDetailsServiceも実装できます。
-
-**UserMapper.java**:
-```java
-@Mapper
-public interface UserMapper {
-    @Select("SELECT * FROM users WHERE email = #{email}")
-    Optional<User> findByEmail(String email);
-}
-```
-
-**CustomUserDetailsService（MyBatis版）**:
-```java
-@Service
-@RequiredArgsConstructor
-public class CustomUserDetailsService implements UserDetailsService {
-
-    private final UserMapper userMapper;  // MyBatis Mapper
-
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userMapper.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                    "ユーザーが見つかりません: " + email
-                ));
-
-        return org.springframework.security.core.userdetails.User.builder()
-                .username(user.getEmail())
-                .password(user.getPassword())
-                .authorities(Collections.singletonList(
-                    new SimpleGrantedAuthority("ROLE_" + user.getRole())
-                ))
-                .build();
-    }
-}
-```
-
-> **💡 JPA vs MyBatisの選択**:
-> - **シンプルなユーザー認証**: JPAで十分
-> - **複雑な認証ロジック**: MyBatisで柔軟にクエリを記述
-> - **大規模システム**: 両方を併用（認証はMyBatis、CRUD はJPAなど）
-
-### 8-3. Userエンティティの更新
-
-```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String name;
-
-    @Column(unique = true)
-    private String email;
-
-    private Integer age;
-
-    // パスワード追加
-    @Column(nullable = false)
-    private String password;
-
-    // ロール追加（USER, ADMIN）
-    @Column(nullable = false)
-    private String role = "USER";
-}
-```
+**期待される結果**: 403 Forbidden（権限不足）
 
 ---
 
@@ -776,110 +718,182 @@ public class User {
 
 ### チャレンジ 1: リフレッシュトークン
 
-アクセストークンの有効期限が切れた際に、リフレッシュトークンで再発行できるようにしてください。
+**目標**: アクセストークンの有効期限が切れた際に、リフレッシュトークンで再発行
 
-### チャレンジ 2: ログアウト機能
+**ヒント**:
+```java
+@PostMapping("/refresh")
+public ResponseEntity<LoginResponse> refreshToken(@RequestHeader("Refresh-Token") String refreshToken) {
+    // リフレッシュトークンを検証
+    // 新しいアクセストークンを発行
+}
+```
 
-トークンをブラックリストに追加してログアウトを実装してください。
+### チャレンジ 2: ログアウト（トークンのブラックリスト）
 
-### チャレンジ 3: トークン情報取得API
+**目標**: トークンを無効化してログアウト機能を実装
 
-`/api/auth/me`エンドポイントでトークンからユーザー情報を取得できるようにしてください。
+**ヒント**:
+- Redisにブラックリストを保存
+- フィルターでブラックリストをチェック
+
+### チャレンジ 3: トークンに追加情報を含める
+
+**目標**: ユーザーIDやメールアドレスをトークンに含める
+
+**ヒント**:
+```java
+claims.put("userId", user.getId());
+claims.put("email", user.getEmail());
+```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### "SignatureException: JWT signature does not match"
+### エラー: "The dependencies of some of the beans in the application context form a cycle"
 
-**原因**: 秘密鍵が異なる、またはトークンが改ざんされている
+**原因**: `SecurityConfig`と`JwtAuthenticationFilter`の循環依存
 
-**解決策**: `application.yml`の`jwt.secret`を確認
-
-### "ExpiredJwtException"
-
-**原因**: トークンの有効期限が切れている
-
-**解決策**: 再ログインしてトークンを再発行
-
-### 認証後もSecurityContextがnull
-
-**原因**: JwtAuthenticationFilterが実行されていない
-
-**解決策**: SecurityConfigでフィルターが登録されているか確認
+**問題のコード**:
 ```java
-.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+@RequiredArgsConstructor
+public class SecurityConfig {
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;  // ❌ フィールド注入で循環依存
+    
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) { ... }
+}
+```
+
+**解決策**: メソッドパラメータで注入
+```java
+public class SecurityConfig {
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http, 
+            JwtAuthenticationFilter jwtAuthenticationFilter) {  // ✅ メソッドパラメータで注入
+        // ...
+    }
+}
+```
+
+### エラー: "The specified key byte array is X bits which is not secure enough"
+
+**原因**: JWT秘密鍵が短すぎる（HS256は256ビット以上必要）
+
+**解決策**:
+```yaml
+jwt:
+  secret: "my-very-secure-secret-key-that-is-at-least-256-bits-long-for-hs256-algorithm"
+```
+
+32文字以上の文字列を使用してください。
+
+### エラー: "Cannot invoke AuthenticationManager.authenticate()"
+
+**原因**: `AuthenticationManager`がBean登録されていない
+
+**解決策**:
+```java
+@Bean
+public AuthenticationManager authenticationManager(
+        UserDetailsService userDetailsService,
+        PasswordEncoder passwordEncoder) {
+    DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider(passwordEncoder);
+    authenticationProvider.setUserDetailsService(userDetailsService);
+    
+    return new ProviderManager(authenticationProvider);
+}
+```
+
+### トークンが検証されない
+
+**デバッグ**:
+```java
+@GetMapping("/debug-token")
+public String debugToken(@RequestHeader("Authorization") String authHeader) {
+    String token = authHeader.substring(7);
+    String username = jwtUtils.getUsernameFromToken(token);
+    Date expiration = jwtUtils.getExpirationDateFromToken(token);
+    return "Username: " + username + ", Expiration: " + expiration;
+}
+```
+
+### CORSエラー（フロントエンドから呼び出す場合）
+
+**解決策**:
+```java
+@Configuration
+public class CorsConfig {
+    @Bean
+    public CorsFilter corsFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        config.setAllowCredentials(true);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        
+        return new CorsFilter(source);
+    }
+}
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ JWTの構造と仕組み
-- ✅ JwtUtilによるトークン生成・検証
-- ✅ JwtAuthenticationFilterの実装
-- ✅ ログインAPIの実装
-- ✅ ステートレス認証
-- ✅ Bearerトークンの使用
+- ✅ JWTの仕組み（Header, Payload, Signature）
+- ✅ トークンの生成と検証
+- ✅ ログインエンドポイントの実装
+- ✅ JWT認証フィルターの作成
+- ✅ ステートレスな認証
+- ✅ トークンベースのロール管理
+- ✅ セッションレスなセキュリティ設定
+- ✅ **循環依存の回避**（メソッドパラメータインジェクション）
+- ✅ **AuthenticationManagerの適切な設定**
 
 ---
 
 ## 💡 補足: JWTのベストプラクティス
 
-### トークンの保存場所
+### 1. 秘密鍵の管理
 
-| 保存場所 | メリット | デメリット |
-|----------|---------|-----------|
-| **LocalStorage** | 簡単 | XSS攻撃に脆弱 |
-| **Cookie (HttpOnly)** | XSS対策 | CSRF対策が必要 |
-| **SessionStorage** | タブ閉じると消える | XSS攻撃に脆弱 |
-
-**推奨**: HttpOnly Cookieまたはメモリ内
-
-### トークンの有効期限
-
-```yaml
-jwt:
-  # アクセストークン: 15分〜1時間
-  expiration: 900000  # 15分
-
-  # リフレッシュトークン: 7日〜30日
-  refresh-expiration: 604800000  # 7日
-```
-
-### セキュリティ強化
-
+**NG**: コードにハードコード
 ```java
-// ✅ 良い例: 強力な秘密鍵（256bit以上）
-jwt.secret=myVeryLongSecretKeyThatIsAtLeast256BitsLong12345678901234567890
-
-// ❌ 悪い例: 短い秘密鍵
-jwt.secret=secret
+private static final String SECRET = "mysecret";
 ```
 
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-```bash
-git add .
-git commit -m "Step 26: JWTトークン認証完了"
-git push origin main
+**OK**: 環境変数から読み込み
+```java
+@Value("${JWT_SECRET}")
+private String secret;
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+### 2. 有効期限の設定
+
+- **アクセストークン**: 15分〜1時間
+- **リフレッシュトークン**: 7日〜30日
+
+### 3. HTTPS必須
+
+JWTはBase64エンコードのみ（暗号化ではない）ため、**必ずHTTPS**を使用してください。
+
+### 4. 機密情報を含めない
+
+トークンは簡単にデコードできるため、パスワードやクレジットカード情報などは含めないでください。
+
+### 5. トークンのサイズ
+
+大きすぎるトークンはHTTPヘッダーサイズ制限に引っかかる可能性があります。
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 27: ユニットテスト](STEP_27.md)へ進みましょう！
+[Step 27: ユニットテスト](STEP_27.md)へ進みましょう！
 
-JUnit 5とMockitoを使ったテストコードの書き方を学びます。
-
----
-
-お疲れさまでした！ 🎉
-
-JWT認証を習得しました！これで本格的なRESTful APIの
-セキュリティが実装できるようになりました！
+次のステップでは、JUnit 5とMockitoを使ってサービス層のユニットテストを実装します。テストコードを書くことで、コードの品質と保守性を高めます。

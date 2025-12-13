@@ -1,758 +1,1491 @@
-# Step 36: コメント機能とThymeleafでの画面実装
+# Step 36: 記事とコメント機能の実装
 
-## 🎯 このステップの目標
+**所要時間**: 約90分
 
-記事に対するコメント機能を実装し、Thymeleafを使ってブログの画面を作成します。
-これにより、REST APIとサーバーサイドレンダリングの両方を体験します。
+---
 
-- 1対多リレーション（記事とコメント）の実装
-- Thymeleafでのサーバーサイドレンダリング
-- REST APIとの連携
-- JavaScriptでの非同期通信
+## 📌 このステップの目標
 
-**所要時間**: 約1時間30分
+BlogHubアプリケーションのコア機能である**記事（Article）とコメント（Comment）機能**を実装します。このステップでは、RESTful APIの設計、ページネーション、N+1問題の回避、所有者チェック、タグ機能など、実践的なWeb開発で必要となる技術を総合的に学びます。
 
-## 📋 機能要件
+**学ぶこと**:
+- カスタムクエリとページネーションの実装
+- N+1問題の回避（JOIN FETCH）
+- 所有者チェックによるセキュリティ強化
+- タグの自動作成と関連付け処理
+- ネストされたRESTfulルート設計
+- グローバルエラーハンドリング
+- DTOとEntityの適切な分離
 
-### バックエンド（REST API）
-- 記事へのコメント投稿（認証必須）
-- コメント一覧の取得
-- コメントの編集・削除（自分のコメントのみ）
-- コメント数のカウント
+**成果物**:
+- 記事のCRUD API（作成・取得・更新・削除）
+- コメントのCRUD API
+- タグ検索機能
+- ページネーション対応の一覧取得
+- 所有者のみが編集・削除できる権限制御
 
-### フロントエンド（Thymeleaf）
-- ブログトップページ（記事一覧）
-- 記事詳細ページ（コメント表示・投稿フォーム付き）
-- ユーザープロフィールページ
-- 記事投稿・編集フォーム
+---
 
-## 🗂️ データベース設計
+## 🔧 事前準備
 
-### commentsテーブル
-```sql
-CREATE TABLE comments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    post_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_post_id (post_id),
-    INDEX idx_user_id (user_id)
-);
+### 前提条件
+
+- Step 35で認証・認可機能が実装済みであること
+- JWTトークンによる認証が動作していること
+- User、Article、Comment、Tagエンティティが定義済みであること
+- Docker ComposeでMySQLが起動していること
+
+### 必要な知識
+
+- Spring Data JPAのカスタムクエリ（`@Query`アノテーション）
+- ページネーション（`Pageable`と`Page`）
+- N+1問題とその対策（`JOIN FETCH`）
+- RESTful APIの設計原則
+- 例外ハンドリング（`@ControllerAdvice`）
+
+### 環境確認
+
+```bash
+# MySQLコンテナが起動しているか確認
+docker ps | grep mysql
+
+# アプリケーションが起動しているか確認
+curl http://localhost:8080/actuator/health
 ```
 
-## 💡 実装のヒント（バックエンド）
+---
 
-### 1. プロジェクト構成
-以下のクラスを追加してください：
+## 📝 実装手順
 
-```
-src/main/java/com/example/blog/
-├── controller/
-│   ├── CommentController.java (REST API)
-│   └── WebController.java (Thymeleaf用)
-├── service/
-│   └── CommentService.java
-├── repository/
-│   └── CommentMapper.java (MyBatis)
-├── entity/
-│   └── Comment.java
-└── dto/
-    ├── CommentRequest.java
-    ├── CommentResponse.java
-    └── CommentWithUserResponse.java
-```
+### 手順1: 例外クラスの作成
 
-### 2. MyBatisでのコメント管理
-`CommentMapper.xml`で以下のSQLを実装してください：
+まず、エラーハンドリングのための例外クラスを作成します。
 
-**例**:
-```xml
-<!-- CommentMapper.xml の例 -->
-<mapper namespace="com.example.blog.repository.CommentMapper">
-    <resultMap id="CommentWithUser" type="Comment">
-        <id property="id" column="id"/>
-        <result property="content" column="content"/>
-        <result property="createdAt" column="created_at"/>
-        <result property="updatedAt" column="updated_at"/>
-        <association property="user" javaType="User">
-            <id property="id" column="user_id"/>
-            <result property="username" column="username"/>
-            <result property="displayName" column="display_name"/>
-        </association>
-    </resultMap>
+#### 1.1 ResourceNotFoundExceptionの作成
+
+`src/main/java/com/example/bloghub/exception/ResourceNotFoundException.java`:
+
+```java
+package com.example.bloghub.exception;
+
+public class ResourceNotFoundException extends RuntimeException {
     
-    <select id="findByPostId" resultMap="CommentWithUser">
-        SELECT 
-            c.*,
-            u.username,
-            u.display_name
-        FROM comments c
-        INNER JOIN users u ON c.user_id = u.id
-        WHERE c.post_id = #{postId}
-        ORDER BY c.created_at ASC
-    </select>
-    
-    <select id="countByPostId" resultType="int">
-        <!-- SQLを実装してください -->
-    </select>
-    
-    <!-- 他のクエリを実装してください -->
-</mapper>
-```
-
-### 3. REST APIエンドポイント
-
-#### コメントの投稿（認証必須）
-```
-POST /api/posts/{postId}/comments
-Authorization: Bearer YOUR_JWT_TOKEN
-Content-Type: application/json
-
-{
-  "content": "とても参考になりました！"
-}
-
-Response (201 Created):
-{
-  "id": 1,
-  "content": "とても参考になりました！",
-  "user": {
-    "id": 1,
-    "username": "johndoe",
-    "displayName": "John Doe"
-  },
-  "createdAt": "2025-10-29T11:00:00"
-}
-```
-
-#### コメント一覧の取得
-```
-GET /api/posts/{postId}/comments
-
-Response (200 OK):
-{
-  "comments": [
-    {
-      "id": 1,
-      "content": "とても参考になりました！",
-      "user": {
-        "username": "johndoe",
-        "displayName": "John Doe"
-      },
-      "createdAt": "2025-10-29T11:00:00",
-      "isAuthor": false
+    public ResourceNotFoundException(String message) {
+        super(message);
     }
-  ],
-  "total": 1
+    
+    public ResourceNotFoundException(String resourceName, Long id) {
+        super(String.format("%s not found with id: %d", resourceName, id));
+    }
+    
+    public ResourceNotFoundException(String resourceName, String fieldName, Object fieldValue) {
+        super(String.format("%s not found with %s: %s", resourceName, fieldName, fieldValue));
+    }
 }
 ```
 
-#### コメントの削除（認証必須・作成者のみ）
-```
-DELETE /api/comments/{commentId}
-Authorization: Bearer YOUR_JWT_TOKEN
+#### 1.2 UnauthorizedExceptionの作成
 
-Response (204 No Content)
-```
+`src/main/java/com/example/bloghub/exception/UnauthorizedException.java`:
 
-## 💡 実装のヒント（フロントエンド）
+```java
+package com.example.bloghub.exception;
 
-### 1. Thymeleafテンプレート構成
-以下のテンプレートを作成してください：
-
-```
-src/main/resources/templates/
-├── layout/
-│   ├── base.html (共通レイアウト)
-│   ├── header.html (ヘッダーフラグメント)
-│   └── footer.html (フッターフラグメント)
-├── index.html (記事一覧)
-├── post/
-│   ├── detail.html (記事詳細)
-│   ├── create.html (記事作成フォーム)
-│   └── edit.html (記事編集フォーム)
-├── user/
-│   ├── profile.html (プロフィール)
-│   └── posts.html (ユーザーの記事一覧)
-└── auth/
-    ├── login.html (ログインページ)
-    └── register.html (登録ページ)
+public class UnauthorizedException extends RuntimeException {
+    
+    public UnauthorizedException(String message) {
+        super(message);
+    }
+    
+    public UnauthorizedException() {
+        super("You are not authorized to perform this action");
+    }
+}
 ```
 
-### 2. 共通レイアウトの作成
-`layout/base.html`を作成し、全ページで共通のヘッダー・フッターを定義してください。
+#### 1.3 ErrorResponseの作成
 
-**例**:
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title th:text="${pageTitle} + ' | ミニブログ'">ミニブログ</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-    <!-- ヘッダー -->
-    <div th:replace="~{layout/header :: header}"></div>
-    
-    <!-- メインコンテンツ -->
-    <main class="container my-4">
-        <div th:replace="${content}"></div>
-    </main>
-    
-    <!-- フッター -->
-    <div th:replace="~{layout/footer :: footer}"></div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+`src/main/java/com/example/bloghub/dto/ErrorResponse.java`:
+
+```java
+package com.example.bloghub.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@AllArgsConstructor
+public class ErrorResponse {
+    private int status;
+    private String message;
+    private LocalDateTime timestamp;
+    private String path;
+}
 ```
 
-### 3. 記事一覧ページ
-`index.html`で記事一覧を表示してください。
+#### 1.4 GlobalExceptionHandlerの作成
 
-**例**:
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <title>記事一覧 | ミニブログ</title>
-</head>
-<body>
-    <div th:replace="~{layout/header :: header}"></div>
-    
-    <div class="container my-4">
-        <h1>最新の記事</h1>
-        
-        <div th:if="${posts.empty}" class="alert alert-info">
-            まだ記事がありません。
-        </div>
-        
-        <div th:each="post : ${posts}" class="card mb-3">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <a th:href="@{/posts/{id}(id=${post.id})}" 
-                       th:text="${post.title}">記事タイトル</a>
-                </h5>
-                <p class="card-text text-muted">
-                    <small>
-                        投稿者: <span th:text="${post.author.displayName}">著者名</span> |
-                        投稿日: <span th:text="${#temporals.format(post.publishedAt, 'yyyy/MM/dd HH:mm')}">日時</span> |
-                        閲覧数: <span th:text="${post.viewCount}">0</span> |
-                        コメント: <span th:text="${post.commentCount}">0</span>
-                    </small>
-                </p>
-                <!-- 記事の抜粋を表示 -->
-            </div>
-        </div>
-        
-        <!-- ページネーション -->
-        <nav th:if="${totalPages > 1}">
-            <ul class="pagination">
-                <!-- ページネーションのリンクを実装してください -->
-            </ul>
-        </nav>
-    </div>
-    
-    <div th:replace="~{layout/footer :: footer}"></div>
-</body>
-</html>
-```
+`src/main/java/com/example/bloghub/exception/GlobalExceptionHandler.java`:
 
-### 4. 記事詳細ページ（コメント機能付き）
-`post/detail.html`で記事詳細とコメントを表示してください。
+```java
+package com.example.bloghub.exception;
 
-**例**:
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <title th:text="${post.title} + ' | ミニブログ'">記事詳細</title>
-</head>
-<body>
-    <div th:replace="~{layout/header :: header}"></div>
+import com.example.bloghub.dto.ErrorResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
     
-    <div class="container my-4">
-        <!-- 記事本体 -->
-        <article>
-            <h1 th:text="${post.title}">記事タイトル</h1>
-            <p class="text-muted">
-                <small>
-                    投稿者: <a th:href="@{/users/{username}(username=${post.author.username})}"
-                              th:text="${post.author.displayName}">著者名</a> |
-                    投稿日: <span th:text="${#temporals.format(post.publishedAt, 'yyyy年MM月dd日 HH:mm')}">日時</span>
-                </small>
-            </p>
-            
-            <!-- 自分の記事の場合、編集・削除ボタンを表示 -->
-            <div th:if="${isAuthor}" class="mb-3">
-                <a th:href="@{/posts/{id}/edit(id=${post.id})}" class="btn btn-primary">編集</a>
-                <button type="button" class="btn btn-danger" 
-                        onclick="deletePost()">削除</button>
-            </div>
-            
-            <div class="content" th:utext="${post.content}">
-                記事の内容
-            </div>
-        </article>
-        
-        <hr class="my-5">
-        
-        <!-- コメントセクション -->
-        <section id="comments">
-            <h3>コメント (<span th:text="${comments.size()}">0</span>)</h3>
-            
-            <!-- コメント投稿フォーム（ログイン時のみ表示） -->
-            <div th:if="${isAuthenticated}" class="mb-4">
-                <form id="commentForm">
-                    <div class="mb-3">
-                        <textarea class="form-control" id="commentContent" 
-                                  rows="3" placeholder="コメントを入力..."></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary">コメントを投稿</button>
-                </form>
-            </div>
-            
-            <div th:if="${!isAuthenticated}" class="alert alert-info">
-                コメントを投稿するには<a th:href="@{/login}">ログイン</a>してください。
-            </div>
-            
-            <!-- コメント一覧 -->
-            <div class="comments-list">
-                <div th:each="comment : ${comments}" class="card mb-2">
-                    <div class="card-body">
-                        <p th:text="${comment.content}">コメント内容</p>
-                        <small class="text-muted">
-                            <strong th:text="${comment.user.displayName}">ユーザー名</strong> -
-                            <span th:text="${#temporals.format(comment.createdAt, 'yyyy/MM/dd HH:mm')}">日時</span>
-                        </small>
-                        <!-- 自分のコメントの場合、削除ボタンを表示 -->
-                        <button th:if="${comment.isOwner}" 
-                                th:data-comment-id="${comment.id}"
-                                class="btn btn-sm btn-danger float-end"
-                                onclick="deleteComment(this.dataset.commentId)">削除</button>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </div>
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+            ResourceNotFoundException ex, WebRequest request) {
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    }
     
-    <div th:replace="~{layout/footer :: footer}"></div>
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorizedException(
+            UnauthorizedException ex, WebRequest request) {
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
+    }
     
-    <!-- JavaScriptでREST API呼び出し -->
-    <script th:inline="javascript">
-        const postId = /*[[${post.id}]]*/ 0;
-        const token = localStorage.getItem('jwt_token');
-        
-        // コメント投稿
-        document.getElementById('commentForm')?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const content = document.getElementById('commentContent').value;
-            
-            // REST APIを呼び出してコメントを投稿
-            // fetch API を使って POST /api/posts/{postId}/comments
-            // 成功したらページをリロードまたは動的にDOMに追加
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationExceptions(
+            MethodArgumentNotValidException ex, WebRequest request) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getAllErrors().forEach((error) -> {
+            String fieldName = ((FieldError) error).getField();
+            String errorMessage = error.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
         });
         
-        // コメント削除
-        function deleteComment(commentId) {
-            if (!confirm('このコメントを削除しますか？')) return;
-            
-            // REST APIを呼び出してコメントを削除
-            // fetch API を使って DELETE /api/comments/{commentId}
-        }
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", HttpStatus.BAD_REQUEST.value());
+        response.put("message", "Validation failed");
+        response.put("errors", errors);
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false).replace("uri=", ""));
         
-        // 記事削除
-        function deletePost() {
-            if (!confirm('この記事を削除しますか？')) return;
-            
-            // REST APIを呼び出して記事を削除
-            // fetch API を使って DELETE /api/posts/{postId}
-        }
-    </script>
-</body>
-</html>
-```
-
-### 5. WebControllerの実装
-`@Controller`を使ってThymeleafビューを返すコントローラーを実装してください。
-
-**例**:
-```java
-@Controller
-public class WebController {
-    
-    private final PostService postService;
-    private final CommentService commentService;
-    
-    @GetMapping("/")
-    public String index(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            Model model) {
-        
-        // 記事一覧を取得してModelに追加
-        // model.addAttribute("posts", ...);
-        // model.addAttribute("currentPage", page);
-        // model.addAttribute("totalPages", ...);
-        
-        return "index";
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
     
-    @GetMapping("/posts/{id}")
-    public String postDetail(@PathVariable Long id, Model model, Principal principal) {
-        // 記事詳細を取得
-        // コメント一覧を取得
-        // 現在のユーザーが記事の作成者かチェック
-        
-        // model.addAttribute("post", ...);
-        // model.addAttribute("comments", ...);
-        // model.addAttribute("isAuthor", ...);
-        // model.addAttribute("isAuthenticated", principal != null);
-        
-        return "post/detail";
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGlobalException(
+            Exception ex, WebRequest request) {
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An unexpected error occurred: " + ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-    
-    // 他のエンドポイントを実装してください
 }
 ```
 
-### 6. JavaScriptでREST APIを非同期呼び出し
-Thymeleafで画面を表示しつつ、コメント投稿・削除はREST APIを使って非同期で実行してください。
+---
 
-**考えるポイント**:
-- JWTトークンはlocalStorageに保存するべきか、Cookieにするべきか？
-- CSRF対策は必要か？
-- エラーハンドリングをどうするか？
+### 手順2: Repository層の実装
+
+#### 2.1 ArticleRepositoryの作成
+
+`src/main/java/com/example/bloghub/repository/ArticleRepository.java`:
+
+```java
+package com.example.bloghub.repository;
+
+import com.example.bloghub.entity.Article;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface ArticleRepository extends JpaRepository<Article, Long> {
+    
+    /**
+     * ユーザーの記事一覧をページネーションで取得
+     * 新しい順にソート
+     */
+    Page<Article> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    
+    /**
+     * タグで記事を検索
+     * 同じタグが複数回紐づいていても重複しないようDISTINCTを使用
+     */
+    @Query("SELECT DISTINCT a FROM Article a JOIN a.tags t WHERE t.name = :tagName ORDER BY a.createdAt DESC")
+    Page<Article> findByTagName(@Param("tagName") String tagName, Pageable pageable);
+    
+    /**
+     * 記事とユーザー情報、タグを一緒に取得（N+1問題回避）
+     * JOIN FETCHでユーザー情報とタグを同時に取得
+     * LEFT JOIN FETCHでタグがない記事も取得可能
+     */
+    @Query("SELECT a FROM Article a JOIN FETCH a.user LEFT JOIN FETCH a.tags WHERE a.id = :id")
+    Optional<Article> findByIdWithUser(@Param("id") Long id);
+    
+    /**
+     * すべての記事を新しい順で取得
+     */
+    Page<Article> findAllByOrderByCreatedAtDesc(Pageable pageable);
+}
+```
+
+#### 2.2 CommentRepositoryの作成
+
+`src/main/java/com/example/bloghub/repository/CommentRepository.java`:
+
+```java
+package com.example.bloghub.repository;
+
+import com.example.bloghub.entity.Comment;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+    
+    /**
+     * 記事のコメント一覧を取得
+     * 古い順にソート（会話の流れを保つため）
+     */
+    List<Comment> findByArticleIdOrderByCreatedAtAsc(Long articleId);
+    
+    /**
+     * 記事のコメント数をカウント
+     */
+    long countByArticleId(Long articleId);
+}
+```
+
+#### 2.3 TagRepositoryの作成
+
+`src/main/java/com/example/bloghub/repository/TagRepository.java`:
+
+```java
+package com.example.bloghub.repository;
+
+import com.example.bloghub.entity.Tag;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface TagRepository extends JpaRepository<Tag, Long> {
+    
+    /**
+     * タグ名で検索
+     */
+    Optional<Tag> findByName(String name);
+    
+    /**
+     * タグ名が存在するかチェック
+     */
+    boolean existsByName(String name);
+}
+```
+
+---
+
+### 手順3: DTO層の実装
+
+#### 3.1 記事関連DTOの作成
+
+**ArticleCreateRequest** (`src/main/java/com/example/bloghub/dto/article/ArticleCreateRequest.java`):
+
+```java
+package com.example.bloghub.dto.article;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.util.HashSet;
+import java.util.Set;
+
+@Data
+public class ArticleCreateRequest {
+    
+    @NotBlank(message = "Title is required")
+    @Size(min = 1, max = 200, message = "Title must be between 1 and 200 characters")
+    private String title;
+    
+    @NotBlank(message = "Content is required")
+    @Size(min = 1, max = 10000, message = "Content must be between 1 and 10000 characters")
+    private String content;
+    
+    private Set<String> tags = new HashSet<>();
+}
+```
+
+**ArticleUpdateRequest** (`src/main/java/com/example/bloghub/dto/article/ArticleUpdateRequest.java`):
+
+```java
+package com.example.bloghub.dto.article;
+
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.util.HashSet;
+import java.util.Set;
+
+@Data
+public class ArticleUpdateRequest {
+    
+    @Size(min = 1, max = 200, message = "Title must be between 1 and 200 characters")
+    private String title;
+    
+    @Size(min = 1, max = 10000, message = "Content must be between 1 and 10000 characters")
+    private String content;
+    
+    private Set<String> tags = new HashSet<>();
+}
+```
+
+**ArticleResponse** (`src/main/java/com/example/bloghub/dto/article/ArticleResponse.java`):
+
+```java
+package com.example.bloghub.dto.article;
+
+import com.example.bloghub.dto.user.UserResponse;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+
+@Data
+public class ArticleResponse {
+    private Long id;
+    private String title;
+    private String content;
+    private Set<String> tags = new HashSet<>();
+    private UserResponse user;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private Long commentCount;
+}
+```
+
+**ArticleSummaryResponse** (`src/main/java/com/example/bloghub/dto/article/ArticleSummaryResponse.java`):
+
+```java
+package com.example.bloghub.dto.article;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+
+@Data
+public class ArticleSummaryResponse {
+    private Long id;
+    private String title;
+    private String username;
+    private Set<String> tags = new HashSet<>();
+    private LocalDateTime createdAt;
+    private Long commentCount;
+}
+```
+
+#### 3.2 コメント関連DTOの作成
+
+**CommentCreateRequest** (`src/main/java/com/example/bloghub/dto/comment/CommentCreateRequest.java`):
+
+```java
+package com.example.bloghub.dto.comment;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+public class CommentCreateRequest {
+    
+    @NotBlank(message = "Content is required")
+    @Size(min = 1, max = 1000, message = "Content must be between 1 and 1000 characters")
+    private String content;
+}
+```
+
+**CommentResponse** (`src/main/java/com/example/bloghub/dto/comment/CommentResponse.java`):
+
+```java
+package com.example.bloghub.dto.comment;
+
+import com.example.bloghub.dto.user.UserResponse;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class CommentResponse {
+    private Long id;
+    private String content;
+    private UserResponse user;
+    private LocalDateTime createdAt;
+}
+```
+
+---
+
+### 手順4: Service層の実装
+
+#### 4.1 TagServiceの作成
+
+まず、タグの管理を行うサービスを作成します。
+
+`src/main/java/com/example/bloghub/service/TagService.java`:
+
+```java
+package com.example.bloghub.service;
+
+import com.example.bloghub.entity.Tag;
+import com.example.bloghub.repository.TagRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class TagService {
+    
+    private final TagRepository tagRepository;
+    
+    /**
+     * タグ名から取得または新規作成
+     */
+    @Transactional
+    public Tag findOrCreateTag(String name) {
+        return tagRepository.findByName(name)
+                .orElseGet(() -> {
+                    Tag newTag = new Tag();
+                    newTag.setName(name);
+                    return tagRepository.save(newTag);
+                });
+    }
+    
+    /**
+     * すべてのタグを取得
+     */
+    public List<Tag> getAllTags() {
+        return tagRepository.findAll();
+    }
+}
+```
+
+#### 4.2 ArticleServiceの作成
+
+`src/main/java/com/example/bloghub/service/ArticleService.java`:
+
+```java
+package com.example.bloghub.service;
+
+import com.example.bloghub.dto.article.*;
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.entity.Article;
+import com.example.bloghub.entity.Tag;
+import com.example.bloghub.entity.User;
+import com.example.bloghub.exception.ResourceNotFoundException;
+import com.example.bloghub.exception.UnauthorizedException;
+import com.example.bloghub.repository.ArticleRepository;
+import com.example.bloghub.repository.CommentRepository;
+import com.example.bloghub.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ArticleService {
+    
+    private final ArticleRepository articleRepository;
+    private final UserRepository userRepository;
+    private final CommentRepository commentRepository;
+    private final TagService tagService;
+    
+    /**
+     * 記事を作成
+     */
+    @Transactional
+    public ArticleResponse createArticle(ArticleCreateRequest request, String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
+        
+        Article article = new Article();
+        article.setTitle(request.getTitle());
+        article.setContent(request.getContent());
+        article.setUser(user);
+        
+        // タグの処理
+        Set<Tag> tags = processTags(request.getTags());
+        article.setTags(tags);
+        
+        Article savedArticle = articleRepository.save(article);
+        return convertToResponse(savedArticle);
+    }
+    
+    /**
+     * 記事を更新
+     */
+    @Transactional
+    public ArticleResponse updateArticle(Long id, ArticleUpdateRequest request, String username) {
+        Article article = articleRepository.findByIdWithUser(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
+        
+        // 所有者チェック
+        if (!article.getUser().getUsername().equals(username)) {
+            throw new UnauthorizedException("You can only update your own articles");
+        }
+        
+        // 更新
+        if (request.getTitle() != null) {
+            article.setTitle(request.getTitle());
+        }
+        if (request.getContent() != null) {
+            article.setContent(request.getContent());
+        }
+        if (request.getTags() != null) {
+            Set<Tag> tags = processTags(request.getTags());
+            article.setTags(tags);
+        }
+        
+        Article updatedArticle = articleRepository.save(article);
+        return convertToResponse(updatedArticle);
+    }
+    
+    /**
+     * 記事を削除
+     */
+    @Transactional
+    public void deleteArticle(Long id, String username) {
+        Article article = articleRepository.findByIdWithUser(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
+        
+        // 所有者チェック
+        if (!article.getUser().getUsername().equals(username)) {
+            throw new UnauthorizedException("You can only delete your own articles");
+        }
+        
+        articleRepository.delete(article);
+    }
+    
+    /**
+     * 記事詳細を取得
+     */
+    public ArticleResponse getArticleById(Long id) {
+        Article article = articleRepository.findByIdWithUser(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
+        return convertToResponse(article);
+    }
+    
+    /**
+     * すべての記事を取得（ページネーション）
+     */
+    public Page<ArticleSummaryResponse> getAllArticles(Pageable pageable) {
+        Page<Article> articles = articleRepository.findAllByOrderByCreatedAtDesc(pageable);
+        return articles.map(this::convertToSummaryResponse);
+    }
+    
+    /**
+     * タグで記事を検索
+     */
+    public Page<ArticleSummaryResponse> getArticlesByTag(String tagName, Pageable pageable) {
+        Page<Article> articles = articleRepository.findByTagName(tagName, pageable);
+        return articles.map(this::convertToSummaryResponse);
+    }
+    
+    /**
+     * 自分の記事一覧を取得
+     */
+    public Page<ArticleSummaryResponse> getMyArticles(String username, Pageable pageable) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
+        
+        Page<Article> articles = articleRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), pageable);
+        return articles.map(this::convertToSummaryResponse);
+    }
+    
+    /**
+     * タグ名のセットからTagエンティティのセットを作成
+     */
+    private Set<Tag> processTags(Set<String> tagNames) {
+        if (tagNames == null || tagNames.isEmpty()) {
+            return new HashSet<>();
+        }
+        
+        return tagNames.stream()
+                .filter(name -> name != null && !name.trim().isEmpty())
+                .map(tagService::findOrCreateTag)
+                .collect(Collectors.toSet());
+    }
+    
+    /**
+     * ArticleエンティティをArticleResponseに変換
+     */
+    private ArticleResponse convertToResponse(Article article) {
+        ArticleResponse response = new ArticleResponse();
+        response.setId(article.getId());
+        response.setTitle(article.getTitle());
+        response.setContent(article.getContent());
+        response.setTags(article.getTags().stream()
+                .map(Tag::getName)
+                .collect(Collectors.toSet()));
+        
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(article.getUser().getId());
+        userResponse.setUsername(article.getUser().getUsername());
+        userResponse.setEmail(article.getUser().getEmail());
+        userResponse.setCreatedAt(article.getUser().getCreatedAt());
+        response.setUser(userResponse);
+        
+        response.setCreatedAt(article.getCreatedAt());
+        response.setUpdatedAt(article.getUpdatedAt());
+        
+        // コメント数を取得
+        long commentCount = commentRepository.countByArticleId(article.getId());
+        response.setCommentCount(commentCount);
+        
+        return response;
+    }
+    
+    /**
+     * ArticleエンティティをArticleSummaryResponseに変換
+     */
+    private ArticleSummaryResponse convertToSummaryResponse(Article article) {
+        ArticleSummaryResponse response = new ArticleSummaryResponse();
+        response.setId(article.getId());
+        response.setTitle(article.getTitle());
+        response.setUsername(article.getUser().getUsername());
+        response.setTags(article.getTags().stream()
+                .map(Tag::getName)
+                .collect(Collectors.toSet()));
+        response.setCreatedAt(article.getCreatedAt());
+        
+        // コメント数を取得
+        long commentCount = commentRepository.countByArticleId(article.getId());
+        response.setCommentCount(commentCount);
+        
+        return response;
+    }
+}
+```
+
+#### 4.3 CommentServiceの作成
+
+`src/main/java/com/example/bloghub/service/CommentService.java`:
+
+```java
+package com.example.bloghub.service;
+
+import com.example.bloghub.dto.comment.CommentCreateRequest;
+import com.example.bloghub.dto.comment.CommentResponse;
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.entity.Article;
+import com.example.bloghub.entity.Comment;
+import com.example.bloghub.entity.User;
+import com.example.bloghub.exception.ResourceNotFoundException;
+import com.example.bloghub.exception.UnauthorizedException;
+import com.example.bloghub.repository.ArticleRepository;
+import com.example.bloghub.repository.CommentRepository;
+import com.example.bloghub.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class CommentService {
+    
+    private final CommentRepository commentRepository;
+    private final ArticleRepository articleRepository;
+    private final UserRepository userRepository;
+    
+    /**
+     * コメントを作成
+     */
+    @Transactional
+    public CommentResponse createComment(Long articleId, CommentCreateRequest request, String username) {
+        Article article = articleRepository.findById(articleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Article", articleId));
+        
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
+        
+        Comment comment = new Comment();
+        comment.setContent(request.getContent());
+        comment.setArticle(article);
+        comment.setUser(user);
+        
+        Comment savedComment = commentRepository.save(comment);
+        return convertToResponse(savedComment);
+    }
+    
+    /**
+     * コメントを削除
+     */
+    @Transactional
+    public void deleteComment(Long commentId, String username) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Comment", commentId));
+        
+        // 所有者チェック
+        if (!comment.getUser().getUsername().equals(username)) {
+            throw new UnauthorizedException("You can only delete your own comments");
+        }
+        
+        commentRepository.delete(comment);
+    }
+    
+    /**
+     * 記事のコメント一覧を取得
+     */
+    public List<CommentResponse> getCommentsByArticleId(Long articleId) {
+        // 記事の存在確認
+        if (!articleRepository.existsById(articleId)) {
+            throw new ResourceNotFoundException("Article", articleId);
+        }
+        
+        List<Comment> comments = commentRepository.findByArticleIdOrderByCreatedAtAsc(articleId);
+        return comments.stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * CommentエンティティをCommentResponseに変換
+     */
+    private CommentResponse convertToResponse(Comment comment) {
+        CommentResponse response = new CommentResponse();
+        response.setId(comment.getId());
+        response.setContent(comment.getContent());
+        
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(comment.getUser().getId());
+        userResponse.setUsername(comment.getUser().getUsername());
+        userResponse.setEmail(comment.getUser().getEmail());
+        userResponse.setCreatedAt(comment.getUser().getCreatedAt());
+        response.setUser(userResponse);
+        
+        response.setCreatedAt(comment.getCreatedAt());
+        
+        return response;
+    }
+}
+```
+
+---
+
+### 手順5: Controller層の実装
+
+#### 5.1 ArticleControllerの作成
+
+`src/main/java/com/example/bloghub/controller/ArticleController.java`:
+
+```java
+package com.example.bloghub.controller;
+
+import com.example.bloghub.dto.article.ArticleCreateRequest;
+import com.example.bloghub.dto.article.ArticleResponse;
+import com.example.bloghub.dto.article.ArticleSummaryResponse;
+import com.example.bloghub.dto.article.ArticleUpdateRequest;
+import com.example.bloghub.service.ArticleService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/articles")
+@RequiredArgsConstructor
+public class ArticleController {
+    
+    private final ArticleService articleService;
+    
+    /**
+     * 記事を作成
+     */
+    @PostMapping
+    public ResponseEntity<ArticleResponse> createArticle(
+            @Valid @RequestBody ArticleCreateRequest request,
+            Authentication authentication) {
+        String username = authentication.getName();
+        ArticleResponse response = articleService.createArticle(request, username);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+    
+    /**
+     * 記事一覧を取得（ページネーション、タグフィルター対応）
+     */
+    @GetMapping
+    public ResponseEntity<Page<ArticleSummaryResponse>> getArticles(
+            @RequestParam(required = false) String tag,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ArticleSummaryResponse> articles;
+        
+        if (tag != null && !tag.trim().isEmpty()) {
+            articles = articleService.getArticlesByTag(tag, pageable);
+        } else {
+            articles = articleService.getAllArticles(pageable);
+        }
+        
+        return ResponseEntity.ok(articles);
+    }
+    
+    /**
+     * 記事詳細を取得
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ArticleResponse> getArticle(@PathVariable Long id) {
+        ArticleResponse response = articleService.getArticleById(id);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 記事を更新
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<ArticleResponse> updateArticle(
+            @PathVariable Long id,
+            @Valid @RequestBody ArticleUpdateRequest request,
+            Authentication authentication) {
+        String username = authentication.getName();
+        ArticleResponse response = articleService.updateArticle(id, request, username);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 記事を削除
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteArticle(
+            @PathVariable Long id,
+            Authentication authentication) {
+        String username = authentication.getName();
+        articleService.deleteArticle(id, username);
+        return ResponseEntity.noContent().build();
+    }
+    
+    /**
+     * 自分の記事一覧を取得
+     */
+    @GetMapping("/my")
+    public ResponseEntity<Page<ArticleSummaryResponse>> getMyArticles(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            Authentication authentication) {
+        String username = authentication.getName();
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ArticleSummaryResponse> articles = articleService.getMyArticles(username, pageable);
+        return ResponseEntity.ok(articles);
+    }
+}
+```
+
+#### 5.2 CommentControllerの作成
+
+`src/main/java/com/example/bloghub/controller/CommentController.java`:
+
+```java
+package com.example.bloghub.controller;
+
+import com.example.bloghub.dto.comment.CommentCreateRequest;
+import com.example.bloghub.dto.comment.CommentResponse;
+import com.example.bloghub.service.CommentService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequiredArgsConstructor
+public class CommentController {
+    
+    private final CommentService commentService;
+    
+    /**
+     * コメントを作成
+     */
+    @PostMapping("/api/articles/{articleId}/comments")
+    public ResponseEntity<CommentResponse> createComment(
+            @PathVariable Long articleId,
+            @Valid @RequestBody CommentCreateRequest request,
+            Authentication authentication) {
+        String username = authentication.getName();
+        CommentResponse response = commentService.createComment(articleId, request, username);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+    
+    /**
+     * 記事のコメント一覧を取得
+     */
+    @GetMapping("/api/articles/{articleId}/comments")
+    public ResponseEntity<List<CommentResponse>> getComments(@PathVariable Long articleId) {
+        List<CommentResponse> comments = commentService.getCommentsByArticleId(articleId);
+        return ResponseEntity.ok(comments);
+    }
+    
+    /**
+     * コメントを削除
+     */
+    @DeleteMapping("/api/comments/{id}")
+    public ResponseEntity<Void> deleteComment(
+            @PathVariable Long id,
+            Authentication authentication) {
+        String username = authentication.getName();
+        commentService.deleteComment(id, username);
+        return ResponseEntity.noContent().build();
+    }
+}
+```
+
+#### 5.3 TagControllerの作成
+
+`src/main/java/com/example/bloghub/controller/TagController.java`:
+
+```java
+package com.example.bloghub.controller;
+
+import com.example.bloghub.entity.Tag;
+import com.example.bloghub.service.TagService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/tags")
+@RequiredArgsConstructor
+public class TagController {
+    
+    private final TagService tagService;
+    
+    /**
+     * すべてのタグを取得
+     */
+    @GetMapping
+    public ResponseEntity<List<String>> getAllTags() {
+        List<String> tags = tagService.getAllTags().stream()
+                .map(Tag::getName)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(tags);
+    }
+}
+```
+
+---
+
+### 手順6: ビルドと起動
+
+すべてのコードを実装したら、アプリケーションをビルドして起動します。
+
+```bash
+# プロジェクトのルートディレクトリに移動
+cd workspace/bloghub
+
+# ビルド
+./mvnw clean install
+
+# 起動
+./mvnw spring-boot:run
+```
+
+起動後、以下のURLでアプリケーションが動作していることを確認します：
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+---
 
 ## ✅ 動作確認
 
-### 1. ブラウザでアクセス
+実装した機能が正しく動作するか、curlコマンドで確認します。
+
+### 1. ユーザー登録とログイン
+
+```bash
+# ユーザー登録
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "password123"
+  }'
+
+# ログイン（JWTトークンを取得）
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "password": "password123"
+  }'
 ```
-http://localhost:8080/
+
+**期待される結果**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "type": "Bearer",
+  "username": "alice"
+}
 ```
 
-### 2. 記事詳細を表示してコメントを投稿
-1. ログインする
-2. 記事詳細ページにアクセス
-3. コメントフォームに入力して送信
-4. ページをリロードせずにコメントが表示されることを確認
+取得した`token`を環境変数に設定しておくと便利です：
 
-### 3. 自分の記事に編集・削除ボタンが表示されることを確認
-1. 自分で投稿した記事の詳細ページを表示
-2. 編集・削除ボタンが表示されることを確認
-3. 他のユーザーの記事ではボタンが表示されないことを確認
+```bash
+export TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
 
-## 🐛 トラブルシューティング
+### 2. 記事の作成
 
-### エラー: "Property 'user' not found on type 'Comment'"
+```bash
+# 記事を作成
+curl -X POST http://localhost:8080/api/articles \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Spring Bootの始め方",
+    "content": "# はじめに\nSpring Bootは、Javaで簡単にWebアプリケーションを作成できるフレームワークです。\n\n## セットアップ\n1. JDKをインストール\n2. Spring Initializrでプロジェクト作成\n3. 依存関係を追加",
+    "tags": ["Spring Boot", "Java", "Tutorial"]
+  }'
+```
 
-**原因**:
-- MyBatisのResultMapでネストしたオブジェクトがマッピングされていない
-- CommentエンティティにUserオブジェクトのフィールドがない
+**期待される結果**:
+```json
+{
+  "id": 1,
+  "title": "Spring Bootの始め方",
+  "content": "# はじめに\nSpring Bootは...",
+  "tags": ["Spring Boot", "Java", "Tutorial"],
+  "user": {
+    "id": 1,
+    "username": "alice",
+    "email": "alice@example.com",
+    "createdAt": "2025-12-13T10:00:00"
+  },
+  "createdAt": "2025-12-13T10:30:00",
+  "updatedAt": "2025-12-13T10:30:00",
+  "commentCount": 0
+}
+```
 
-**解決策**:
+### 3. 記事一覧の取得
 
+```bash
+# 記事一覧を取得（ページネーション）
+curl "http://localhost:8080/api/articles?page=0&size=10"
+```
+
+**期待される結果**:
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "title": "Spring Bootの始め方",
+      "username": "alice",
+      "tags": ["Spring Boot", "Java", "Tutorial"],
+      "createdAt": "2025-12-13T10:30:00",
+      "commentCount": 0
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 10
+  },
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+### 4. タグで検索
+
+```bash
+# タグで記事を検索
+curl "http://localhost:8080/api/articles?tag=Spring%20Boot&page=0&size=10"
+```
+
+### 5. 記事詳細の取得
+
+```bash
+# 記事詳細を取得
+curl http://localhost:8080/api/articles/1
+```
+
+### 6. 記事の更新
+
+```bash
+# 記事を更新
+curl -X PUT http://localhost:8080/api/articles/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Spring Bootの始め方【改訂版】",
+    "content": "# はじめに（更新版）\n...",
+    "tags": ["Spring Boot", "Java", "Tutorial", "Updated"]
+  }'
+```
+
+### 7. コメントの作成
+
+```bash
+# 別のユーザーを登録してログイン
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "bob",
+    "email": "bob@example.com",
+    "password": "password123"
+  }'
+
+# bobでログイン
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "bob",
+    "password": "password123"
+  }'
+
+# bobのトークンを保存
+export TOKEN_BOB="取得したトークン"
+
+# bobがaliceの記事にコメント
+curl -X POST http://localhost:8080/api/articles/1/comments \
+  -H "Authorization: Bearer $TOKEN_BOB" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "とても参考になりました！ありがとうございます。"
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "id": 1,
+  "content": "とても参考になりました！ありがとうございます。",
+  "user": {
+    "id": 2,
+    "username": "bob",
+    "email": "bob@example.com",
+    "createdAt": "2025-12-13T10:35:00"
+  },
+  "createdAt": "2025-12-13T10:40:00"
+}
+```
+
+### 8. コメント一覧の取得
+
+```bash
+# 記事のコメント一覧を取得
+curl http://localhost:8080/api/articles/1/comments
+```
+
+**期待される結果**:
+```json
+[
+  {
+    "id": 1,
+    "content": "とても参考になりました！ありがとうございます。",
+    "user": {
+      "id": 2,
+      "username": "bob",
+      "email": "bob@example.com",
+      "createdAt": "2025-12-13T10:35:00"
+    },
+    "createdAt": "2025-12-13T10:40:00"
+  }
+]
+```
+
+### 9. 自分の記事一覧の取得
+
+```bash
+# 自分の記事一覧を取得
+curl http://localhost:8080/api/articles/my \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### 10. タグ一覧の取得
+
+```bash
+# すべてのタグを取得
+curl http://localhost:8080/api/tags
+```
+
+**期待される結果**:
+```json
+["Spring Boot", "Java", "Tutorial", "Updated"]
+```
+
+### 11. 記事の削除
+
+```bash
+# 記事を削除（所有者のみ）
+curl -X DELETE http://localhost:8080/api/articles/1 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**期待される結果**: HTTPステータス204 No Content
+
+### 12. コメントの削除
+
+```bash
+# コメントを削除（所有者のみ）
+curl -X DELETE http://localhost:8080/api/comments/1 \
+  -H "Authorization: Bearer $TOKEN_BOB"
+```
+
+---
+
+## 💪 チャレンジ課題
+
+基本機能の理解を深めるため、以下の課題に挑戦してみましょう。
+
+### 課題1: いいね機能を追加する
+
+**要件**:
+- Likeエンティティを作成（User、Article、createdAtを持つ）
+- ユーザーは1つの記事に1回だけいいねできる（複合主キー）
+- いいね数を記事一覧・詳細に表示
+- `POST /api/articles/{id}/like`でいいね
+- `DELETE /api/articles/{id}/like`でいいね解除
+
+**ヒント**:
 ```java
-// Commentエンティティにauthorフィールドを追加
-@Data
-public class Comment {
-    private Long id;
-    private Long postId;
-    private Long userId;
-    private String content;
+@Entity
+@Table(name = "likes")
+@IdClass(LikeId.class)
+public class Like {
+    @Id
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+    
+    @Id
+    @ManyToOne
+    @JoinColumn(name = "article_id")
+    private Article article;
+    
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    
-    // ネストしたユーザー情報
-    private User author;  // このフィールドを追加
 }
 ```
 
-```xml
-<!-- CommentMapper.xml でResultMapを定義 -->
-<resultMap id="CommentWithAuthorMap" type="com.example.blog.entity.Comment">
-    <id property="id" column="comment_id"/>
-    <result property="postId" column="post_id"/>
-    <result property="userId" column="user_id"/>
-    <result property="content" column="content"/>
-    <result property="createdAt" column="created_at"/>
-    <result property="updatedAt" column="updated_at"/>
-    
-    <association property="author" javaType="com.example.blog.entity.User">
-        <id property="id" column="user_id"/>
-        <result property="username" column="username"/>
-        <result property="displayName" column="display_name"/>
-    </association>
-</resultMap>
+### 課題2: 記事の下書き保存機能
 
-<select id="findByPostId" resultMap="CommentWithAuthorMap">
-    SELECT 
-        c.id AS comment_id,
-        c.post_id,
-        c.user_id,
-        c.content,
-        c.created_at,
-        c.updated_at,
-        u.username,
-        u.display_name
-    FROM comments c
-    INNER JOIN users u ON c.user_id = u.id
-    WHERE c.post_id = #{postId}
-    ORDER BY c.created_at ASC
-</select>
-```
+**要件**:
+- Articleエンティティに`published`フラグ（Boolean）を追加
+- デフォルトはfalse（下書き）
+- `PUT /api/articles/{id}/publish`で公開
+- 公開されていない記事は所有者のみが閲覧可能
+- 記事一覧には公開済みの記事のみ表示
 
-### エラー: "Thymeleafのth:ifで isAuthenticated が常にfalseになる"
-
-**原因**:
-- Controllerからmodelに`isAuthenticated`属性を渡していない
-- Spring SecurityのPrincipalがnullになっている
-
-**解決策**:
-
+**ヒント**:
 ```java
-@Controller
-@RequestMapping("/posts")
-@RequiredArgsConstructor
-public class PostViewController {
-    
-    @GetMapping("/{id}")
-    public String showPost(
-            @PathVariable Long id, 
-            Model model,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        
-        // 認証状態を判定
-        boolean isAuthenticated = (userDetails != null);
-        model.addAttribute("isAuthenticated", isAuthenticated);
-        
-        // 記事の所有者チェック
-        Post post = postService.getPostById(id);
-        boolean isAuthor = false;
-        if (isAuthenticated) {
-            isAuthor = post.getAuthor().getUsername().equals(userDetails.getUsername());
-        }
-        model.addAttribute("isAuthor", isAuthor);
-        
-        model.addAttribute("post", post);
-        model.addAttribute("comments", commentService.getCommentsByPostId(id));
-        
-        return "post/detail";
-    }
-}
+// Repositoryにカスタムクエリを追加
+Page<Article> findByPublishedTrueOrderByCreatedAtDesc(Pageable pageable);
+Page<Article> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable); // 自分の記事は下書きも含む
 ```
 
-### エラー: "CORS policy: No 'Access-Control-Allow-Origin' header"
+### 課題3: タグの人気順ソート
 
-**原因**:
-- ThymeleafからJavaScriptでREST APIを呼び出す際、CORS設定が必要
-- 同一オリジンでもAjaxリクエストにはCORS設定が必要な場合がある
+**要件**:
+- 各タグが使用されている記事数をカウント
+- `GET /api/tags/popular`で人気順（記事数降順）にタグを取得
+- 記事数も一緒に返す
 
-**解決策**:
-
+**ヒント**:
 ```java
-// REST API側でCORS設定
-@RestController
-@RequestMapping("/api/posts")
-@CrossOrigin(origins = "http://localhost:8080")  // Thymeleafと同じオリジン
-public class PostRestController {
-    // ...
-}
-
-// またはグローバル設定
-@Configuration
-public class WebConfig implements WebMvcConfigurer {
-    
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-            .allowedOrigins("http://localhost:8080")
-            .allowedMethods("GET", "POST", "PUT", "DELETE")
-            .allowedHeaders("*")
-            .allowCredentials(true);
-    }
-}
+@Query("SELECT t.name, COUNT(a) as count FROM Tag t JOIN t.articles a GROUP BY t.id ORDER BY count DESC")
+List<Object[]> findTagsWithArticleCount();
 ```
 
-### エラー: "JavaScript fetch で 401 Unauthorized が返る"
+---
 
-**原因**:
-- JWTトークンがリクエストヘッダーに含まれていない
-- トークンの有効期限が切れている
-- トークンの形式が間違っている
+## 🔍 トラブルシューティング
 
-**解決策**:
+### エラー1: `ResourceNotFoundException: Article not found with id: 1`
 
-```javascript
-// JavaScriptでREST API呼び出し時にトークンを含める
-async function postComment(postId, content) {
-    const token = localStorage.getItem('jwt_token');
-    
-    if (!token) {
-        alert('ログインしてください');
-        window.location.href = '/login';
-        return;
-    }
-    
-    try {
-        const response = await fetch(`/api/posts/${postId}/comments`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`  // トークンを含める
-            },
-            body: JSON.stringify({ content })
-        });
-        
-        if (response.status === 401) {
-            alert('認証が切れました。再ログインしてください。');
-            localStorage.removeItem('jwt_token');
-            window.location.href = '/login';
-            return;
-        }
-        
-        if (!response.ok) {
-            throw new Error('コメント投稿に失敗しました');
-        }
-        
-        const comment = await response.json();
-        // コメントをDOMに追加
-        addCommentToDOM(comment);
-        
-    } catch (error) {
-        console.error('Error:', error);
-        alert('エラーが発生しました');
-    }
-}
-```
+**原因**: 指定したIDの記事が存在しない
 
-### エラー: "コメント削除後にページがリロードされない"
+**解決方法**:
+1. 記事が作成されているか確認：
+   ```bash
+   curl http://localhost:8080/api/articles
+   ```
+2. 正しいIDを指定しているか確認
+3. データベースの内容を確認：
+   ```bash
+   docker exec -it bloghub-mysql mysql -u root -prootpassword bloghub -e "SELECT * FROM articles;"
+   ```
 
-**原因**:
-- JavaScriptでDOMの更新処理が実装されていない
-- コメント削除APIの戻り値を受け取っていない
+### エラー2: `UnauthorizedException: You can only update your own articles`
 
-**解決策**:
+**原因**: 他のユーザーの記事を更新しようとしている
 
-```javascript
-async function deleteComment(commentId) {
-    if (!confirm('このコメントを削除しますか？')) {
-        return;
-    }
-    
-    const token = localStorage.getItem('jwt_token');
-    
-    try {
-        const response = await fetch(`/api/comments/${commentId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error('削除に失敗しました');
-        }
-        
-        // DOMから削除
-        const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
-        if (commentElement) {
-            commentElement.closest('.card').remove();
-        }
-        
-        // コメント数を更新
-        const countElement = document.querySelector('#comments h3 span');
-        const currentCount = parseInt(countElement.textContent);
-        countElement.textContent = currentCount - 1;
-        
-        alert('コメントを削除しました');
-        
-    } catch (error) {
-        console.error('Error:', error);
-        alert('削除に失敗しました');
-    }
-}
-```
+**解決方法**:
+1. 正しいユーザーのトークンを使用しているか確認
+2. 記事の所有者を確認：
+   ```bash
+   curl http://localhost:8080/api/articles/1
+   ```
+3. 自分の記事一覧を確認：
+   ```bash
+   curl http://localhost:8080/api/articles/my -H "Authorization: Bearer $TOKEN"
+   ```
 
-### エラー: "Thymeleaf Layout Dialectが見つからない"
+### エラー3: `MethodArgumentNotValidException: Validation failed`
 
-**原因**:
-- `thymeleaf-layout-dialect`の依存関係が不足
-- フラグメント定義が間違っている
+**原因**: リクエストボディのバリデーションエラー
 
-**解決策**:
+**解決方法**:
+1. エラーレスポンスの`errors`フィールドを確認：
+   ```json
+   {
+     "status": 400,
+     "message": "Validation failed",
+     "errors": {
+       "title": "Title is required",
+       "content": "Content must be between 1 and 10000 characters"
+     }
+   }
+   ```
+2. 必須フィールドが含まれているか確認
+3. 文字数制限を守っているか確認
 
-```xml
-<!-- pom.xml -->
-<dependency>
-    <groupId>nz.net.ultraq.thymeleaf</groupId>
-    <artifactId>thymeleaf-layout-dialect</artifactId>
-</dependency>
-```
+### エラー4: N+1問題によるパフォーマンス低下
 
-```html
-<!-- layout/base.html -->
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
-<head>
-    <title layout:title-pattern="$CONTENT_TITLE - $LAYOUT_TITLE">My Blog</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-</head>
-<body>
-    <div th:replace="~{layout/header :: header}"></div>
-    
-    <main layout:fragment="content">
-        <!-- コンテンツがここに挿入される -->
-    </main>
-    
-    <div th:replace="~{layout/footer :: footer}"></div>
-</body>
-</html>
-```
+**現象**: 記事一覧取得時にSQLが大量に実行される
 
-```html
-<!-- post/detail.html -->
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
-      layout:decorate="~{layout/base}">
-<head>
-    <title th:text="${post.title}">記事タイトル</title>
-</head>
-<body>
-    <div layout:fragment="content">
-        <!-- 記事詳細の内容 -->
-    </div>
-</body>
-</html>
-```
+**解決方法**:
+1. `application.yml`でSQLログを有効化：
+   ```yaml
+   spring:
+     jpa:
+       show-sql: true
+       properties:
+         hibernate:
+           format_sql: true
+   ```
+2. `JOIN FETCH`を使用しているか確認
+3. 必要に応じて`@EntityGraph`を使用：
+   ```java
+   @EntityGraph(attributePaths = {"user", "tags"})
+   Page<Article> findAllByOrderByCreatedAtDesc(Pageable pageable);
+   ```
 
-## 🎓 学習ポイント
+### エラー5: `LazyInitializationException`
 
-1. **1対多リレーション**: 記事とコメントの関連
-2. **Thymeleaf**: サーバーサイドレンダリング
-3. **REST API + Thymeleaf**: ハイブリッドなアプローチ
-4. **非同期通信**: JavaScriptでのfetch API使用
-5. **認証状態の判定**: ビューでの条件分岐
-6. **フラグメント**: 共通部品の再利用
+**原因**: トランザクション外でLazy Loadingを試みている
 
-## 📝 追加課題（オプション）
+**解決方法**:
+1. `@Transactional(readOnly = true)`をサービスクラスに付与
+2. `JOIN FETCH`でデータを事前にロード
+3. DTOへの変換をトランザクション内で行う
 
-1. コメントの編集機能
-2. コメントへの返信機能（ネストコメント）
-3. コメントのページネーション
-4. いいね機能（記事・コメント両方）
-5. リアルタイム更新（WebSocket使用）
-6. マークダウンエディタの導入
+---
 
-## ➡️ 次のステップ
+## 📚 まとめ
 
-[Step 37: タグ機能と画像アップロード](STEP_37.md)へ進みましょう！
+お疲れさまでした！このステップでは、BlogHubアプリケーションのコア機能である**記事とコメント機能**を実装しました。
 
-多対多リレーションシップとファイル管理を学びます。
+### 学んだこと
+
+1. **カスタムクエリの実装**: `@Query`アノテーションでJPQLを記述し、複雑な検索条件を実装
+2. **ページネーションの実装**: `Pageable`と`Page`を使った効率的なデータ取得
+3. **N+1問題の回避**: `JOIN FETCH`による関連エンティティの一括取得
+4. **所有者チェック**: 認証されたユーザーが自分のリソースのみを編集・削除できるセキュリティ実装
+5. **タグの自動作成**: `findOrCreateTag`パターンによる柔軟なタグ管理
+6. **ネストされたRESTfulルート**: `/api/articles/{articleId}/comments`によるリソースの階層構造表現
+7. **グローバルエラーハンドリング**: `@ControllerAdvice`による統一的な例外処理
+8. **DTOの活用**: エンティティとAPIレスポンスの分離による柔軟性向上
+9. **複合的なビジネスロジック**: Repository、Service、Controllerの適切な役割分担
+10. **RESTful API設計**: HTTPメソッド、ステータスコード、リソース設計のベストプラクティス
+
+### 重要なポイント
+
+- **N+1問題**: 関連エンティティを取得する際は`JOIN FETCH`を使用してクエリ数を削減
+- **所有者チェック**: セキュリティの観点から、リソースの所有者のみが編集・削除できるよう制御
+- **ページネーション**: 大量データを効率的に取得するため、必ずページネーションを実装
+- **トランザクション管理**: `@Transactional`を適切に使用してデータ整合性を保証
+- **バリデーション**: `@Valid`と`@NotBlank`などで入力値を検証
+- **エラーハンドリング**: `GlobalExceptionHandler`で一貫性のあるエラーレスポンスを返す
+- **RESTful設計**: ネストされたルート（`/articles/{id}/comments`）でリソースの関係性を明確に表現
+
+---
+
+## 🚀 次のステップへ
+
+記事とコメント機能の実装が完了しました！次のステップでは、**画像アップロードと検索機能**を実装します。
+
+👉 **[Step 37: 画像アップロードと検索機能](STEP_37.md)** に進みましょう！
+
+Step 37では以下を学びます：
+- ファイルアップロード処理（Step 30の応用）
+- 画像とArticleの関連付け
+- 全文検索機能の実装
+- 複合的な検索条件（タグ + キーワード）
+- 画像のサムネイル生成（チャレンジ課題）
+
+**頑張ってください！ 🎉**

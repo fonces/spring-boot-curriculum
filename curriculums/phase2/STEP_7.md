@@ -2,298 +2,143 @@
 
 ## 🎯 このステップの目標
 
-- `@Entity`アノテーションでエンティティクラスを作成する
-- `JpaRepository`インターフェースを理解する
-- データベースにデータを保存（Create）する
-- データベースからデータを取得（Read）する
-- 実際に動作するユーザー登録・一覧取得APIを実装する
+- `JpaRepository`インターフェースの基本を理解できる
+- リポジトリを作成してデータベース操作ができる
+- REST APIでCRUDのうち作成（Create）と読み取り（Read）を実装できる
+- Spring Data JPAの自動実装の仕組みを理解できる
 
-**所要時間**: 約1時間
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-- Step 6で構築したMySQLデータベース環境
-- `spring-boot-starter-data-jpa`と`mysql-connector-j`の依存関係が追加済み
-
-**Step 6をまだ完了していない場合**: [Step 6: MySQL環境構築](STEP_6.md)を先に進めてください。
-
----
-
-## 💡 JPAとは？
-
-### JPA (Java Persistence API)
-
-**JPA** = Javaでデータベース操作を行うための標準仕様
-
-**特徴**:
-- ✅ SQLを書かなくてもデータベース操作ができる
-- ✅ オブジェクト指向でデータを扱える（ORM）
-- ✅ データベースの種類を問わない（MySQL、PostgreSQL等）
-
-### ORM (Object-Relational Mapping)
-
-**Javaのクラス（オブジェクト）** と **データベースのテーブル（リレーショナル）** を対応付ける技術
-
-```
-Javaクラス          ←→    データベーステーブル
------------              -------------------
-User.java                users テーブル
-├── id                   ├── id (BIGINT)
-├── name                 ├── name (VARCHAR)
-└── email                └── email (VARCHAR)
-```
-
-### Spring Data JPA
-
-JPAをさらに使いやすくしたSpringのライブラリ
-
-**便利な機能**:
-- リポジトリインターフェースを作るだけでCRUD操作が使える
-- メソッド名から自動的にクエリを生成
-- ページネーション、ソート機能が簡単
+- [Step 6](STEP_6.md)が完了していること
+- `Product`エンティティが作成されていること
+- MySQLコンテナが起動していること（`docker compose ps`で確認）
 
 ---
 
-## 🚀 ステップ1: エンティティクラスの作成
+## 🧩 JpaRepositoryとは
 
-### 1-1. Userエンティティの作成
+### リポジトリパターン
 
-新しいパッケージ`entity`を作成し、`User`クラスを作成します。
+**Repository（リポジトリ）**は、データアクセスロジックをカプセル化するデザインパターンです。
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`
+```
+┌──────────────────────────────────────┐
+│         Controller                   │
+│  (HTTPリクエストを受け取る)            │
+└──────────────┬───────────────────────┘
+               │
+               ↓
+┌──────────────────────────────────────┐
+│         Repository                   │
+│  (データアクセスロジック)               │
+│  ┌────────────────────────────────┐  │
+│  │ save()                         │  │
+│  │ findById()                     │  │
+│  │ findAll()                      │  │
+│  │ deleteById()                   │  │
+│  └────────────────────────────────┘  │
+└──────────────┬───────────────────────┘
+               │
+               ↓
+┌──────────────────────────────────────┐
+│         Database (MySQL)             │
+└──────────────────────────────────────┘
+```
 
+### Spring Data JPAの魔法
+
+`JpaRepository`を継承するだけで、基本的なCRUD操作が**自動実装**されます。
+
+**従来のやり方（JDBC）**:
 ```java
-package com.example.hellospringboot.entity;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Entity
-@Table(name = "users")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 100)
-    private String name;
-
-    @Column(nullable = false, unique = true, length = 100)
-    private String email;
-
-    @Column
-    private Integer age;
+public class ProductDao {
+    public Product findById(Long id) {
+        String sql = "SELECT * FROM products WHERE id = ?";
+        // PreparedStatement、ResultSet、例外処理...
+        // 100行以上のコード
+    }
 }
 ```
 
-### 1-2. アノテーションの解説
-
-#### `@Entity`
+**Spring Data JPAの場合**:
 ```java
-@Entity
-```
-- このクラスがJPAのエンティティであることを示す
-- データベースのテーブルに対応するクラス
-
-#### `@Table`
-```java
-@Table(name = "users")
-```
-- テーブル名を指定（省略時はクラス名が使われる）
-- `User` → `user`テーブルになるが、明示的に`users`と指定
-
-#### `@Id`
-```java
-@Id
-@GeneratedValue(strategy = GenerationType.IDENTITY)
-private Long id;
-```
-- `@Id`: 主キーであることを示す
-- `@GeneratedValue`: 値の自動生成
-- `GenerationType.IDENTITY`: データベースの自動採番機能を使用
-
-#### `@Column`
-```java
-@Column(nullable = false, length = 100)
-private String name;
-
-@Column(nullable = false, unique = true, length = 100)
-private String email;
-```
-- `nullable = false`: NOT NULL制約
-- `unique = true`: ユニーク制約（重複不可）
-- `length = 100`: VARCHAR(100)
-
-### 1-3. アプリケーション起動とテーブル確認
-
-アプリケーションを起動します。
-
-コンソールに以下のようなSQLが表示されます：
-
-```sql
-Hibernate: 
-    create table users (
-       id bigint generated by default as identity,
-        age integer,
-        email varchar(100) not null,
-        name varchar(100) not null,
-        primary key (id)
-    )
-Hibernate: 
-    alter table if exists users 
-       add constraint UK_6dotkott2kjsp8vw4d0m25fb7 unique (email)
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    // これだけ！実装は自動生成される
+}
 ```
 
-**これで自動的にテーブルが作成されました！**
+**メリット**:
+- **ボイラープレートの削減**: 繰り返しコードを書く必要がない
+- **タイプセーフ**: コンパイル時に型チェックされる
+- **保守性の向上**: SQLの記述ミスを防げる
+- **テストしやすい**: モックに差し替えやすい
 
 ---
 
-## 🚀 ステップ2: リポジトリの作成
+## 🚀 ステップ1: ProductRepositoryの作成
 
-### 2-1. UserRepositoryインターフェースの作成
+### 1-1. リポジトリインターフェースを作成
 
-新しいパッケージ`repository`を作成し、`UserRepository`インターフェースを作成します。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/UserRepository.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/ProductRepository.java`
 
 ```java
-package com.example.hellospringboot.repository;
+package com.example.hellospringboot;
 
-import com.example.hellospringboot.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
-    // メソッドは自動的に提供される（まだ何も書かない）
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    // メソッドは自動実装されるため、ここには何も書かない
 }
 ```
 
-### 2-2. コードの解説
+### 1-2. コードの解説
 
-#### `JpaRepository<User, Long>`
-```java
-public interface UserRepository extends JpaRepository<User, Long>
-```
-- `User`: エンティティの型
-- `Long`: 主キー（ID）の型
+#### `JpaRepository<Product, Long>`
 
-#### 自動的に提供されるメソッド
+型パラメータを指定します：
 
-`JpaRepository`を継承するだけで、以下のメソッドが使えます：
+- 第1引数（`Product`）: エンティティクラス
+- 第2引数（`Long`）: 主キーの型
 
-| メソッド | 機能 |
-|---------|------|
-| `save(entity)` | 保存（Insert/Update） |
-| `findById(id)` | IDで検索 |
-| `findAll()` | 全件取得 |
-| `deleteById(id)` | IDで削除 |
-| `count()` | 件数カウント |
-| `existsById(id)` | 存在チェック |
+#### `@Repository`
 
-**メソッドを実装する必要はありません！**
+このインターフェースがリポジトリであることを示すアノテーションです。
+
+- Spring Beanとして登録される
+- データアクセス例外を変換してくれる
+
+**注意**: `JpaRepository`を継承している場合、`@Repository`は省略可能です（推奨は付ける）。
+
+#### 自動実装されるメソッド
+
+`JpaRepository`を継承すると、以下のメソッドが自動的に使えるようになります：
+
+| メソッド | 説明 | SQL |
+|---|---|---|
+| `save(Product product)` | 保存または更新 | `INSERT` / `UPDATE` |
+| `findById(Long id)` | IDで検索 | `SELECT ... WHERE id = ?` |
+| `findAll()` | 全件取得 | `SELECT * FROM products` |
+| `deleteById(Long id)` | IDで削除 | `DELETE ... WHERE id = ?` |
+| `count()` | 件数取得 | `SELECT COUNT(*) FROM products` |
+| `existsById(Long id)` | 存在確認 | `SELECT ... WHERE id = ? LIMIT 1` |
 
 ---
 
-## 🚀 ステップ3: サービス層の作成
+## 🚀 ステップ2: ProductControllerの作成
 
-### 3-1. UserServiceの作成
+### 2-1. REST APIコントローラーを作成
 
-新しいパッケージ`service`を作成し、`UserService`クラスを作成します。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/ProductController.java`
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot;
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-
-@Service
-@RequiredArgsConstructor
-public class UserService {
-
-    private final UserRepository userRepository;
-
-    /**
-     * ユーザーを作成
-     */
-    public User createUser(User user) {
-        return userRepository.save(user);
-    }
-
-    /**
-     * 全ユーザーを取得
-     */
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
-    }
-}
-```
-
-### 3-2. コードの解説
-
-#### `@Service`
-```java
-@Service
-```
-- このクラスがサービス層であることを示す
-- Spring Bootが自動的にBeanとして登録
-
-#### `@RequiredArgsConstructor` (Lombok)
-```java
-@RequiredArgsConstructor
-public class UserService {
-    private final UserRepository userRepository;
-```
-- `final`フィールドを引数に持つコンストラクタを自動生成
-- 依存性注入（DI）に使用
-
-**Lombokなしで書くと**:
-```java
-public class UserService {
-    private final UserRepository userRepository;
-    
-    public UserService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-}
-```
-
----
-
-## 🚀 ステップ4: コントローラーの作成
-
-### 4-1. Phase 1のDTOを削除（オプション）
-
-Phase 1で作成した`UserRequest`と`UserResponse`はエンティティと構造が異なるため、
-今回は直接エンティティを使用します（後のステップでDTOを再導入します）。
-
-### 4-2. UserControllerの作成（新規）
-
-Phase 1の`UserController`を以下のように**書き換え**ます。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -302,419 +147,587 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/products")
 @RequiredArgsConstructor
-public class UserController {
-
-    private final UserService userService;
-
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        User createdUser = userService.createUser(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
-    }
-
-    /**
-     * 全ユーザー取得
-     * GET /api/users
-     */
+public class ProductController {
+    
+    private final ProductRepository productRepository;
+    
+    // 全商品取得
     @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
+    public List<Product> getAllProducts() {
+        return productRepository.findAll();
+    }
+    
+    // 商品をIDで取得
+    @GetMapping("/{id}")
+    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
+        return productRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    // 新しい商品を作成
+    @PostMapping
+    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+        Product saved = productRepository.save(product);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 }
 ```
 
-### 4-3. コードの解説
+### 2-2. コードの解説
 
-#### `@RequestMapping("/api/users")`
-```java
-@RequestMapping("/api/users")
-```
-- このコントローラーの全エンドポイントは`/api/users`で始まる
-- RESTful APIの慣習に従う
+#### `@RequestMapping("/api/products")`
 
-#### `ResponseEntity<T>`
+このコントローラー内の全てのエンドポイントに共通のベースパスを指定します。
+
+- `/api/products` → 全商品取得
+- `/api/products/1` → ID=1の商品取得
+
+#### `@RequiredArgsConstructor`
+
+Lombokのアノテーションで、`final`フィールドのコンストラクタを自動生成します。
+
+これにより、以下のコードが自動生成されます：
+
 ```java
-public ResponseEntity<User> createUser(@RequestBody User user) {
-    User createdUser = userService.createUser(user);
-    return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+public ProductController(ProductRepository productRepository) {
+    this.productRepository = productRepository;
 }
 ```
-- HTTPステータスコードとボディを明示的に返せる
-- `HttpStatus.CREATED` → 201 Created
-- `ResponseEntity.ok()` → 200 OK
+
+#### `ResponseEntity<Product>`
+
+HTTPレスポンスを柔軟に制御できるクラスです。
+
+```java
+ResponseEntity.ok(product)           // 200 OK
+ResponseEntity.notFound().build()    // 404 Not Found
+ResponseEntity.status(HttpStatus.CREATED).body(saved)  // 201 Created
+```
+
+#### `productRepository.findById(id)`
+
+`Optional<Product>`を返します。
+
+- **値が存在する場合**: `Optional.of(product)`
+- **値が存在しない場合**: `Optional.empty()`
+
+`.map(ResponseEntity::ok)`は、値が存在する場合に200 OKレスポンスに変換します。
+
+`.orElse(ResponseEntity.notFound().build())`は、値が存在しない場合に404 Not Foundを返します。
 
 ---
 
-## ✅ ステップ5: 動作確認
+## 🚀 ステップ3: アプリケーションの起動
 
-### 5-1. アプリケーション起動
-
-アプリケーションを起動します。
-
-### 5-2. ユーザー作成（POST）
+### 3-1. ビルドと起動
 
 ```bash
-curl -X POST http://localhost:8080/api/users \
+./mvnw clean install
+./mvnw spring-boot:run
+```
+
+**起動確認**:
+
+コンソールに以下のようなログが出力されればOKです：
+
+```
+Started HelloSpringBootApplication in 2.345 seconds
+```
+
+---
+
+## ✅ ステップ4: 動作確認
+
+### 4-1. 商品を作成（POST）
+
+```bash
+curl -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Taro Yamada",
-    "email": "taro@example.com",
-    "age": 30
+    "name": "ノートPC",
+    "description": "高性能なノートパソコン",
+    "price": 150000
   }'
 ```
 
 **期待される結果**:
+
 ```json
 {
   "id": 1,
-  "name": "Taro Yamada",
-  "email": "taro@example.com",
-  "age": 30
+  "name": "ノートPC",
+  "description": "高性能なノートパソコン",
+  "price": 150000,
+  "createdAt": "2025-12-13T10:00:00.123456",
+  "updatedAt": "2025-12-13T10:00:00.123456"
 }
 ```
 
-コンソールには実行されたSQLが表示されます：
+**ポイント**:
+- `id`は自動採番される（AUTO_INCREMENT）
+- `createdAt`と`updatedAt`は`@PrePersist`で自動設定される
 
-```sql
-Hibernate: 
-    insert 
-    into
-        users
-        (age, email, name) 
-    values
-        (?, ?, ?)
-```
-
-### 5-3. さらにユーザーを追加
+### 4-2. さらに商品を追加
 
 ```bash
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Hanako Tanaka",
-    "email": "hanako@example.com",
-    "age": 25
+    "name": "マウス",
+    "description": "ワイヤレスマウス",
+    "price": 3000
   }'
 
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Jiro Suzuki",
-    "email": "jiro@example.com",
-    "age": 28
+    "name": "キーボード",
+    "description": "メカニカルキーボード",
+    "price": 12000
   }'
 ```
 
-### 5-4. 全ユーザー取得（GET）
+### 4-3. 全商品を取得（GET）
 
 ```bash
-curl http://localhost:8080/api/users
+curl http://localhost:8080/api/products
 ```
 
 **期待される結果**:
+
 ```json
 [
   {
     "id": 1,
-    "name": "Taro Yamada",
-    "email": "taro@example.com",
-    "age": 30
+    "name": "ノートPC",
+    "description": "高性能なノートパソコン",
+    "price": 150000,
+    "createdAt": "2025-12-13T10:00:00.123456",
+    "updatedAt": "2025-12-13T10:00:00.123456"
   },
   {
     "id": 2,
-    "name": "Hanako Tanaka",
-    "email": "hanako@example.com",
-    "age": 25
+    "name": "マウス",
+    "description": "ワイヤレスマウス",
+    "price": 3000,
+    "createdAt": "2025-12-13T10:01:00.654321",
+    "updatedAt": "2025-12-13T10:01:00.654321"
   },
   {
     "id": 3,
-    "name": "Jiro Suzuki",
-    "email": "jiro@example.com",
-    "age": 28
+    "name": "キーボード",
+    "description": "メカニカルキーボード",
+    "price": 12000,
+    "createdAt": "2025-12-13T10:02:00.987654",
+    "updatedAt": "2025-12-13T10:02:00.987654"
   }
 ]
 ```
 
-コンソールのSQL：
+### 4-4. 特定の商品を取得（GET by ID）
 
-```sql
-Hibernate: 
-    select
-        u1_0.id,
-        u1_0.age,
-        u1_0.email,
-        u1_0.name 
-    from
-        users u1_0
+```bash
+curl http://localhost:8080/api/products/1
 ```
 
-### 5-5. データベースで確認
+**期待される結果**:
 
-**DBeaverまたはMySQL CLIで確認:**
-
-1. ツールにアクセス/接続
-2. 以下のSQLを実行：
-
-```sql
-SELECT * FROM users;
+```json
+{
+  "id": 1,
+  "name": "ノートPC",
+  "description": "高性能なノートパソコン",
+  "price": 150000,
+  "createdAt": "2025-12-13T10:00:00.123456",
+  "updatedAt": "2025-12-13T10:00:00.123456"
+}
 ```
 
-**結果**: 作成したユーザーが表示されます。
+### 4-5. 存在しないIDを取得
 
----
+```bash
+curl -i http://localhost:8080/api/products/999
+```
 
-## 🎨 データの永続性を確認
+**期待される結果**:
 
-### 実験: データの永続化確認
+```
+HTTP/1.1 404 
+Content-Length: 0
+```
 
-1. アプリケーションを**停止**
-2. 再度**起動**
-3. `curl http://localhost:8080/api/users`を実行
+`404 Not Found`が返却されればOKです。
 
-**結果**: データが残っています！
+### 4-6. MySQLで確認
 
-**理由**: MySQLはディスクにデータを保存するため、再起動してもデータが永続化されます。
+別のターミナルで、データベースを直接確認します：
 
+```bash
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM products;"
+```
+
+**期待される結果**:
+
+```
++----+------------+---------------------------+--------+----------------------------+----------------------------+
+| id | name       | description               | price  | created_at                 | updated_at                 |
++----+------------+---------------------------+--------+----------------------------+----------------------------+
+|  1 | ノートPC    | 高性能なノートパソコン      | 150000 | 2025-12-13 10:00:00.123456 | 2025-12-13 10:00:00.123456 |
+|  2 | マウス      | ワイヤレスマウス           |   3000 | 2025-12-13 10:01:00.654321 | 2025-12-13 10:01:00.654321 |
+|  3 | キーボード   | メカニカルキーボード        |  12000 | 2025-12-13 10:02:00.987654 | 2025-12-13 10:02:00.987654 |
++----+------------+---------------------------+--------+----------------------------+----------------------------+
+```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: 重複メール登録の動作確認
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-同じメールアドレスで2回ユーザーを作成してみてください。
+### チャレンジ 1: 価格範囲で検索
 
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test User",
-    "email": "test@example.com",
-    "age": 20
-  }'
+`ProductRepository`にカスタムメソッドを追加して、価格範囲で商品を検索できるようにしてください。
 
-# もう一度同じメールで登録
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Another User",
-    "email": "test@example.com",
-    "age": 25
-  }'
+**ヒント**:
+
+```java
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    List<Product> findByPriceBetween(Integer minPrice, Integer maxPrice);
+}
 ```
 
-**期待される挙動**: エラーが発生（`unique constraint`違反）
+**Controller**:
 
-**次のステップで適切なエラーハンドリングを学びます。**
-
-### チャレンジ 2: Productエンティティの作成
-
-商品を管理する`Product`エンティティを作成してください。
-
-**要件**:
-- テーブル名: `products`
-- フィールド:
-  - `id` (Long, 主キー, 自動生成)
-  - `name` (String, NOT NULL, 最大100文字)
-  - `price` (Integer, NOT NULL)
-  - `category` (String, 最大50文字)
-
-**ヒント**:
-1. `Product.java`エンティティを作成
-2. `ProductRepository.java`を作成
-3. `ProductService.java`を作成
-4. `ProductController.java`を作成
-
-### チャレンジ 3: ユーザー数を返すAPI
-
-登録されているユーザーの総数を返すエンドポイントを追加してください。
-
-**エンドポイント**: `GET /api/users/count`
-
-**ヒント**:
 ```java
-// UserService
-public long countUsers() {
-    return userRepository.count();
+@GetMapping("/search")
+public List<Product> searchByPriceRange(
+        @RequestParam Integer minPrice,
+        @RequestParam Integer maxPrice) {
+    return productRepository.findByPriceBetween(minPrice, maxPrice);
 }
+```
 
-// UserController
-@GetMapping("/count")
-public ResponseEntity<Long> countUsers() {
-    long count = userService.countUsers();
-    return ResponseEntity.ok(count);
+**テスト**:
+
+```bash
+curl "http://localhost:8080/api/products/search?minPrice=5000&maxPrice=50000"
+```
+
+### チャレンジ 2: 商品名で検索（部分一致）
+
+商品名に特定の文字列が含まれる商品を検索できるようにしてください。
+
+**ヒント**:
+
+```java
+List<Product> findByNameContaining(String keyword);
+```
+
+**Controller**:
+
+```java
+@GetMapping("/search/name")
+public List<Product> searchByName(@RequestParam String keyword) {
+    return productRepository.findByNameContaining(keyword);
 }
+```
+
+### チャレンジ 3: ページネーション
+
+大量のデータを扱う場合、全件取得ではなくページネーションを実装してください。
+
+**ヒント**:
+
+```java
+@GetMapping
+public Page<Product> getAllProducts(Pageable pageable) {
+    return productRepository.findAll(pageable);
+}
+```
+
+**テスト**:
+
+```bash
+# 1ページ目、10件ずつ
+curl "http://localhost:8080/api/products?page=0&size=10"
+
+# 2ページ目
+curl "http://localhost:8080/api/products?page=1&size=10"
 ```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### "Table 'users' not found"
+### エラー: "No property 'xxx' found for type 'Product'"
 
-**原因**: テーブルが作成されていない
+**原因**: リポジトリのメソッド名が命名規則に従っていない
 
-**解決策**:
-1. `User`クラスに`@Entity`アノテーションがあるか確認
-2. `application.yml`で`ddl-auto: update`になっているか確認
-3. アプリケーションを再起動
+**例**:
 
-### "No property 'xxx' found for type 'User'"
-
-**原因**: エンティティクラスにフィールドやGetterがない
-
-**解決策**:
-- Lombokの`@Data`または`@Getter`が付いているか確認
-- フィールド名のスペルミスがないか確認
-
-### "Could not write JSON: Infinite recursion"
-
-**原因**: 循環参照（次のステップで扱うリレーションシップで発生しやすい）
-
-**解決策**: 今のステップでは発生しませんが、注意が必要です。
-
-### POSTで"Unsupported Media Type"
-
-**原因**: `Content-Type: application/json`ヘッダーがない
-
-**解決策**:
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \  # これを忘れずに
-  -d '{"name":"Test","email":"test@example.com","age":20}'
-```
-
-### IDが自動生成されない
-
-**症状**: IDが常にnullまたは0
-
-**原因**: `@GeneratedValue`がない
-
-**解決策**:
 ```java
-@Id
-@GeneratedValue(strategy = GenerationType.IDENTITY)  // これを追加
-private Long id;
+List<Product> findByPrices(Integer price);  // ❌ Productにはpricesフィールドがない
 ```
+
+**解決策**:
+
+フィールド名と一致させる：
+
+```java
+List<Product> findByPrice(Integer price);  // ✅ Productにはpriceフィールドがある
+```
+
+### エラー: "Could not commit JPA transaction"
+
+**原因**: データベース制約違反、またはトランザクション設定の問題
+
+**例**:
+
+```json
+{
+  "name": null,  // ❌ nameはnullable=falseなのでエラー
+  "price": 1000
+}
+```
+
+**解決策**:
+
+必須フィールドを埋める、またはバリデーションを追加（次のステップで説明）。
+
+### POSTで送信した値が保存されない
+
+**原因**: `@RequestBody`が付いていない、またはJSON形式が間違っている
+
+**確認ポイント**:
+
+1. `Content-Type: application/json`ヘッダーが付いているか
+2. JSONの構文が正しいか（ダブルクォート、カンマ位置など）
+3. フィールド名がエンティティと一致しているか
+
+### 日本語が文字化けする
+
+**原因**: MySQLの文字コード設定
+
+**解決策**:
+
+docker-compose.ymlを確認：
+
+```yaml
+command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+```
+
+コンテナを再作成：
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+---
+
+## 🚀 ステップ5: Userエンティティの作成（演習）
+
+これまで学んだ内容を踏まえて、`User`エンティティとリポジトリを作成してみましょう。
+
+### 5-1. Userエンティティの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
+
+```java
+package com.example.hellospringboot;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
+    
+    @Column
+    private Integer age;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+```
+
+**ポイント**:
+- `Product`と同じ構成のエンティティ
+- `email`フィールドに`unique = true`を指定（重複を防ぐ）
+- `age`はオプション（nullを許可）
+
+---
+
+### 5-2. UserRepositoryの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserRepository.java`
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    // メールアドレスでユーザーを検索
+    Optional<User> findByEmail(String email);
+    
+    // 名前の一部でユーザーを検索
+    List<User> findByNameContaining(String name);
+    
+    // 年齢範囲でユーザーを検索（カスタムクエリ）
+    @Query("SELECT u FROM User u WHERE u.age >= :minAge AND u.age <= :maxAge")
+    List<User> findByAgeRange(@Param("minAge") Integer minAge, @Param("maxAge") Integer maxAge);
+    
+    // メールアドレスの存在確認
+    boolean existsByEmail(String email);
+}
+```
+
+**ポイント**:
+- `findByEmail()`: Spring Data JPAのメソッド名規則で自動生成
+- `findByNameContaining()`: 部分一致検索（`LIKE %name%`）
+- `@Query`: JPQLで複雑なクエリを記述
+- `existsByEmail()`: 存在確認（boolean型を返す）
+
+---
+
+### 5-3. テーブルの自動作成確認
+
+アプリケーションを起動すると、`users`テーブルが自動作成されます。
+
+```bash
+./mvnw spring-boot:run
+```
+
+MySQLで確認：
+
+```bash
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot
+```
+
+```sql
+DESC users;
+```
+
+**期待される結果**:
+
+```
++------------+--------------+------+-----+---------+----------------+
+| Field      | Type         | Null | Key | Default | Extra          |
++------------+--------------+------+-----+---------+----------------+
+| id         | bigint       | NO   | PRI | NULL    | auto_increment |
+| name       | varchar(100) | NO   |     | NULL    |                |
+| email      | varchar(100) | NO   | UNI | NULL    |                |
+| age        | int          | YES  |     | NULL    |                |
+| created_at | datetime(6)  | NO   |     | NULL    |                |
+| updated_at | datetime(6)  | NO   |     | NULL    |                |
++------------+--------------+------+-----+---------+----------------+
+```
+
+**確認ポイント**:
+- ✅ `email`に`UNI`（UNIQUE制約）が付いている
+- ✅ `age`が`NULL`許可（YES）になっている
+- ✅ `created_at`と`updated_at`が`datetime(6)`型（マイクロ秒まで記録）
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ `@Entity`でエンティティクラスを定義
-- ✅ `@Table`, `@Id`, `@GeneratedValue`, `@Column`の使い方
-- ✅ `JpaRepository`を継承してリポジトリを作成
-- ✅ `save()`でデータ保存、`findAll()`で全件取得
-- ✅ サービス層でビジネスロジックを分離
-- ✅ コントローラーでRESTful APIを実装
-- ✅ `ResponseEntity`でHTTPステータスコードを制御
-- ✅ Hibernateが自動的にテーブルを作成する仕組み
+- ✅ `JpaRepository`インターフェースの役割を理解した
+- ✅ リポジトリを継承するだけでCRUD操作が自動実装されることを学んだ
+- ✅ `save()`メソッドで商品を保存できるようになった
+- ✅ `findAll()`メソッドで全商品を取得できるようになった
+- ✅ `findById()`メソッドで特定の商品を取得できるようになった
+- ✅ `Optional`型と`ResponseEntity`を使ってエラーハンドリングを実装した
+- ✅ curlコマンドでPOSTリクエストとGETリクエストをテストした
+- ✅ MySQLで実際にデータが保存されていることを確認した
+- ✅ `User`エンティティと`UserRepository`を作成した
+- ✅ カスタムクエリメソッド（`findByEmail`, `findByNameContaining`など）を実装した
+- ✅ `@Query`アノテーションでJPQLを記述できるようになった
 
 ---
 
-## 💡 補足: JPAのライフサイクル
+## 💡 補足: Spring Data JPAのクエリメソッド命名規則
 
-### エンティティの状態
+### 命名規則
 
-JPAのエンティティには状態があります：
+Spring Data JPAは、メソッド名からSQLを自動生成します。
 
-```
-新規作成 → 永続化 → 分離 → 削除
-(New)    (Managed) (Detached) (Removed)
-```
+| メソッド名 | 生成されるSQL |
+|---|---|
+| `findByName(String name)` | `WHERE name = ?` |
+| `findByPriceLessThan(Integer price)` | `WHERE price < ?` |
+| `findByPriceGreaterThanEqual(Integer price)` | `WHERE price >= ?` |
+| `findByNameAndPrice(String name, Integer price)` | `WHERE name = ? AND price = ?` |
+| `findByNameOrPrice(String name, Integer price)` | `WHERE name = ? OR price = ?` |
+| `findByNameContaining(String keyword)` | `WHERE name LIKE %keyword%` |
+| `findByNameStartingWith(String prefix)` | `WHERE name LIKE prefix%` |
+| `findByNameOrderByPriceAsc(String name)` | `WHERE name = ? ORDER BY price ASC` |
 
-#### New（新規）
-```java
-User user = new User();
-user.setName("Taro");
-// まだデータベースに保存されていない
-```
+### キーワード一覧
 
-#### Managed（永続化）
-```java
-User savedUser = userRepository.save(user);
-// データベースに保存され、JPAが管理している
-```
-
-#### Detached（分離）
-```java
-// トランザクション終了後、エンティティは分離状態
-// データベースとの同期が切れる
-```
-
-#### Removed（削除）
-```java
-userRepository.delete(user);
-// データベースから削除される
-```
-
-**Step 9で詳しく学びます。**
-
----
-
-## 💡 補足: なぜRepositoryとServiceを分けるのか？
-
-### アーキテクチャの分離
-
-```
-Controller層（UserController）
-    ↓ APIリクエストを受け取る
-Service層（UserService）
-    ↓ ビジネスロジックを実行
-Repository層（UserRepository）
-    ↓ データベースアクセス
-Database（MySQL）
-```
-
-### メリット
-
-1. **責務の分離**
-   - Controller: HTTPリクエスト/レスポンス処理
-   - Service: ビジネスロジック
-   - Repository: データアクセス
-
-2. **テストしやすい**
-   - Serviceだけをテスト可能
-   - Repositoryをモックに置き換えられる
-
-3. **再利用性**
-   - 同じServiceを複数のControllerから使用可能
-
-**Step 13でレイヤー化アーキテクチャを深く学びます。**
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 7: Spring Data JPAでCRUD基本実装完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+- `And`, `Or`
+- `Is`, `Equals`
+- `Between`
+- `LessThan`, `LessThanEqual`
+- `GreaterThan`, `GreaterThanEqual`
+- `After`, `Before`
+- `IsNull`, `IsNotNull`
+- `Like`, `NotLike`
+- `StartingWith`, `EndingWith`, `Containing`
+- `OrderBy...Asc`, `OrderBy...Desc`
+- `Not`, `In`, `NotIn`
+- `True`, `False`
+- `IgnoreCase`
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 8: CRUD操作の完成](STEP_8.md)へ進みましょう！
+[Step 8: CRUD操作の完成](STEP_8.md)へ進みましょう！
 
-次のステップでは、Update（更新）とDelete（削除）機能を追加して、
-完全なCRUD操作を実装します。また、IDで特定のユーザーを取得する機能も追加します！
-
----
-
-お疲れさまでした！ 🎉
-
-SQLを書かずに、Javaのコードだけでデータベース操作ができました！
-これがJPAの強力な機能です。次のステップでCRUDを完成させましょう！
+次のステップでは、更新（Update）と削除（Delete）を実装し、CRUDの全操作を完成させます。

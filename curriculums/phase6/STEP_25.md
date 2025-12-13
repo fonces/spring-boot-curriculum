@@ -1,109 +1,151 @@
-# Step 25: Spring Security基礎
+# Step 25: Spring Securityの基礎
 
 ## 🎯 このステップの目標
 
-- Spring Securityの基本概念を理解する
-- 認証（Authentication）と認可（Authorization）の違いを理解する
-- 基本的なセキュリティ設定を実装する
-- インメモリ認証を実装する
+- Spring Securityの役割と基本概念を理解できる
+- Basic認証を実装できる
+- インメモリでユーザー管理を設定できる
+- 認証が必要なエンドポイントと不要なエンドポイントを区別できる
 
-**所要時間**: 約2時間
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-- Phase 4まで Phase 5までのベストプラクティスが理解できていること
-- ユーザー管理機能が実装されていること
-
-**Phase 5をまだ完了していない場合**: [Phase 5](../phase5/STEP_21.md)を先に進めてください。
-
----
-
-## 💡 Spring Securityとは？
-
-### セキュリティの必要性
-
-**セキュリティなしの場合**:
-- ❌ 誰でもすべてのAPIにアクセス可能
-- ❌ データの改ざん・削除が自由
-- ❌ 個人情報の漏洩リスク
-
-**セキュリティありの場合**:
-- ✅ 認証されたユーザーのみアクセス可能
-- ✅ 権限に応じた機能制限
-- ✅ データの保護
-
-### 認証 vs 認可
-
-| 用語 | 英語 | 意味 | 例 |
-|------|------|------|-----|
-| **認証** | Authentication | 本人確認 | ログイン（ユーザー名+パスワード） |
-| **認可** | Authorization | 権限確認 | 管理者のみ削除可能 |
-
-### Spring Securityの仕組み
-
-```
-リクエスト → Filter Chain → Controller
-           ↓
-    SecurityContextHolder
-    ├── Authentication
-    └── Authorities (権限)
-```
+- [Step 24: Thymeleaf + REST API連携](../phase5/STEP_24.md)が完了していること
+- Phase 1-5で作成したプロジェクトが動作していること
+- HTTP認証の基本概念を理解していること（推奨）
 
 ---
 
-## 🚀 ステップ1: Spring Securityの依存関係追加
+## 🔐 Spring Securityとは
 
-### 1-1. pom.xmlの更新
+### セキュリティがない世界
 
-**ファイルパス**: `pom.xml`
+**問題**: 誰でもすべてのAPIにアクセスできる
+
+```bash
+# 誰でもユーザー情報を取得できる
+curl http://localhost:8080/api/users
+# 誰でもユーザーを削除できる
+curl -X DELETE http://localhost:8080/api/users/1
+```
+
+### Spring Securityがある世界
+
+**改善**: 認証されたユーザーのみがアクセス可能
+
+```bash
+# 認証なし → 401 Unauthorized
+curl http://localhost:8080/api/users
+
+# 認証あり → 200 OK
+curl -u username:password http://localhost:8080/api/users
+```
+
+### Spring Securityの3つの柱
+
+1. **認証（Authentication）**: 「あなたは誰ですか？」
+   - ユーザー名とパスワードでログイン
+   - トークンでの認証
+   
+2. **認可（Authorization）**: 「あなたは何ができますか？」
+   - 管理者のみ削除可能
+   - 一般ユーザーは閲覧のみ
+   
+3. **保護（Protection）**: 「攻撃から守る」
+   - CSRF対策
+   - セッション固定攻撃対策
+
+---
+
+## 🚀 ステップ1: Spring Security依存関係の追加
+
+### 1-1. pom.xmlに依存関係を追加
+
+`pom.xml`の`<dependencies>`セクションに以下を追加：
 
 ```xml
-<dependencies>
-    <!-- 既存の依存関係 -->
-    
-    <!-- Spring Security -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-security</artifactId>
-    </dependency>
+<!-- Spring Security -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
 
-    <!-- テスト用 -->
-    <dependency>
-        <groupId>org.springframework.security</groupId>
-        <artifactId>spring-security-test</artifactId>
-        <scope>test</scope>
-    </dependency>
-</dependencies>
+<!-- Spring Security Test -->
+<dependency>
+    <groupId>org.springframework.security</groupId>
+    <artifactId>spring-security-test</artifactId>
+    <scope>test</scope>
+</dependency>
 ```
 
-### 1-2. Maven Reload
+### 1-2. 依存関係を反映
 
-VSCodeで`pom.xml`を保存すると自動的に依存関係が更新されます。
-または、コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
-
-### 1-3. アプリケーション起動
-
-依存関係を追加しただけで、Spring Securityが有効になります。
-
-**起動ログ**:
-```
-Using generated security password: 12345678-abcd-1234-abcd-123456789abc
+```bash
+./mvnw clean compile
 ```
 
-**デフォルト設定**:
-- ユーザー名: `user`
-- パスワード: 起動時に生成される（ログに表示）
-- すべてのエンドポイントが保護される
+### 1-3. アプリケーションを起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+**重要**: Spring Securityを追加すると、**自動的にすべてのエンドポイントが保護されます**。
 
 ---
 
-## 🚀 ステップ2: 基本的なセキュリティ設定
+## 🚀 ステップ2: デフォルトのセキュリティを確認
 
-### 2-1. SecurityConfigの作成
+### 2-1. 保護されたエンドポイントにアクセス
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/SecurityConfig.java`
+```bash
+curl http://localhost:8080/api/users
+```
+
+**結果**:
+```json
+{
+  "timestamp": "2025-12-13T10:00:00.000+00:00",
+  "status": 401,
+  "error": "Unauthorized",
+  "path": "/api/users"
+}
+```
+
+### 2-2. デフォルトユーザーで認証
+
+Spring Securityは起動時にランダムなパスワードを生成します。
+
+**ログから確認**:
+```
+Using generated security password: 8e557245-73e2-4286-969a-ff57fe326d53
+```
+
+**認証付きリクエスト**:
+```bash
+# ユーザー名: user
+# パスワード: ログに表示されたパスワード
+curl -u user:8e557245-73e2-4286-969a-ff57fe326d53 http://localhost:8080/api/users
+```
+
+**結果**: ユーザー一覧が取得できる
+
+### 2-3. デフォルトセキュリティの問題点
+
+- **パスワードが毎回変わる**: 再起動のたびに新しいパスワード
+- **ユーザーが1人だけ**: 複数ユーザー管理ができない
+- **ロールがない**: 権限の区別ができない
+
+---
+
+## 🚀 ステップ3: カスタムセキュリティ設定
+
+### 3-1. SecurityConfigクラスを作成
+
+`src/main/java/com/example/hellospringboot/config/SecurityConfig.java`を作成：
 
 ```java
 package com.example.hellospringboot.config;
@@ -120,501 +162,514 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
-/**
- * Spring Securityの設定クラス
- */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-
+    
     /**
      * セキュリティフィルターチェーンの設定
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // CSRF保護を無効化（REST APIの場合）
-            .csrf(csrf -> csrf.disable())
-            
-            // エンドポイントのアクセス制御
-            .authorizeHttpRequests(auth -> auth
-                // 公開エンドポイント
-                .requestMatchers("/api/public/**").permitAll()
-                
-                // 認証が必要なエンドポイント
+            .authorizeHttpRequests(authorize -> authorize
+                // 公開エンドポイント（認証不要）
+                .requestMatchers("/", "/public/**").permitAll()
+                // 管理者のみアクセス可能
+                .requestMatchers("/api/users/**").hasRole("ADMIN")
+                // その他はすべて認証が必要
                 .anyRequest().authenticated()
             )
-            
-            // HTTP Basic認証を有効化
-            .httpBasic(basic -> {});
-
+            .httpBasic(basic -> {})  // Basic認証を有効化
+            .csrf(csrf -> csrf.disable());  // REST APIのためCSRFを無効化
+        
         return http.build();
     }
-
+    
     /**
-     * パスワードエンコーダー（BCrypt）
+     * パスワードエンコーダー
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
+    
     /**
-     * インメモリユーザー詳細サービス
+     * インメモリユーザー管理
      */
     @Bean
     public UserDetailsService userDetailsService() {
         // 管理者ユーザー
         UserDetails admin = User.builder()
-                .username("admin")
-                .password(passwordEncoder().encode("admin123"))
-                .roles("ADMIN")
-                .build();
-
+            .username("admin")
+            .password(passwordEncoder().encode("admin123"))
+            .roles("ADMIN")
+            .build();
+        
         // 一般ユーザー
         UserDetails user = User.builder()
-                .username("user")
-                .password(passwordEncoder().encode("user123"))
-                .roles("USER")
-                .build();
-
+            .username("user")
+            .password(passwordEncoder().encode("user123"))
+            .roles("USER")
+            .build();
+        
         return new InMemoryUserDetailsManager(admin, user);
     }
 }
 ```
 
-### 2-2. 設定の解説
+### 3-2. コードの解説
 
-#### CSRF保護
+#### `@EnableWebSecurity`
+- Spring Securityの設定を有効化
+- カスタム設定を適用
+
+#### `SecurityFilterChain`
+```java
+.requestMatchers("/", "/public/**").permitAll()
+```
+- **permitAll()**: 認証なしでアクセス可能
+- パターンマッチング: `/public/**`は`/public`配下すべて
 
 ```java
-.csrf(csrf -> csrf.disable())
+.requestMatchers("/api/users/**").hasRole("ADMIN")
 ```
-- **CSRF (Cross-Site Request Forgery)**: クロスサイトリクエストフォージェリ
-- REST APIでは通常無効化（ステートレスのため）
-- Webアプリケーション（フォーム）では有効にすべき
-
-#### エンドポイントのアクセス制御
+- **hasRole("ADMIN")**: ADMINロールを持つユーザーのみ
+- `ROLE_ADMIN`として内部保存される
 
 ```java
-.authorizeHttpRequests(auth -> auth
-    .requestMatchers("/api/public/**").permitAll()  // 誰でもアクセス可
-    .anyRequest().authenticated()  // それ以外は認証必須
-)
+.anyRequest().authenticated()
 ```
+- 上記以外はすべて認証が必要
 
-#### HTTP Basic認証
-
+#### `PasswordEncoder`
 ```java
-.httpBasic(basic -> {})
+new BCryptPasswordEncoder()
 ```
-- HTTPヘッダーで認証情報を送信
-- `Authorization: Basic base64(username:password)`
+- **BCrypt**: パスワードを安全にハッシュ化
+- 同じパスワードでも毎回異なるハッシュ値
 
-#### パスワードエンコーダー
-
+#### `UserDetailsService`
 ```java
-@Bean
-public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder();
-}
+UserDetails admin = User.builder()
+    .username("admin")
+    .password(passwordEncoder().encode("admin123"))
+    .roles("ADMIN")
+    .build();
 ```
-- パスワードをハッシュ化して保存
-- BCryptは一方向ハッシュ（復号不可）
+- **User.builder()**: ユーザー情報を構築
+- **password()**: エンコードされたパスワードを設定
+- **roles()**: ロール（権限）を設定
 
 ---
 
-## ✅ ステップ3: 動作確認
+## 🚀 ステップ4: 公開エンドポイントの追加
 
-### 3-1. 認証なしでアクセス（失敗）
+### 4-1. PublicControllerを作成
+
+`src/main/java/com/example/hellospringboot/controllers/PublicController.java`を作成：
+
+```java
+package com.example.hellospringboot.controllers;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/public")
+public class PublicController {
+    
+    /**
+     * 認証不要のエンドポイント
+     */
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        return Map.of(
+            "status", "UP",
+            "timestamp", LocalDateTime.now()
+        );
+    }
+    
+    /**
+     * 認証不要の情報取得
+     */
+    @GetMapping("/info")
+    public Map<String, String> info() {
+        return Map.of(
+            "application", "Spring Boot App",
+            "version", "1.0.0",
+            "description", "Spring Security Basic Authentication Demo"
+        );
+    }
+}
+```
+
+---
+
+## ✅ 動作確認
+
+### 1. 公開エンドポイントへのアクセス
+
+```bash
+# 認証なしでアクセス可能
+curl http://localhost:8080/public/health
+```
+
+**期待される結果**:
+```json
+{
+  "status": "UP",
+  "timestamp": "2025-12-13T10:30:00"
+}
+```
+
+### 2. 保護されたエンドポイントへのアクセス（認証なし）
 
 ```bash
 curl http://localhost:8080/api/users
 ```
 
-**期待される結果**: 401 Unauthorized
+**期待される結果**:
 ```json
 {
-  "timestamp": "2025-10-27T10:30:00.000+00:00",
+  "timestamp": "2025-12-13T10:31:00.000+00:00",
   "status": 401,
   "error": "Unauthorized",
   "path": "/api/users"
 }
 ```
 
-### 3-2. Basic認証でアクセス（成功）
-
-```bash
-curl -u user:user123 http://localhost:8080/api/users
-```
-
-**または**:
-```bash
-curl -H "Authorization: Basic dXNlcjp1c2VyMTIz" http://localhost:8080/api/users
-```
-
-**期待される結果**: 200 OK
-
-### 3-3. 管理者でアクセス
+### 3. 管理者ユーザーで認証
 
 ```bash
 curl -u admin:admin123 http://localhost:8080/api/users
 ```
 
-### 3-4. 公開エンドポイント
+**期待される結果**: ユーザー一覧が取得できる
 
-**Controller追加**:
-```java
-@RestController
-@RequestMapping("/api/public")
-public class PublicController {
+### 4. 一般ユーザーで認証（権限不足）
 
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("OK");
-    }
+```bash
+curl -u user:user123 http://localhost:8080/api/users
+```
+
+**期待される結果**:
+```json
+{
+  "timestamp": "2025-12-13T10:32:00.000+00:00",
+  "status": 403,
+  "error": "Forbidden",
+  "path": "/api/users"
 }
 ```
 
-**アクセス**:
-```bash
-curl http://localhost:8080/api/public/health
-```
-
-**期待される結果**: 認証なしでアクセス可能
+**403 Forbidden**: 認証は成功したが、権限が不足
 
 ---
 
-## 🚀 ステップ4: ロールベースのアクセス制御
+## 🚀 ステップ5: ロール別エンドポイントの実装
 
-### 4-1. ロールによるアクセス制限
+### 5-1. 一般ユーザー向けエンドポイントを追加
 
-**SecurityConfig更新**:
-```java
-@Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http
-        .csrf(csrf -> csrf.disable())
-        .authorizeHttpRequests(auth -> auth
-            // 公開エンドポイント
-            .requestMatchers("/api/public/**").permitAll()
-            
-            // 管理者のみアクセス可能
-            .requestMatchers("/api/admin/**").hasRole("ADMIN")
-            
-            // USERまたはADMINがアクセス可能
-            .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
-            
-            .anyRequest().authenticated()
-        )
-        .httpBasic(basic -> {});
-
-    return http.build();
-}
-```
-
-### 4-2. AdminControllerの作成
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/AdminController.java`
+`PublicController.java`に追加：
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.Map;
 
-/**
- * 管理者専用コントローラー
- */
 @RestController
-@RequestMapping("/api/admin")
-@RequiredArgsConstructor
-public class AdminController {
-
-    @GetMapping("/dashboard")
-    public ResponseEntity<Map<String, String>> getDashboard() {
-        return ResponseEntity.ok(Map.of(
-            "message", "Admin Dashboard",
-            "role", "ADMIN"
-        ));
+@RequestMapping("/public")
+public class PublicController {
+    
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        return Map.of(
+            "status", "UP",
+            "timestamp", LocalDateTime.now()
+        );
+    }
+    
+    @GetMapping("/info")
+    public Map<String, String> info() {
+        return Map.of(
+            "application", "Spring Boot App",
+            "version", "1.0.0",
+            "description", "Spring Security Basic Authentication Demo"
+        );
     }
 }
 ```
 
-### 4-3. 動作確認
+新しい`UserProfileController`を作成：
 
-**一般ユーザーで管理者エンドポイントにアクセス（失敗）**:
-```bash
-curl -u user:user123 http://localhost:8080/api/admin/dashboard
-```
-
-**期待される結果**: 403 Forbidden
-
-**管理者でアクセス（成功）**:
-```bash
-curl -u admin:admin123 http://localhost:8080/api/admin/dashboard
-```
-
-**期待される結果**: 200 OK
-
----
-
-## 🚀 ステップ5: メソッドレベルのセキュリティ
-
-### 5-1. @PreAuthorizeの有効化
-
-**SecurityConfig更新**:
-```java
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity  // メソッドレベルのセキュリティを有効化
-public class SecurityConfig {
-    // ...
-}
-```
-
-### 5-2. メソッドに権限チェックを追加
-
-**UserService更新**:
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class UserService {
-
-    private final UserRepository userRepository;
-
-    /**
-     * 管理者のみ実行可能
-     */
-    @PreAuthorize("hasRole('ADMIN')")
-    public void deleteUser(Long id) {
-        log.info("Deleting user with ID: {}", id);
-        if (!userRepository.existsById(id)) {
-            throw new UserNotFoundException(id);
-        }
-        userRepository.deleteById(id);
-    }
-
-    /**
-     * 自分自身または管理者のみ更新可能
-     */
-    @PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id")
-    public UserResponse updateUser(Long id, UserUpdateRequest request) {
-        // ...
-    }
-}
-```
-
----
-
-## 🚀 ステップ6: 現在のユーザー情報取得
-
-### 6-1. Controllerで現在のユーザー取得
+`src/main/java/com/example/hellospringboot/controllers/UserProfileController.java`:
 
 ```java
+package com.example.hellospringboot.controllers;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @RestController
-@RequestMapping("/api/users")
-public class UserController {
-
+@RequestMapping("/api/profile")
+public class UserProfileController {
+    
     /**
-     * 現在ログインしているユーザー情報を取得
+     * ログイン中のユーザー情報を取得
      */
     @GetMapping("/me")
-    public ResponseEntity<Map<String, Object>> getCurrentUser(
-            @AuthenticationPrincipal UserDetails userDetails) {
+    public Map<String, Object> getCurrentUser(Authentication authentication) {
+        Map<String, Object> profile = new HashMap<>();
+        profile.put("username", authentication.getName());
+        profile.put("roles", authentication.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toList()));
+        profile.put("authenticated", authentication.isAuthenticated());
         
-        Map<String, Object> response = Map.of(
-            "username", userDetails.getUsername(),
-            "authorities", userDetails.getAuthorities()
-        );
-        
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Authenticationから取得
-     */
-    @GetMapping("/me/alt")
-    public ResponseEntity<Map<String, Object>> getCurrentUserAlt(
-            Authentication authentication) {
-        
-        Map<String, Object> response = Map.of(
-            "username", authentication.getName(),
-            "authorities", authentication.getAuthorities(),
-            "authenticated", authentication.isAuthenticated()
-        );
-        
-        return ResponseEntity.ok(response);
+        return profile;
     }
 }
 ```
 
-### 6-2. 動作確認
+### 5-2. SecurityConfigを更新
+
+`SecurityConfig.java`の`securityFilterChain`メソッドを修正：
+
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http
+        .authorizeHttpRequests(authorize -> authorize
+            // 公開エンドポイント（認証不要）
+            .requestMatchers("/", "/public/**").permitAll()
+            // 管理者のみアクセス可能
+            .requestMatchers("/api/users/**").hasRole("ADMIN")
+            // 認証済みユーザーならアクセス可能
+            .requestMatchers("/api/profile/**").authenticated()
+            // その他はすべて認証が必要
+            .anyRequest().authenticated()
+        )
+        .httpBasic(basic -> {})
+        .csrf(csrf -> csrf.disable());
+    
+    return http.build();
+}
+```
+
+---
+
+## ✅ ロール別動作確認
+
+### 1. 管理者でプロフィール取得
 
 ```bash
-curl -u user:user123 http://localhost:8080/api/users/me
+curl -u admin:admin123 http://localhost:8080/api/profile/me
+```
+
+**期待される結果**:
+```json
+{
+  "username": "admin",
+  "roles": ["ROLE_ADMIN"],
+  "authenticated": true
+}
+```
+
+### 2. 一般ユーザーでプロフィール取得
+
+```bash
+curl -u user:user123 http://localhost:8080/api/profile/me
 ```
 
 **期待される結果**:
 ```json
 {
   "username": "user",
-  "authorities": [
-    {
-      "authority": "ROLE_USER"
-    }
-  ]
+  "roles": ["ROLE_USER"],
+  "authenticated": true
 }
 ```
+
+### 3. 一般ユーザーで管理者エンドポイントにアクセス
+
+```bash
+curl -u user:user123 http://localhost:8080/api/users
+```
+
+**期待される結果**: 403 Forbidden
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: カスタム権限
+### チャレンジ 1: 閲覧専用ロールの追加
 
-`READ`, `WRITE`, `DELETE`といった細かい権限を設定してください。
+**目標**: ユーザーの閲覧のみ可能な`VIEWER`ロールを作成
 
 **ヒント**:
 ```java
-UserDetails user = User.builder()
-    .username("editor")
-    .password(passwordEncoder().encode("editor123"))
-    .authorities("READ", "WRITE")  // ROLEではなくAuthority
+// UserDetailsService
+UserDetails viewer = User.builder()
+    .username("viewer")
+    .password(passwordEncoder().encode("viewer123"))
+    .roles("VIEWER")
     .build();
+
+// SecurityFilterChain
+.requestMatchers(HttpMethod.GET, "/api/users/**").hasAnyRole("ADMIN", "VIEWER")
+.requestMatchers("/api/users/**").hasRole("ADMIN")
 ```
 
-### チャレンジ 2: 動的な権限チェック
+### チャレンジ 2: メソッドレベルセキュリティ
 
-データベースのデータに基づいて権限をチェックしてください。
+**目標**: `@PreAuthorize`アノテーションでメソッドレベルの権限制御
 
-**例**: 投稿の作成者のみ編集・削除可能
+**ヒント**:
+```java
+@Configuration
+@EnableMethodSecurity
+public class SecurityConfig {
+    // ...
+}
 
-### チャレンジ 3: ログインAPI
+@PreAuthorize("hasRole('ADMIN')")
+public void deleteUser(Long id) {
+    // 管理者のみ実行可能
+}
+```
 
-`/api/auth/login`エンドポイントを作成してください。
+### チャレンジ 3: カスタムエラーレスポンス
+
+**目標**: 401/403エラー時にカスタムJSONを返す
+
+**ヒント**:
+```java
+http
+    .exceptionHandling(exception -> exception
+        .authenticationEntryPoint(customAuthenticationEntryPoint)
+        .accessDeniedHandler(customAccessDeniedHandler)
+    );
+```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### 401 Unauthorizedが常に返される
+### エラー: "There is no PasswordEncoder mapped for the id \"null\""
 
-**原因**: パスワードが間違っている、または設定が正しくない
+**原因**: パスワードがエンコードされていない
 
 **解決策**:
 ```java
-// パスワードエンコーダーを確認
-System.out.println(passwordEncoder().encode("user123"));
+// NG: 平文パスワード
+.password("admin123")
 
-// ユーザーが登録されているか確認
-UserDetails user = userDetailsService().loadUserByUsername("user");
+// OK: エンコードされたパスワード
+.password(passwordEncoder().encode("admin123"))
 ```
 
-### 403 Forbiddenが返される
+### エラー: "Access Denied" (403)
 
-**原因**: 認証は成功したが、権限が不足している
+**原因**: ロールが不足している、またはロール名が間違っている
 
-**解決策**: ロール/権限を確認
-```bash
-curl -u user:user123 http://localhost:8080/api/users/me
-# authoritiesを確認
-```
+**確認事項**:
+1. ユーザーに正しいロールが設定されているか
+2. `hasRole("ADMIN")`の場合、実際には`ROLE_ADMIN`として保存される
+3. `authentication.getAuthorities()`でロールを確認
 
-### CSRFトークンエラー
-
-**原因**: CSRF保護が有効になっている
-
-**解決策**: REST APIではCSRFを無効化
+**デバッグ**:
 ```java
-.csrf(csrf -> csrf.disable())
+@GetMapping("/debug")
+public String debug(Authentication auth) {
+    return "Roles: " + auth.getAuthorities();
+}
+```
+
+### CSRF対策を無効化する理由
+
+**問題**: REST APIでCSRFトークンが必要になる
+
+**REST APIの場合**:
+```java
+.csrf(csrf -> csrf.disable())  // ステートレスなのでCSRF不要
+```
+
+**Thymeleafの場合**:
+```java
+.csrf(csrf -> {})  // CSRFを有効化（デフォルト）
+```
+
+### Basic認証のBase64エンコード
+
+**仕組み**:
+```bash
+# "username:password" をBase64エンコード
+echo -n "admin:admin123" | base64
+# 結果: YWRtaW46YWRtaW4xMjM=
+
+# Authorizationヘッダー
+curl -H "Authorization: Basic YWRtaW46YWRtaW4xMjM=" http://localhost:8080/api/users
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ Spring Securityの基本概念
-- ✅ 認証（Authentication）と認可（Authorization）
-- ✅ HTTP Basic認証
+- ✅ Spring Securityの基本概念（認証・認可・保護）
+- ✅ Basic認証の実装方法
 - ✅ インメモリユーザー管理
 - ✅ ロールベースのアクセス制御
-- ✅ `@PreAuthorize`によるメソッドレベルのセキュリティ
-- ✅ 現在のユーザー情報取得
+- ✅ エンドポイントごとの権限設定
+- ✅ パスワードのエンコーディング（BCrypt）
+- ✅ 公開エンドポイントと保護エンドポイントの区別
 
 ---
 
-## 💡 補足: セキュリティのベストプラクティス
+## 💡 補足: Basic認証の限界
 
-### パスワード保存
+### Basic認証の特徴
 
-```java
-// ❌ 悪い例: 平文で保存
-String password = "user123";
+**メリット**:
+- 実装が簡単
+- 設定がシンプル
+- デバッグしやすい
 
-// ✅ 良い例: ハッシュ化して保存
-String hashedPassword = passwordEncoder.encode("user123");
-```
+**デメリット**:
+- **セキュリティが低い**: Base64エンコードは暗号化ではない
+- **HTTPS必須**: 平文で送信されるため盗聴リスク
+- **ログアウト不可**: ブラウザがパスワードをキャッシュ
+- **状態管理**: 毎回認証情報を送信
 
-### ロールの命名規則
+### 本番環境では
 
-Spring Securityでは`ROLE_`プレフィックスが自動付加されます：
+- **JWT認証**: ステートレスなトークンベース認証
+- **OAuth 2.0**: サードパーティ認証（Google, Githubなど）
+- **HTTPS必須**: すべての通信を暗号化
 
-```java
-// 登録時
-.roles("ADMIN")  // 内部的には"ROLE_ADMIN"
-
-// チェック時
-.hasRole("ADMIN")  // "ROLE_ADMIN"をチェック
-// または
-.hasAuthority("ROLE_ADMIN")
-```
-
-### HTTPSの使用
-
-**本番環境では必須**:
-```yaml
-# application-prod.yml
-server:
-  ssl:
-    enabled: true
-    key-store: classpath:keystore.p12
-    key-store-password: password
-    key-store-type: PKCS12
-```
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録しましょう：
-
-```bash
-git add .
-git commit -m "Step 25: Spring Securityの基礎完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+次のステップでJWT認証を実装します！
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 26: JWTトークン認証](STEP_26.md)へ進みましょう！
+[Step 26: JWTトークン認証](STEP_26.md)へ進みましょう！
 
-ステートレスなJWT（JSON Web Token）認証を実装して、
-よりRESTfulなAPIセキュリティを実現します。
-
----
-
-お疲れさまでした！ 🎉
-
-Spring Securityの基礎を習得しました！
-次はJWTを使った本格的な認証システムを構築します！
+次のステップでは、モダンなトークンベース認証であるJWT（JSON Web Token）を実装します。Basic認証の限界を克服し、よりセキュアで柔軟な認証方式を学びます。

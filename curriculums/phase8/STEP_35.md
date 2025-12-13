@@ -1,676 +1,1318 @@
-# Step 35: 記事投稿機能と認可制御
+# Step 35: 認証・認可機能の実装
 
 ## 🎯 このステップの目標
 
-ブログの核となる記事（Post）の投稿・編集・削除機能を実装します。
-認証されたユーザーのみが記事を投稿でき、自分の記事のみ編集・削除できる認可制御を実装します。
+- Spring Security + JWT認証でユーザー管理を実装できる
+- JwtTokenProviderでトークンの生成と検証ができる
+- JwtAuthenticationFilterでリクエストを検証できる
+- UserPrincipalでUserDetailsを実装できる
+- SecurityConfigでセキュリティ設定を構成できる
+- AuthServiceで認証ロジックを実装できる
+- AuthControllerで認証APIエンドポイントを提供できる
 
-- 記事のCRUD機能の実装
-- 認可制御（自分の記事のみ編集可能）
-- ページネーション機能
-- MyBatisでのJOIN操作
+**所要時間**: 約90分
 
-**所要時間**: 約1時間30分
+---
 
-## 📋 機能要件
-- 記事の新規投稿（認証必須）
-- 記事一覧の取得（ページネーション付き）
-- 記事詳細の取得
-- 記事の編集（自分の記事のみ）
-- 記事の削除（自分の記事のみ）
-- 下書き/公開ステータス管理
+## 📋 事前準備
 
-## 🗂️ データベース設計
+このステップを始める前に、以下を確認してください：
 
-### postsテーブル
-```sql
-CREATE TABLE posts (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(200) NOT NULL,
-    content TEXT NOT NULL,
-    slug VARCHAR(250) UNIQUE,
-    status VARCHAR(20) DEFAULT 'DRAFT', -- DRAFT, PUBLISHED
-    author_id BIGINT NOT NULL,
-    view_count INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    published_at TIMESTAMP NULL,
-    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_author_id (author_id),
-    INDEX idx_status (status),
-    INDEX idx_published_at (published_at)
-);
-```
+- [Step 34: プロジェクト概要と環境構築](STEP_34.md)が完了していること
+- `bloghub`プロジェクトが正常に動作していること
+- Docker ComposeでMySQLが起動していること
+- JWT認証の基本概念を理解していること（推奨）
 
-## 💡 実装のヒント
-
-### 1. プロジェクト構成
-以下のクラスを追加してください：
-
-```
-src/main/java/com/example/blog/
-├── controller/
-│   └── PostController.java
-├── service/
-│   └── PostService.java
-├── repository/
-│   └── PostMapper.java (MyBatis)
-├── entity/
-│   ├── Post.java
-│   └── PostStatus.java (Enum)
-├── dto/
-│   ├── PostCreateRequest.java
-│   ├── PostUpdateRequest.java
-│   ├── PostResponse.java
-│   └── PostListResponse.java
-└── exception/
-    ├── PostNotFoundException.java
-    └── UnauthorizedException.java
-```
-
-### 2. Enumでステータス管理
-記事のステータスをEnumで管理してください。
-
-**例**:
-```java
-public enum PostStatus {
-    DRAFT,      // 下書き
-    PUBLISHED   // 公開
-}
-```
-
-### 3. MyBatisでの記事管理
-`PostMapper.xml`で以下のSQLを実装してください：
-- 記事の投稿（INSERT）
-- 記事一覧取得（SELECT with JOIN）※ユーザー情報も含める
-- 記事詳細取得（SELECT with JOIN）
-- 記事の更新（UPDATE）
-- 記事の削除（DELETE）
-- ページネーション対応のクエリ
-
-**例**:
-```xml
-<!-- PostMapper.xml の例 -->
-<mapper namespace="com.example.blog.repository.PostMapper">
-    <resultMap id="PostWithAuthor" type="Post">
-        <id property="id" column="id"/>
-        <result property="title" column="title"/>
-        <!-- 他のフィールド -->
-        <association property="author" javaType="User">
-            <id property="id" column="author_id"/>
-            <result property="username" column="username"/>
-            <result property="displayName" column="display_name"/>
-        </association>
-    </resultMap>
-    
-    <select id="findAllPublished" resultMap="PostWithAuthor">
-        SELECT 
-            p.*,
-            u.username,
-            u.display_name
-        FROM posts p
-        INNER JOIN users u ON p.author_id = u.id
-        WHERE p.status = 'PUBLISHED'
-        ORDER BY p.published_at DESC
-        LIMIT #{limit} OFFSET #{offset}
-    </select>
-    
-    <!-- 他のクエリを実装してください -->
-</mapper>
-```
-
-### 4. 認可制御の実装
-記事の編集・削除時に、現在のユーザーが記事の作成者かをチェックしてください。
-
-**例**:
-```java
-@Service
-public class PostService {
-    
-    public void updatePost(Long postId, PostUpdateRequest request, String username) {
-        Post post = postMapper.findById(postId)
-            .orElseThrow(() -> new PostNotFoundException("Post not found"));
-        
-        // 認可チェック: 作成者本人か確認
-        if (!post.getAuthor().getUsername().equals(username)) {
-            throw new UnauthorizedException("You can only edit your own posts");
-        }
-        
-        // 更新処理
-        // ...
-    }
-}
-```
-
-### 5. REST APIエンドポイント
-
-#### 記事の投稿（認証必須）
-```
-POST /api/posts
-Authorization: Bearer YOUR_JWT_TOKEN
-Content-Type: application/json
-
-{
-  "title": "Spring Bootの基礎",
-  "content": "Spring Bootは...",
-  "status": "PUBLISHED"
-}
-
-Response (201 Created):
-{
-  "id": 1,
-  "title": "Spring Bootの基礎",
-  "slug": "spring-boot-no-kiso",
-  "content": "Spring Bootは...",
-  "status": "PUBLISHED",
-  "author": {
-    "id": 1,
-    "username": "johndoe",
-    "displayName": "John Doe"
-  },
-  "viewCount": 0,
-  "createdAt": "2025-10-29T10:00:00",
-  "publishedAt": "2025-10-29T10:00:00"
-}
-```
-
-#### 記事一覧の取得（ページネーション付き）
-```
-GET /api/posts?page=0&size=10&sort=publishedAt,desc
-
-Response (200 OK):
-{
-  "content": [
-    {
-      "id": 1,
-      "title": "Spring Bootの基礎",
-      "slug": "spring-boot-no-kiso",
-      "excerpt": "Spring Bootは...",
-      "author": {
-        "username": "johndoe",
-        "displayName": "John Doe"
-      },
-      "viewCount": 42,
-      "publishedAt": "2025-10-29T10:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 10,
-  "totalElements": 50,
-  "totalPages": 5
-}
-```
-
-#### 記事詳細の取得
-```
-GET /api/posts/{id}
-
-または
-
-GET /api/posts/slug/{slug}
-
-Response (200 OK):
-{
-  "id": 1,
-  "title": "Spring Bootの基礎",
-  "slug": "spring-boot-no-kiso",
-  "content": "Spring Bootは...",
-  "status": "PUBLISHED",
-  "author": {
-    "id": 1,
-    "username": "johndoe",
-    "displayName": "John Doe"
-  },
-  "viewCount": 43,
-  "createdAt": "2025-10-29T10:00:00",
-  "updatedAt": "2025-10-29T10:00:00",
-  "publishedAt": "2025-10-29T10:00:00"
-}
-```
-
-#### 記事の更新（認証必須・作成者のみ）
-```
-PUT /api/posts/{id}
-Authorization: Bearer YOUR_JWT_TOKEN
-Content-Type: application/json
-
-{
-  "title": "Spring Bootの基礎（改訂版）",
-  "content": "Spring Bootは...",
-  "status": "PUBLISHED"
-}
-
-Response (200 OK):
-{
-  "id": 1,
-  "title": "Spring Bootの基礎（改訂版）",
-  ...
-}
-```
-
-#### 記事の削除（認証必須・作成者のみ）
-```
-DELETE /api/posts/{id}
-Authorization: Bearer YOUR_JWT_TOKEN
-
-Response (204 No Content)
-```
-
-#### 自分の記事一覧取得（認証必須）
-```
-GET /api/posts/my-posts?page=0&size=10
-Authorization: Bearer YOUR_JWT_TOKEN
-
-Response (200 OK):
-{
-  "content": [
-    {
-      "id": 1,
-      "title": "Spring Bootの基礎",
-      "status": "PUBLISHED",
-      "viewCount": 42,
-      "createdAt": "2025-10-29T10:00:00"
-    },
-    {
-      "id": 2,
-      "title": "MyBatisの使い方",
-      "status": "DRAFT",
-      "viewCount": 0,
-      "createdAt": "2025-10-28T15:30:00"
-    }
-  ],
-  ...
-}
-```
-
-### 6. Slugの自動生成
-記事のURLフレンドリーなslugを自動生成してください。
-
-**考えるポイント**:
-- タイトルから自動生成する方法
-- 日本語タイトルの場合の処理（ローマ字化 or ID使用）
-- 重複を防ぐ方法（連番追加など）
-
-**例**:
-```java
-private String generateSlug(String title) {
-    // タイトルからslugを生成するロジックを実装
-    // 例: "Spring Bootの基礎" -> "spring-boot-no-kiso"
-    // または "Spring Bootの基礎" -> "1-spring-boot-post"
-}
-```
-
-### 7. 閲覧数のカウント
-記事詳細取得時に閲覧数をインクリメントしてください。
-
-**例**:
-```java
-@Transactional
-public PostResponse getPostById(Long id) {
-    Post post = postMapper.findById(id)
-        .orElseThrow(() -> new PostNotFoundException("Post not found"));
-    
-    // 閲覧数をインクリメント
-    postMapper.incrementViewCount(id);
-    
-    return toPostResponse(post);
-}
-```
-
-### 8. バリデーション
-リクエストDTOに適切なバリデーションを追加してください：
-- タイトル: 1〜200文字、必須
-- 内容: 1文字以上、必須
-- ステータス: DRAFT または PUBLISHED
-
-## ✅ 動作確認
-
-### 1. 記事の投稿
+**必須の環境**:
 ```bash
-TOKEN="YOUR_JWT_TOKEN_HERE"
+# プロジェクトディレクトリに移動
+cd workspace/bloghub
 
-curl -X POST http://localhost:8080/api/posts \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "初めてのブログ投稿",
-    "content": "これは私の最初のブログ記事です。",
-    "status": "PUBLISHED"
-  }'
+# MySQLコンテナが起動していることを確認
+docker-compose ps
+
+# アプリケーションが起動できることを確認
+./mvnw spring-boot:run
 ```
 
-### 2. 記事一覧の取得
-```bash
-curl -X GET "http://localhost:8080/api/posts?page=0&size=10"
+---
+
+## 🔐 JWT認証の仕組み
+
+### なぜJWT認証が必要か
+
+**従来のセッション認証の問題点**:
+- サーバー側でセッション情報を保持（メモリ消費）
+- スケールアウトが困難（セッション共有が必要）
+- モバイルアプリとの相性が悪い
+
+**JWT認証のメリット**:
+- **ステートレス**: サーバーに状態を保存しない
+- **スケーラブル**: 複数サーバーで並列処理可能
+- **自己完結**: トークン内にユーザー情報を含む
+- **柔軟性**: REST API、SPA、モバイルアプリに最適
+
+### BlogHubの認証フロー
+
+```
+┌─────────┐                        ┌──────────┐
+│ Client  │                        │  Server  │
+└────┬────┘                        └─────┬────┘
+     │                                   │
+     │ 1. POST /api/auth/signup          │
+     │   {username, email, password}     │
+     ├──────────────────────────────────>│
+     │                                   │ ユーザー登録
+     │                                   │ パスワードハッシュ化
+     │                                   │
+     │ 2. {message: "登録成功"}          │
+     │<──────────────────────────────────┤
+     │                                   │
+     │ 3. POST /api/auth/login           │
+     │   {username, password}            │
+     ├──────────────────────────────────>│
+     │                                   │ 認証チェック
+     │                                   │ JWT発行
+     │                                   │
+     │ 4. {token: "eyJhbGc...", ...}     │
+     │<──────────────────────────────────┤
+     │                                   │
+     │ 5. GET /api/auth/me               │
+     │   Header: Authorization: Bearer eyJhbGc...
+     ├──────────────────────────────────>│
+     │                                   │ トークン検証
+     │                                   │ ユーザー情報取得
+     │                                   │
+     │ 6. {id, username, email, ...}     │
+     │<──────────────────────────────────┤
 ```
 
-### 3. 記事詳細の取得
-```bash
-curl -X GET http://localhost:8080/api/posts/1
-```
+---
 
-### 4. 記事の編集
-```bash
-curl -X PUT http://localhost:8080/api/posts/1 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "初めてのブログ投稿（更新版）",
-    "content": "内容を更新しました。",
-    "status": "PUBLISHED"
-  }'
-```
+## 🚀 ステップ1: JWT依存関係の追加
 
-### 5. 他人の記事を編集しようとする（エラーになるべき）
-```bash
-# 別のユーザーでログインしてトークンを取得
-OTHER_TOKEN="ANOTHER_USER_JWT_TOKEN"
+### 1-1. pom.xmlに依存関係を追加
 
-curl -X PUT http://localhost:8080/api/posts/1 \
-  -H "Authorization: Bearer $OTHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "勝手に編集",
-    "content": "これはエラーになるべき",
-    "status": "PUBLISHED"
-  }'
-
-# Expected: 403 Forbidden
-```
-
-## 🐛 トラブルシューティング
-
-### エラー: "Access Denied: User is not the owner of this post"
-
-**原因**:
-- 認可制御が正しく動作している（他人の記事を編集しようとしている）
-- JWTトークンからユーザー情報が正しく取得できていない
-
-**解決策**:
-
-```java
-// Serviceレイヤーで所有者チェック
-@Service
-@RequiredArgsConstructor
-public class PostService {
-    private final PostMapper postMapper;
-    
-    public void updatePost(Long postId, PostUpdateRequest request, String username) {
-        Post post = postMapper.findById(postId)
-            .orElseThrow(() -> new ResourceNotFoundException("記事が見つかりません"));
-        
-        // 所有者チェック
-        if (!post.getAuthorUsername().equals(username)) {
-            throw new AccessDeniedException("この記事を編集する権限がありません");
-        }
-        
-        post.setTitle(request.getTitle());
-        post.setContent(request.getContent());
-        post.setStatus(request.getStatus());
-        postMapper.updatePost(post);
-    }
-}
-
-// Controllerでユーザー情報を取得
-@RestController
-@RequestMapping("/api/posts")
-@RequiredArgsConstructor
-public class PostController {
-    private final PostService postService;
-    
-    @PutMapping("/{id}")
-    public ResponseEntity<PostResponse> updatePost(
-            @PathVariable Long id,
-            @RequestBody @Valid PostUpdateRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        
-        postService.updatePost(id, request, userDetails.getUsername());
-        return ResponseEntity.ok().build();
-    }
-}
-```
-
-### エラー: "Cannot invoke 'User.getUsername()' because the return value of 'Post.getAuthor()' is null"
-
-**原因**:
-- MyBatisのJOIN結果がマッピングされていない
-- ResultMapの定義が間違っている
-- SQLのJOINが正しく動作していない
-
-**解決策**:
+`pom.xml`の`<dependencies>`セクションに以下を追加：
 
 ```xml
-<!-- PostMapper.xml でResultMapを正しく定義 -->
-<resultMap id="PostWithAuthorMap" type="com.example.blog.entity.Post">
-    <id property="id" column="post_id"/>
-    <result property="title" column="title"/>
-    <result property="slug" column="slug"/>
-    <result property="content" column="content"/>
-    <result property="status" column="status"/>
-    <result property="viewCount" column="view_count"/>
-    <result property="createdAt" column="created_at"/>
-    <result property="updatedAt" column="updated_at"/>
-    <result property="publishedAt" column="published_at"/>
-    
-    <!-- ネストした Author オブジェクト -->
-    <association property="author" javaType="com.example.blog.entity.User">
-        <id property="id" column="user_id"/>
-        <result property="username" column="username"/>
-        <result property="displayName" column="display_name"/>
-        <result property="email" column="email"/>
-    </association>
-</resultMap>
+<!-- Spring Security (Step 34で追加済みの場合はスキップ) -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
 
-<select id="findById" resultMap="PostWithAuthorMap">
-    SELECT 
-        p.id AS post_id,
-        p.title,
-        p.slug,
-        p.content,
-        p.status,
-        p.view_count,
-        p.created_at,
-        p.updated_at,
-        p.published_at,
-        u.id AS user_id,
-        u.username,
-        u.display_name,
-        u.email
-    FROM posts p
-    INNER JOIN users u ON p.author_id = u.id
-    WHERE p.id = #{id}
-</select>
+<!-- JWT -->
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-api</artifactId>
+    <version>0.12.3</version>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-impl</artifactId>
+    <version>0.12.3</version>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-jackson</artifactId>
+    <version>0.12.3</version>
+    <scope>runtime</scope>
+</dependency>
 ```
 
-### エラー: "Duplicate entry 'my-blog-post' for key 'posts.slug'"
+### 1-2. 依存関係を反映
 
-**原因**:
-- 同じslugの記事が既に存在している
-- slug生成時に重複チェックをしていない
-
-**解決策**:
-
-```java
-@Service
-@RequiredArgsConstructor
-public class PostService {
-    private final PostMapper postMapper;
-    
-    private String generateUniqueSlug(String title) {
-        String baseSlug = title.toLowerCase()
-            .replaceAll("[^a-z0-9\\s-]", "")  // 英数字とスペース、ハイフンのみ残す
-            .replaceAll("\\s+", "-")  // スペースをハイフンに
-            .replaceAll("-+", "-");  // 連続ハイフンを1つに
-        
-        String slug = baseSlug;
-        int counter = 1;
-        
-        // 重複チェック
-        while (postMapper.findBySlug(slug).isPresent()) {
-            slug = baseSlug + "-" + counter;
-            counter++;
-        }
-        
-        return slug;
-    }
-    
-    public void createPost(PostCreateRequest request, String username) {
-        Post post = new Post();
-        post.setTitle(request.getTitle());
-        post.setSlug(generateUniqueSlug(request.getTitle()));  // ユニークなslugを生成
-        post.setContent(request.getContent());
-        post.setStatus(request.getStatus());
-        post.setAuthorId(getUserIdByUsername(username));
-        
-        postMapper.insertPost(post);
-    }
-}
+```bash
+./mvnw clean compile
 ```
 
-### エラー: "Invalid page request: page must be >= 0"
+**ポイント**:
+- `jjwt-api`: JWT操作のインターフェース
+- `jjwt-impl`: JWT実装（ランタイムのみ）
+- `jjwt-jackson`: JSON処理（ランタイムのみ）
 
-**原因**:
-- ページ番号が負の値になっている
-- ページングパラメータのバリデーションが不足
+---
 
-**解決策**:
+## 🚀 ステップ2: JWT設定をapplication.ymlに追加
 
-```java
-@RestController
-@RequestMapping("/api/posts")
-public class PostController {
-    
-    @GetMapping
-    public ResponseEntity<PageResponse<PostListResponse>> getPosts(
-            @RequestParam(defaultValue = "0") @Min(0) Integer page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) Integer size) {
-        
-        // pageとsizeのバリデーションは@Minと@Maxで自動的に行われる
-        Page<Post> postPage = postService.getPosts(page, size);
-        return ResponseEntity.ok(PageResponse.from(postPage));
-    }
-}
+### 2-1. application.ymlを更新
 
-// または手動でバリデーション
-public Page<Post> getPosts(Integer page, Integer size) {
-    if (page < 0) {
-        throw new IllegalArgumentException("ページ番号は0以上である必要があります");
-    }
-    if (size < 1 || size > 100) {
-        throw new IllegalArgumentException("ページサイズは1〜100の範囲で指定してください");
-    }
-    
-    int offset = page * size;
-    List<Post> posts = postMapper.findAllWithPagination(offset, size);
-    long total = postMapper.countAll();
-    
-    return new Page<>(posts, page, size, total);
-}
-```
-
-### エラー: "ステータスが 'PUBLISH' で登録されてしまう（'PUBLISHED'のはずが）"
-
-**原因**:
-- Enumのマッピングが正しく動作していない
-- MyBatisでEnumを文字列として扱う設定が不足
-
-**解決策**:
+`src/main/resources/application.yml`に以下を追加：
 
 ```yaml
-# application.yml
-mybatis:
-  configuration:
-    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler  # Enumを名前で扱う
+spring:
+  application:
+    name: bloghub
+  
+  datasource:
+    url: jdbc:mysql://localhost:3306/bloghub
+    username: user
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# JWT設定
+jwt:
+  secret: 3f8b2c7e9a1d5f4e6b8c2a9d7e5f3b1c8e6a4d2f9b7e5c3a1d8f6b4e2c9a7d5f3b
+  expiration: 86400000  # 24時間（ミリ秒）
+
+# ファイルアップロード設定
+file:
+  upload-dir: uploads
+  max-file-size: 5MB
 ```
+
+**ポイント**:
+- `jwt.secret`: トークン署名用の秘密鍵（64文字以上推奨）
+- `jwt.expiration`: トークンの有効期限（24時間 = 86400000ミリ秒）
+- **本番環境では環境変数から秘密鍵を読み込むこと**
+
+---
+
+## 🚀 ステップ3: JwtTokenProviderの実装
+
+### 3-1. JwtTokenProviderクラスを作成
+
+`src/main/java/com/example/bloghub/security/JwtTokenProvider.java`を作成：
 
 ```java
-// Enumの定義
-public enum PostStatus {
-    DRAFT,      // 下書き
-    PUBLISHED,  // 公開済み
-    ARCHIVED    // アーカイブ
-}
+package com.example.bloghub.security;
 
-// Entity
-public class Post {
-    private PostStatus status;  // Enumとして定義
-}
-```
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
 
-```xml
-<!-- PostMapper.xml -->
-<insert id="insertPost" parameterType="Post" useGeneratedKeys="true" keyProperty="id">
-    INSERT INTO posts (title, slug, content, status, author_id, published_at)
-    VALUES (
-        #{title}, 
-        #{slug}, 
-        #{content}, 
-        #{status, typeHandler=org.apache.ibatis.type.EnumTypeHandler},  <!-- Enumハンドラを明示 -->
-        #{authorId}, 
-        #{publishedAt}
-    )
-</insert>
-```
+import javax.crypto.SecretKey;
+import java.util.Date;
 
-### エラー: "閲覧数が増えない（view_countが更新されない）"
+@Component
+public class JwtTokenProvider {
 
-**原因**:
-- トランザクションが正しくコミットされていない
-- 閲覧数更新のSQLが実行されていない
-- キャッシュが効いている
+    @Value("${jwt.secret}")
+    private String jwtSecret;
 
-**解決策**:
+    @Value("${jwt.expiration}")
+    private long jwtExpiration;
 
-```java
-@Service
-@RequiredArgsConstructor
-public class PostService {
-    private final PostMapper postMapper;
-    
-    @Transactional
-    public PostResponse getPostById(Long id) {
-        Post post = postMapper.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("記事が見つかりません"));
+    /**
+     * JWTトークンを生成
+     */
+    public String generateToken(Authentication authentication) {
+        UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
         
-        // 閲覧数をインクリメント
-        postMapper.incrementViewCount(id);
-        
-        // 更新後の値を取得（同じトランザクション内なので反映される）
-        post.setViewCount(post.getViewCount() + 1);
-        
-        return PostResponse.from(post);
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpiration);
+
+        return Jwts.builder()
+                .subject(userPrincipal.getUsername())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    /**
+     * usernameからJWTトークンを生成（ログイン時に使用）
+     */
+    public String generateTokenFromUsername(String username) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpiration);
+
+        return Jwts.builder()
+                .subject(username)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    /**
+     * JWTトークンからusernameを取得
+     */
+    public String getUsernameFromToken(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return claims.getSubject();
+    }
+
+    /**
+     * JWTトークンを検証
+     */
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token);
+            return true;
+        } catch (SecurityException e) {
+            System.err.println("Invalid JWT signature: " + e.getMessage());
+        } catch (MalformedJwtException e) {
+            System.err.println("Invalid JWT token: " + e.getMessage());
+        } catch (ExpiredJwtException e) {
+            System.err.println("Expired JWT token: " + e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            System.err.println("Unsupported JWT token: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            System.err.println("JWT claims string is empty: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 署名用の秘密鍵を取得
+     */
+    private SecretKey getSigningKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 }
 ```
 
-```xml
-<!-- PostMapper.xml -->
-<update id="incrementViewCount">
-    UPDATE posts
-    SET view_count = view_count + 1
-    WHERE id = #{id}
-</update>
+**ポイント**:
+- `generateToken()`: Authenticationからトークン生成
+- `generateTokenFromUsername()`: usernameから直接トークン生成
+- `getUsernameFromToken()`: トークンからusernameを抽出
+- `validateToken()`: トークンの有効性を検証
+- `getSigningKey()`: Base64デコードした秘密鍵でHMAC-SHA署名
+
+---
+
+## 🚀 ステップ4: UserPrincipalの実装
+
+### 4-1. UserPrincipalクラスを作成
+
+`src/main/java/com/example/bloghub/security/UserPrincipal.java`を作成：
+
+```java
+package com.example.bloghub.security;
+
+import com.example.bloghub.entity.User;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.Collections;
+
+@Getter
+@AllArgsConstructor
+public class UserPrincipal implements UserDetails {
+
+    private Long id;
+    private String username;
+    private String email;
+    private String password;
+    private Collection<? extends GrantedAuthority> authorities;
+
+    /**
+     * UserエンティティからUserPrincipalを生成
+     */
+    public static UserPrincipal create(User user) {
+        Collection<GrantedAuthority> authorities = Collections.singletonList(
+                new SimpleGrantedAuthority("ROLE_USER")
+        );
+
+        return new UserPrincipal(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getPassword(),
+                authorities
+        );
+    }
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities;
+    }
+
+    @Override
+    public String getPassword() {
+        return password;
+    }
+
+    @Override
+    public String getUsername() {
+        return username;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+}
 ```
 
-## 🎓 学習ポイント
+**ポイント**:
+- `UserDetails`インターフェースを実装
+- `User`エンティティをラップし、Spring Securityが理解できる形式に変換
+- すべてのユーザーに`ROLE_USER`権限を付与
+- アカウントの有効性は常に`true`（将来的に拡張可能）
 
-1. **MyBatisでのJOIN**: ユーザー情報と記事情報の結合
-2. **認可制御**: リソースの所有者のみが操作可能にする
-3. **ページネーション**: 大量データの効率的な取得
-4. **トランザクション**: 閲覧数カウントなどの複合操作
-5. **Enum**: ステータス管理の型安全性
-6. **Slug**: SEOフレンドリーなURL設計
+---
 
-## 📝 追加課題（オプション）
+## 🚀 ステップ5: CustomUserDetailsServiceの実装
 
-1. 記事の検索機能（タイトル・内容で全文検索）
-2. 公開予約機能（未来の日時を指定して公開）
-3. 記事のアーカイブ機能（削除せずに非表示）
-4. 人気記事ランキング（閲覧数でソート）
-5. ユーザーごとの記事数カウント
+### 5-1. CustomUserDetailsServiceクラスを作成
 
-## ➡️ 次のステップ
+`src/main/java/com/example/bloghub/security/CustomUserDetailsService.java`を作成：
 
-[Step 36: コメント機能とThymeleafでの画面実装](STEP_36.md)へ進みましょう！
+```java
+package com.example.bloghub.security;
 
-記事とコメントの1対多リレーションシップを実装し、Thymeleafで画面を作成します。
+import com.example.bloghub.entity.User;
+import com.example.bloghub.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found with username: " + username
+                ));
+
+        return UserPrincipal.create(user);
+    }
+
+    /**
+     * IDでユーザーを読み込む（オプション）
+     */
+    @Transactional(readOnly = true)
+    public UserDetails loadUserById(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found with id: " + id
+                ));
+
+        return UserPrincipal.create(user);
+    }
+}
+```
+
+**ポイント**:
+- `UserDetailsService`を実装し、Spring Securityの認証で使用
+- `loadUserByUsername()`: usernameからUserDetailsを取得
+- `@Transactional(readOnly = true)`: 読み取り専用トランザクション
+
+---
+
+## 🚀 ステップ6: JwtAuthenticationFilterの実装
+
+### 6-1. JwtAuthenticationFilterクラスを作成
+
+`src/main/java/com/example/bloghub/security/JwtAuthenticationFilter.java`を作成：
+
+```java
+package com.example.bloghub.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtTokenProvider tokenProvider;
+    private final CustomUserDetailsService customUserDetailsService;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        try {
+            String jwt = getJwtFromRequest(request);
+
+            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+                String username = tokenProvider.getUsernameFromToken(jwt);
+
+                UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
+                UsernamePasswordAuthenticationToken authentication = 
+                        new UsernamePasswordAuthenticationToken(
+                                userDetails, 
+                                null, 
+                                userDetails.getAuthorities()
+                        );
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+        } catch (Exception e) {
+            logger.error("Could not set user authentication in security context", e);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+
+    /**
+     * リクエストヘッダーからJWTトークンを取得
+     */
+    private String getJwtFromRequest(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+        return null;
+    }
+}
+```
+
+**ポイント**:
+- `OncePerRequestFilter`を継承（リクエストごとに1回だけ実行）
+- `Authorization: Bearer <token>`ヘッダーからトークンを抽出
+- トークンを検証し、`SecurityContextHolder`に認証情報を設定
+- 認証に失敗してもフィルターチェーンを継続（後続の処理で401エラー）
+
+---
+
+## 🚀 ステップ7: SecurityConfigの実装
+
+### 7-1. SecurityConfigクラスを作成
+
+`src/main/java/com/example/bloghub/config/SecurityConfig.java`を作成：
+
+```java
+package com.example.bloghub.config;
+
+import com.example.bloghub.security.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final UserDetailsService userDetailsService;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // 公開パス
+                        .requestMatchers("/", "/login", "/signup", 
+                                "/css/**", "/js/**", "/images/**", "/error",
+                                "/api/files/**").permitAll()
+                        // 記事詳細とタグ、ユーザープロフィールは公開
+                        .requestMatchers(HttpMethod.GET, "/articles/{id:[0-9]+}", "/tags", "/tags/**", 
+                                "/users/{username}").permitAll()
+                        // 記事作成・編集・削除、コメント投稿などは認証必須
+                        .requestMatchers("/articles/new", "/articles/*/edit", "/articles/*/delete",
+                                "/profile", "/articles/*/comments", "/comments/*/delete").authenticated()
+                        // その他すべて認証必須
+                        .anyRequest().authenticated()
+                )
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .loginProcessingUrl("/login")
+                        .defaultSuccessUrl("/", true)
+                        .failureUrl("/login?error=true")
+                        .permitAll()
+                )
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl("/?logout")
+                        .permitAll()
+                )
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // H2 Consoleのフレーム表示を許可（開発環境のみ）
+        http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+
+        return http.build();
+    }
+
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://localhost:8080"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+}
+```
+
+**ポイント**:
+- **CSRF無効化**: REST APIではステートレスなため不要
+- **CORS設定**: フロントエンド（React等）からのアクセスを許可
+- **セッション管理**: `STATELESS`（セッションを使わない）
+- **認証不要パス**: 
+  - `/api/auth/**`（サインアップ、ログイン、現在のユーザー情報取得）
+  - `/api/articles`, `/api/articles/**`（記事の閲覧・作成・更新・削除）
+  - `/api/tags`, `/api/tags/**`（タグ一覧取得）
+  - `/h2-console/**`（H2データベースコンソール）
+- **フィルター順序**: `JwtAuthenticationFilter`を`UsernamePasswordAuthenticationFilter`の前に配置
+- **パスワードエンコーダー**: BCryptで暗号化
+
+**注意**: 記事とタグのエンドポイントは認証なしでアクセス可能ですが、記事の作成・更新・削除はControllerで`Authentication`を要求するため、実質的には認証が必要です。
+
+---
+
+## 🚀 ステップ8: UserRepositoryの実装
+
+### 8-1. UserRepositoryを作成
+
+`src/main/java/com/example/bloghub/repository/UserRepository.java`を作成：
+
+```java
+package com.example.bloghub.repository;
+
+import com.example.bloghub.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    Optional<User> findByUsername(String username);
+    
+    Optional<User> findByEmail(String email);
+    
+    boolean existsByUsername(String username);
+    
+    boolean existsByEmail(String email);
+}
+```
+
+**ポイント**:
+- `findByUsername()`: ログイン認証で使用
+- `existsByUsername()`, `existsByEmail()`: 重複チェック
+
+---
+
+## 🚀 ステップ9: DTOクラスの作成
+
+### 9-1. SignupRequestを作成
+
+`src/main/java/com/example/bloghub/dto/auth/SignupRequest.java`を作成：
+
+```java
+package com.example.bloghub.dto.auth;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class SignupRequest {
+
+    @NotBlank(message = "Username is required")
+    @Size(min = 3, max = 20, message = "Username must be between 3 and 20 characters")
+    private String username;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email should be valid")
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 6, max = 40, message = "Password must be between 6 and 40 characters")
+    private String password;
+}
+```
+
+### 9-2. LoginRequestを作成
+
+`src/main/java/com/example/bloghub/dto/auth/LoginRequest.java`を作成：
+
+```java
+package com.example.bloghub.dto.auth;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class LoginRequest {
+
+    @NotBlank(message = "Username is required")
+    private String username;
+
+    @NotBlank(message = "Password is required")
+    private String password;
+}
+```
+
+### 9-3. AuthResponseを作成
+
+`src/main/java/com/example/bloghub/dto/auth/AuthResponse.java`を作成：
+
+```java
+package com.example.bloghub.dto.auth;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuthResponse {
+    private String token;
+    private String username;
+    private String email;
+}
+```
+
+### 9-4. UserResponseを作成
+
+`src/main/java/com/example/bloghub/dto/user/UserResponse.java`を作成：
+
+```java
+package com.example.bloghub.dto.user;
+
+import com.example.bloghub.entity.User;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserResponse {
+    private Long id;
+    private String username;
+    private String email;
+    private String profileImage;
+    private LocalDateTime createdAt;
+
+    public static UserResponse fromEntity(User user) {
+        return new UserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getProfileImage(),
+                user.getCreatedAt()
+        );
+    }
+}
+```
+
+**ポイント**:
+- `@NotBlank`, `@Email`, `@Size`でバリデーション
+- パスワードはレスポンスDTOに含めない（セキュリティ）
+- `fromEntity()`メソッドでEntityからDTOへの変換
+
+---
+
+## 🚀 ステップ10: AuthServiceの実装
+
+### 10-1. AuthServiceを作成
+
+`src/main/java/com/example/bloghub/service/AuthService.java`を作成：
+
+```java
+package com.example.bloghub.service;
+
+import com.example.bloghub.dto.auth.AuthResponse;
+import com.example.bloghub.dto.auth.LoginRequest;
+import com.example.bloghub.dto.auth.SignupRequest;
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.entity.User;
+import com.example.bloghub.repository.UserRepository;
+import com.example.bloghub.security.JwtTokenProvider;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+
+@Service
+@RequiredArgsConstructor
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider tokenProvider;
+    private final AuthenticationManager authenticationManager;
+
+    /**
+     * ユーザー登録
+     */
+    @Transactional
+    public void signup(SignupRequest request) {
+        // 重複チェック
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new IllegalArgumentException("Username is already taken");
+        }
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new IllegalArgumentException("Email is already in use");
+        }
+
+        // ユーザー作成
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+
+        userRepository.save(user);
+    }
+
+    /**
+     * ログイン
+     */
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        // 認証
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        request.getUsername(),
+                        request.getPassword()
+                )
+        );
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // JWTトークン生成
+        String token = tokenProvider.generateTokenFromUsername(request.getUsername());
+
+        // ユーザー情報取得
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found with username: " + request.getUsername()
+                ));
+
+        return new AuthResponse(token, user.getUsername(), user.getEmail());
+    }
+
+    /**
+     * 現在のユーザー情報を取得
+     */
+    @Transactional(readOnly = true)
+    public UserResponse getCurrentUser(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found with username: " + username
+                ));
+
+        return UserResponse.fromEntity(user);
+    }
+}
+```
+
+**ポイント**:
+- `signup()`: ユーザー登録、パスワードをBCryptでハッシュ化
+- `login()`: 認証成功後にJWTトークンを発行
+- `getCurrentUser()`: トークンから取得したusernameでユーザー情報を返す
+- 重複チェックで`IllegalArgumentException`をスロー
+
+---
+
+## 🚀 ステップ11: AuthControllerの実装
+
+### 11-1. AuthControllerを作成
+
+`src/main/java/com/example/bloghub/controller/AuthController.java`を作成：
+
+```java
+package com.example.bloghub.controller;
+
+import com.example.bloghub.dto.auth.AuthResponse;
+import com.example.bloghub.dto.auth.LoginRequest;
+import com.example.bloghub.dto.auth.SignupRequest;
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.security.UserPrincipal;
+import com.example.bloghub.service.AuthService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final AuthService authService;
+
+    /**
+     * ユーザー登録
+     */
+    @PostMapping("/signup")
+    public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest request) {
+        try {
+            authService.signup(request);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of("message", "User registered successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ログイン
+     */
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
+        try {
+            AuthResponse response = authService.login(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid username or password"));
+        }
+    }
+
+    /**
+     * 現在のユーザー情報を取得
+     */
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getCurrentUser(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        UserResponse response = authService.getCurrentUser(userPrincipal.getUsername());
+        return ResponseEntity.ok(response);
+    }
+}
+```
+
+**ポイント**:
+- `POST /api/auth/signup`: ユーザー登録（認証不要）
+- `POST /api/auth/login`: ログイン（認証不要）
+- `GET /api/auth/me`: 現在のユーザー情報取得（認証必要）
+- `@AuthenticationPrincipal`: SecurityContextから認証済みユーザーを取得
+- `@Valid`: リクエストボディのバリデーション
+
+---
+
+## 🚀 ステップ12: 動作確認
+
+### 12-1. アプリケーションを起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 12-2. ユーザー登録
+
+```bash
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "password123"
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "message": "User registered successfully"
+}
+```
+
+### 12-3. ログイン
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "password123"
+  }'
+```
+
+**期待される結果**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImlhdCI6MTcwMjQ2ODgwMCwiZXhwIjoxNzAyNTU1MjAwfQ...",
+  "username": "testuser",
+  "email": "test@example.com"
+}
+```
+
+### 12-4. 現在のユーザー情報を取得
+
+**トークンをコピー**してから以下を実行：
+
+```bash
+TOKEN="eyJhbGciOiJIUzI1NiJ9..."
+
+curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**期待される結果**:
+```json
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "profileImage": null,
+  "createdAt": "2025-12-13T12:00:00"
+}
+```
+
+### 12-5. 認証なしでアクセス（エラー確認）
+
+```bash
+curl http://localhost:8080/api/auth/me
+```
+
+**期待される結果**:
+```
+HTTP/1.1 403 Forbidden
+```
+
+### 12-6. データベースを確認
+
+```bash
+docker-compose exec mysql mysql -u user -ppassword bloghub
+
+mysql> SELECT id, username, email, created_at FROM users;
+```
+
+**期待される結果**:
+```
++----+----------+-------------------+---------------------+
+| id | username | email             | created_at          |
++----+----------+-------------------+---------------------+
+|  1 | testuser | test@example.com  | 2025-12-13 12:00:00 |
++----+----------+-------------------+---------------------+
+```
+
+---
+
+## 🎯 チャレンジ課題
+
+### チャレンジ1: トークンの有効期限切れをテストする
+
+**目標**: トークンの有効期限が切れた後の動作を確認する
+
+**ヒント**:
+- `application.yml`の`jwt.expiration`を`60000`（1分）に変更
+- ログインしてトークンを取得
+- 1分待ってから`/api/auth/me`にアクセス
+
+**期待される結果**: 401 Unauthorizedエラー
+
+---
+
+### チャレンジ2: リフレッシュトークンを実装する
+
+**目標**: アクセストークンの有効期限が切れた時に再発行できるようにする
+
+**実装内容**:
+1. `RefreshToken`エンティティを作成
+2. `RefreshTokenRepository`を作成
+3. ログイン時にリフレッシュトークンも発行
+4. `POST /api/auth/refresh`エンドポイントを追加
+
+**サンプルエンドポイント**:
+```bash
+curl -X POST http://localhost:8080/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "..."}'
+```
+
+---
+
+### チャレンジ3: パスワード変更機能を追加する
+
+**目標**: ログイン済みユーザーがパスワードを変更できるようにする
+
+**実装内容**:
+1. `ChangePasswordRequest` DTOを作成（現在のパスワード、新しいパスワード）
+2. `AuthService`に`changePassword()`メソッドを追加
+3. `PUT /api/auth/password`エンドポイントを追加
+
+**バリデーション**:
+- 現在のパスワードが正しいこと
+- 新しいパスワードが6文字以上であること
+
+---
+
+## ❓ トラブルシューティング
+
+### エラー1: `401 Unauthorized` が返される
+
+**原因**: トークンが無効、または認証情報が間違っている
+
+**解決策**:
+1. トークンが正しくコピーされているか確認
+```bash
+echo $TOKEN
+```
+
+2. トークンの有効期限を確認
+```bash
+# JWTデコードサイト: https://jwt.io/
+# Payloadの"exp"が現在時刻より後であることを確認
+```
+
+3. ログインし直して新しいトークンを取得
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"password123"}'
+```
+
+---
+
+### エラー2: `Bad credentials` エラー
+
+**原因**: ユーザー名またはパスワードが間違っている
+
+**解決策**:
+1. データベースでユーザーが登録されているか確認
+```bash
+docker-compose exec mysql mysql -u user -ppassword bloghub -e "SELECT username FROM users;"
+```
+
+2. パスワードが正しいか確認（サインアップ時のパスワードを再確認）
+
+3. 新しいユーザーを登録してテスト
+```bash
+curl -X POST http://localhost:8080/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"newuser","email":"new@example.com","password":"newpass123"}'
+```
+
+---
+
+### エラー3: `JWT signature does not match` エラー
+
+**原因**: `jwt.secret`が変更された、または間違っている
+
+**解決策**:
+1. `application.yml`の`jwt.secret`を確認
+```yaml
+jwt:
+  secret: 3f8b2c7e9a1d5f4e6b8c2a9d7e5f3b1c8e6a4d2f9b7e5c3a1d8f6b4e2c9a7d5f3b
+```
+
+2. アプリケーションを再起動
+```bash
+./mvnw spring-boot:run
+```
+
+3. 再ログインして新しいトークンを取得
+
+---
+
+### エラー4: `JWT token is expired` エラー
+
+**原因**: トークンの有効期限が切れている
+
+**解決策**:
+1. `application.yml`の`jwt.expiration`を確認（デフォルト24時間）
+```yaml
+jwt:
+  expiration: 86400000  # 24時間
+```
+
+2. 再ログインして新しいトークンを取得
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"password123"}'
+```
+
+---
+
+### エラー5: CORS エラー（ブラウザから）
+
+**症状**: ブラウザのコンソールに以下のエラー
+```
+Access to XMLHttpRequest at 'http://localhost:8080/api/auth/login' 
+from origin 'http://localhost:3000' has been blocked by CORS policy
+```
+
+**原因**: フロントエンドのオリジンが許可されていない
+
+**解決策**:
+1. `SecurityConfig`のCORS設定を確認
+```java
+configuration.setAllowedOrigins(Arrays.asList(
+    "http://localhost:3000",  // React開発サーバー
+    "http://localhost:8080"
+));
+```
+
+2. フロントエンドのURLを追加
+```java
+configuration.setAllowedOrigins(Arrays.asList(
+    "http://localhost:3000",
+    "http://localhost:4200",  // Angular
+    "http://localhost:5173"   // Vite
+));
+```
+
+3. アプリケーションを再起動
+
+---
+
+## 📝 まとめ
+
+このステップでは、以下を学びました：
+
+1. **JWT認証の仕組み**: ステートレスな認証でスケーラブルなAPI
+2. **JwtTokenProvider**: トークンの生成、検証、ユーザー名抽出
+3. **UserPrincipal**: Spring SecurityのUserDetailsを実装
+4. **CustomUserDetailsService**: データベースからユーザー情報を取得
+5. **JwtAuthenticationFilter**: リクエストヘッダーからトークンを検証
+6. **SecurityConfig**: SecurityFilterChain、CORS、パスワードエンコーダーの設定
+7. **AuthService**: ユーザー登録、ログイン、認証済みユーザー情報取得
+8. **AuthController**: REST APIエンドポイントの実装
+9. **BCryptPasswordEncoder**: パスワードの暗号化
+10. **@AuthenticationPrincipal**: SecurityContextから認証済みユーザーを取得
+
+**重要なポイント**:
+- JWTはサーバー側に状態を保持しない（ステートレス）
+- トークンには有効期限を設定する
+- パスワードは必ずハッシュ化して保存
+- 秘密鍵（jwt.secret）は環境変数から読み込む（本番環境）
+- SecurityFilterChainの設定順序が重要
+- CORS設定で許可するオリジンを明示
+
+---
+
+## 🚀 次のステップへ
+
+認証・認可機能が実装できました！次のステップでは、認証が必要な記事とコメント機能を実装します。
+
+👉 **[Step 36: 記事とコメント機能の実装](STEP_36.md)**
+
+次のステップで学ぶこと：
+- Articleエンティティの作成（User との1対多リレーション）
+- Commentエンティティの作成（Article、User との関連）
+- 記事のCRUD操作（認証必須）
+- コメント投稿機能
+- 投稿者のみが編集・削除できる認可制御
+
+---
+
+**お疲れさまでした！** 🎉
+
+JWT認証を実装することで、セキュアなREST APIの基盤ができました。次はこの認証機能を活用して、実際の記事投稿・コメント機能を実装していきましょう！

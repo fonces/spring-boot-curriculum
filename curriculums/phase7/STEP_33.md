@@ -2,47 +2,97 @@
 
 ## 🎯 このステップの目標
 
-- @Asyncで非同期処理を実装する
-- ThreadPoolの設定を理解する
-- CompletableFutureを使いこなす
-- 非同期処理のエラーハンドリング
+- `@Async`アノテーションで非同期処理を実装できる
+- `CompletableFuture`を使って非同期結果を扱える
+- スレッドプールを設定してリソースを管理できる
+- 非同期処理のエラーハンドリングができる
+- 実践的な非同期処理のユースケースを理解できる
 
-**所要時間**: 約2時間
-
+**所要時間**: 約50分
 
 ---
-
 
 ## 📋 事前準備
 
-- Step 32が完了していること
-- アプリケーションの動作確認ができること
-
----
----
-
-## 💡 非同期処理の必要性
-
-### メリット
-
-- ⚡ レスポンス時間の短縮
-- 🔄 並列処理による効率化
-- 📧 バックグラウンドタスクの実行
-- 🎯 リソースの有効活用
+- Step 32までの内容を完了していること
+- Spring Bootアプリケーションが起動できること
+- 非同期処理の基本概念を理解していること
 
 ---
 
-## 🚀 ステップ1: 非同期処理の有効化
+## 🚀 ステップ1: 非同期処理とは
 
-### 1-1. AsyncConfig
+### 1-1. 同期処理の問題点
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/AsyncConfig.java`
+**問題: 重い処理で応答が遅れる**
+
+```java
+// ❌ 同期処理（重い処理が完了するまでブロック）
+@PostMapping("/send-email")
+public String sendEmail(@RequestParam String to) {
+    emailService.sendEmail(to);  // 3秒かかる
+    return "Email sent";  // 3秒後に返る
+}
+```
+
+**課題**:
+- ユーザーが3秒間待たされる
+- サーバーのスレッドが占有される
+- 同時リクエスト数に制限
+
+**解決: 非同期処理**
+
+```java
+// ✅ 非同期処理（バックグラウンドで実行）
+@PostMapping("/send-email")
+public String sendEmail(@RequestParam String to) {
+    emailService.sendEmailAsync(to);  // すぐに返る
+    return "Email sending started";  // 即座に返る
+}
+```
+
+**メリット**:
+- 即座にレスポンスを返せる
+- サーバーリソースの効率的な利用
+- スループットの向上
+
+---
+
+## 🚀 ステップ2: @Asyncの基本設定
+
+### 2-1. 非同期処理を有効化
+
+メインクラスに`@EnableAsync`を追加します：
+
+```java
+// src/main/java/com/example/hellospringboot/HelloSpringBootApplication.java
+package com.example.hellospringboot;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.scheduling.annotation.EnableAsync;
+
+@SpringBootApplication
+@EnableCaching
+@EnableAsync  // 非同期処理を有効化
+public class HelloSpringBootApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(HelloSpringBootApplication.class, args);
+    }
+
+}
+```
+
+### 2-2. スレッドプール設定
+
+`src/main/java/com/example/hellospringboot/config/AsyncConfig.java`を作成：
 
 ```java
 package com.example.hellospringboot.config;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
@@ -52,445 +102,769 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * 非同期処理設定
+ * 非同期処理の設定
  */
-@Slf4j
 @Configuration
 @EnableAsync
+@Slf4j
 public class AsyncConfig implements AsyncConfigurer {
-
-    @Override
+    
+    /**
+     * 非同期処理用のスレッドプール
+     */
     @Bean(name = "taskExecutor")
-    public Executor getAsyncExecutor() {
+    public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         
-        // コアスレッド数
+        // コアスレッド数（常に起動しているスレッド数）
         executor.setCorePoolSize(5);
         
-        // 最大スレッド数
+        // 最大スレッド数（負荷が高い時の上限）
         executor.setMaxPoolSize(10);
         
-        // キューのキャパシティ
+        // キューの容量（スレッドが全て使用中の時にタスクを待機させる）
         executor.setQueueCapacity(100);
         
         // スレッド名のプレフィックス
         executor.setThreadNamePrefix("async-");
         
-        // シャットダウン時に実行中のタスクを待つ
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(60);
-        
+        // 初期化
         executor.initialize();
         
-        log.info("非同期タスクエグゼキューターを初期化しました");
+        log.info("Async thread pool initialized: core={}, max={}, queue={}", 
+                executor.getCorePoolSize(), 
+                executor.getMaxPoolSize(), 
+                executor.getQueueCapacity());
+        
         return executor;
     }
-
+    
+    /**
+     * デフォルトのExecutorを設定
+     */
     @Override
-    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
-        return (throwable, method, params) -> {
-            log.error("非同期処理でエラーが発生しました: {}, Method: {}", 
-                    throwable.getMessage(), method.getName(), throwable);
-        };
+    public Executor getAsyncExecutor() {
+        return taskExecutor();
     }
 }
 ```
 
+### 2-3. コードの解説
+
+#### `@EnableAsync`
+```java
+@EnableAsync
+```
+- 非同期処理を有効化
+- `@Async`アノテーションが動作するようになる
+
+#### `ThreadPoolTaskExecutor`
+```java
+executor.setCorePoolSize(5);
+executor.setMaxPoolSize(10);
+executor.setQueueCapacity(100);
+```
+- **corePoolSize**: 常に起動している最小スレッド数
+- **maxPoolSize**: 負荷が高い時の最大スレッド数
+- **queueCapacity**: スレッドが全て使用中の時のキュー容量
+
+**スレッドプールの動作**:
+1. タスクが来る → corePoolSize以下ならすぐ実行
+2. corePoolSizeを超える → queueに追加
+3. queueが満杯 → maxPoolSizeまでスレッド追加
+4. maxPoolSizeも超える → エラー（RejectedExecutionException）
+
 ---
 
-## 🚀 ステップ2: 非同期サービス
+## 🚀 ステップ3: @Asyncの基本的な使い方
 
-### 2-1. AsyncTaskService
+### 3-1. 非同期メールサービスを作成
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/AsyncTaskService.java`
+`src/main/java/com/example/hellospringboot/services/EmailService.java`を作成：
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot.services;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.CompletableFuture;
-
-@Slf4j
-@Service
-public class AsyncTaskService {
-
-    /**
-     * 非同期タスク（戻り値なし）
-     */
-    @Async
-    public void executeAsyncTask(String taskName) {
-        log.info("非同期タスク開始: {} [Thread: {}]", taskName, Thread.currentThread().getName());
-        
-        try {
-            // 重い処理をシミュレート
-            Thread.sleep(3000);
-            log.info("非同期タスク完了: {}", taskName);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("タスクが中断されました: {}", taskName);
-        }
-    }
-
-    /**
-     * 非同期タスク（戻り値あり）
-     */
-    @Async
-    public CompletableFuture<String> executeAsyncTaskWithResult(String taskName) {
-        log.info("非同期タスク開始（戻り値あり): {} [Thread: {}]", 
-                taskName, Thread.currentThread().getName());
-        
-        try {
-            Thread.sleep(2000);
-            String result = "タスク結果: " + taskName;
-            log.info("非同期タスク完了: {}", taskName);
-            return CompletableFuture.completedFuture(result);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("タスクが中断されました: {}", taskName);
-            return CompletableFuture.failedFuture(e);
-        }
-    }
-
-    /**
-     * 複数の非同期タスクを並列実行
-     */
-    public CompletableFuture<String> executeMultipleTasks() {
-        CompletableFuture<String> task1 = executeAsyncTaskWithResult("Task1");
-        CompletableFuture<String> task2 = executeAsyncTaskWithResult("Task2");
-        CompletableFuture<String> task3 = executeAsyncTaskWithResult("Task3");
-
-        // すべてのタスクが完了するまで待つ
-        return CompletableFuture.allOf(task1, task2, task3)
-                .thenApply(v -> {
-                    String result1 = task1.join();
-                    String result2 = task2.join();
-                    String result3 = task3.join();
-                    return String.format("%s, %s, %s", result1, result2, result3);
-                });
-    }
-}
-```
-
----
-
-## 🚀 ステップ3: スケジュール実行
-
-### 3-1. ScheduleConfig
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/config/ScheduleConfig.java`
-
-```java
-package com.example.hellospringboot.config;
-
-import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableScheduling;
+import java.util.concurrent.TimeUnit;
 
 /**
- * スケジュール実行設定
+ * メール送信サービス（非同期処理の例）
  */
-@Configuration
-@EnableScheduling
-public class ScheduleConfig {
-}
-```
-
-### 3-2. ScheduledTaskService
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/ScheduledTaskService.java`
-
-```java
-package com.example.hellospringboot.service;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
-@Slf4j
 @Service
-public class ScheduledTaskService {
-
-    private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
+@Slf4j
+public class EmailService {
+    
     /**
-     * 固定レートで実行（5秒ごと）
+     * 同期的なメール送信（3秒かかる）
      */
-    @Scheduled(fixedRate = 5000)
-    public void executeFixedRateTask() {
-        log.info("[固定レート] タスク実行: {}", LocalDateTime.now().format(formatter));
-    }
-
-    /**
-     * 固定遅延で実行（前回の終了から3秒後）
-     */
-    @Scheduled(fixedDelay = 3000)
-    public void executeFixedDelayTask() {
-        log.info("[固定遅延] タスク実行: {}", LocalDateTime.now().format(formatter));
+    public void sendEmail(String to, String subject, String body) {
+        log.info("Sending email to {} (synchronous)", to);
+        
         try {
-            Thread.sleep(2000); // 処理時間
+            // メール送信処理のシミュレーション（3秒）
+            TimeUnit.SECONDS.sleep(3);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            throw new RuntimeException("Email sending interrupted", e);
         }
+        
+        log.info("Email sent to {}", to);
     }
-
+    
     /**
-     * Cron式で実行（毎分0秒）
+     * 非同期メール送信（戻り値なし）
      */
-    @Scheduled(cron = "0 * * * * *")
-    public void executeCronTask() {
-        log.info("[Cron] 毎分タスク実行: {}", LocalDateTime.now().format(formatter));
+    @Async
+    public void sendEmailAsync(String to, String subject, String body) {
+        log.info("Sending email to {} asynchronously on thread: {}", 
+                to, Thread.currentThread().getName());
+        
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Email sending interrupted", e);
+        }
+        
+        log.info("Email sent to {} on thread: {}", to, Thread.currentThread().getName());
     }
-
+    
     /**
-     * 初期遅延付き実行（起動10秒後から、5秒ごと）
+     * 非同期メール送信（CompletableFuture）
      */
-    @Scheduled(initialDelay = 10000, fixedRate = 5000)
-    public void executeTaskWithInitialDelay() {
-        log.info("[初期遅延] タスク実行: {}", LocalDateTime.now().format(formatter));
+    @Async
+    public CompletableFuture<String> sendEmailAsyncWithResult(String to, String subject, String body) {
+        log.info("Sending email to {} asynchronously (with result) on thread: {}", 
+                to, Thread.currentThread().getName());
+        
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(
+                new RuntimeException("Email sending interrupted", e));
+        }
+        
+        String result = "Email sent to " + to;
+        log.info(result);
+        
+        return CompletableFuture.completedFuture(result);
     }
-
+    
     /**
-     * 毎日午前2時に実行
+     * 複数のメールを並列送信
      */
-    @Scheduled(cron = "0 0 2 * * *")
-    public void executeDailyTask() {
-        log.info("[日次] バックアップタスク実行: {}", LocalDateTime.now().format(formatter));
-        // バックアップ処理など
-    }
-
-    /**
-     * 平日の午前9時に実行
-     */
-    @Scheduled(cron = "0 0 9 * * MON-FRI")
-    public void executeWeekdayTask() {
-        log.info("[平日] レポート送信タスク実行: {}", LocalDateTime.now().format(formatter));
-        // レポート送信処理など
+    @Async
+    public CompletableFuture<String> sendBulkEmail(String to) {
+        log.info("Sending bulk email to {} on thread: {}", to, Thread.currentThread().getName());
+        
+        try {
+            TimeUnit.SECONDS.sleep(2);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(e);
+        }
+        
+        return CompletableFuture.completedFuture("Email sent to " + to);
     }
 }
 ```
 
----
+### 3-2. EmailControllerを作成
 
-## 🚀 ステップ4: AsyncController
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/AsyncController.java`
+`src/main/java/com/example/hellospringboot/controllers/EmailController.java`を作成：
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
-import com.example.hellospringboot.service.AsyncTaskService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.example.hellospringboot.services.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
-@Slf4j
+/**
+ * メール送信API
+ */
 @RestController
-@RequestMapping("/api/async")
+@RequestMapping("/api/emails")
 @RequiredArgsConstructor
-@Tag(name = "Async", description = "非同期処理API")
-public class AsyncController {
-
-    private final AsyncTaskService asyncTaskService;
-
-    @Operation(summary = "非同期タスク実行", description = "非同期でタスクを実行します（戻り値なし）")
-    @PostMapping("/task")
-    public ResponseEntity<String> executeTask(@RequestParam String taskName) {
-        log.info("非同期タスクをキックします: {}", taskName);
-        asyncTaskService.executeAsyncTask(taskName);
-        return ResponseEntity.ok("タスクを開始しました: " + taskName);
-    }
-
-    @Operation(summary = "非同期タスク実行（結果取得）", description = "非同期でタスクを実行して結果を取得します")
-    @PostMapping("/task-with-result")
-    public CompletableFuture<ResponseEntity<String>> executeTaskWithResult(@RequestParam String taskName) {
-        log.info("非同期タスクをキックします（結果取得）: {}", taskName);
+@Slf4j
+public class EmailController {
+    
+    private final EmailService emailService;
+    
+    /**
+     * 同期メール送信
+     */
+    @PostMapping("/send-sync")
+    public ResponseEntity<Map<String, String>> sendEmailSync(
+            @RequestParam String to,
+            @RequestParam(defaultValue = "Test Subject") String subject,
+            @RequestParam(defaultValue = "Test Body") String body) {
         
-        return asyncTaskService.executeAsyncTaskWithResult(taskName)
-                .thenApply(result -> ResponseEntity.ok(result))
-                .exceptionally(ex -> {
-                    log.error("タスク実行エラー: {}", ex.getMessage());
-                    return ResponseEntity.internalServerError()
-                            .body("エラーが発生しました: " + ex.getMessage());
+        log.info("Sync email request received for: {}", to);
+        long startTime = System.currentTimeMillis();
+        
+        // 同期処理（3秒待つ）
+        emailService.sendEmail(to, subject, body);
+        
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("Sync email request completed in {} ms", duration);
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "Email sent synchronously",
+            "duration", duration + " ms"
+        ));
+    }
+    
+    /**
+     * 非同期メール送信（戻り値なし）
+     */
+    @PostMapping("/send-async")
+    public ResponseEntity<Map<String, String>> sendEmailAsync(
+            @RequestParam String to,
+            @RequestParam(defaultValue = "Test Subject") String subject,
+            @RequestParam(defaultValue = "Test Body") String body) {
+        
+        log.info("Async email request received for: {}", to);
+        long startTime = System.currentTimeMillis();
+        
+        // 非同期処理（すぐ返る）
+        emailService.sendEmailAsync(to, subject, body);
+        
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("Async email request completed in {} ms", duration);
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "Email sending started asynchronously",
+            "duration", duration + " ms"
+        ));
+    }
+    
+    /**
+     * 非同期メール送信（結果を待つ）
+     */
+    @PostMapping("/send-async-await")
+    public ResponseEntity<Map<String, String>> sendEmailAsyncAndWait(
+            @RequestParam String to,
+            @RequestParam(defaultValue = "Test Subject") String subject,
+            @RequestParam(defaultValue = "Test Body") String body) {
+        
+        log.info("Async email request (with await) received for: {}", to);
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            // 非同期処理の結果を待つ
+            CompletableFuture<String> future = emailService.sendEmailAsyncWithResult(to, subject, body);
+            String result = future.get();  // ここで結果を待つ
+            
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Async email request (with await) completed in {} ms", duration);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", result,
+                "duration", duration + " ms"
+            ));
+        } catch (Exception e) {
+            log.error("Error sending email", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                "error", e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * 複数メールを並列送信
+     */
+    @PostMapping("/send-bulk")
+    public ResponseEntity<Map<String, Object>> sendBulkEmails(
+            @RequestBody List<String> recipients) {
+        
+        log.info("Bulk email request for {} recipients", recipients.size());
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            // 全ての非同期処理を開始
+            List<CompletableFuture<String>> futures = recipients.stream()
+                    .map(emailService::sendBulkEmail)
+                    .toList();
+            
+            // 全ての処理が完了するまで待つ
+            CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+                    futures.toArray(new CompletableFuture[0]));
+            
+            allFutures.get();  // 全ての処理完了を待つ
+            
+            // 結果を取得
+            List<String> results = futures.stream()
+                    .map(CompletableFuture::join)
+                    .toList();
+            
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Bulk email request completed in {} ms", duration);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "All emails sent");
+            response.put("count", results.size());
+            response.put("results", results);
+            response.put("duration", duration + " ms");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error sending bulk emails", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                "error", e.getMessage()
+            ));
+        }
+    }
+}
+```
+
+### 3-3. コードの解説
+
+#### `@Async`（戻り値なし）
+```java
+@Async
+public void sendEmailAsync(String to, String subject, String body) {
+    // バックグラウンドで実行
+}
+```
+- メソッドがバックグラウンドで実行される
+- 呼び出し元はすぐに次の処理に進む
+- 結果を受け取れない
+
+#### `@Async`（CompletableFuture）
+```java
+@Async
+public CompletableFuture<String> sendEmailAsyncWithResult(...) {
+    return CompletableFuture.completedFuture("Email sent");
+}
+```
+- 非同期処理の結果を返せる
+- `future.get()`で結果を待つことも可能
+- エラーハンドリングが容易
+
+#### 並列処理
+```java
+List<CompletableFuture<String>> futures = recipients.stream()
+    .map(emailService::sendBulkEmail)
+    .toList();
+
+CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+```
+- 複数の非同期処理を並列実行
+- `allOf()`で全ての完了を待つ
+- 大幅な時間短縮が可能
+
+---
+
+## 🚀 ステップ4: 実践的な非同期処理例
+
+### 4-1. 画像処理サービス（非同期）
+
+`src/main/java/com/example/hellospringboot/services/ImageProcessingService.java`を作成：
+
+```java
+package com.example.hellospringboot.services;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 画像処理サービス（非同期）
+ */
+@Service
+@Slf4j
+public class ImageProcessingService {
+    
+    /**
+     * サムネイル生成（非同期）
+     */
+    @Async
+    public CompletableFuture<String> generateThumbnail(String imageUrl) {
+        log.info("Generating thumbnail for: {} on thread: {}", 
+                imageUrl, Thread.currentThread().getName());
+        
+        try {
+            // サムネイル生成処理のシミュレーション（2秒）
+            TimeUnit.SECONDS.sleep(2);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(e);
+        }
+        
+        String thumbnailUrl = imageUrl.replace(".jpg", "_thumb.jpg");
+        log.info("Thumbnail generated: {}", thumbnailUrl);
+        
+        return CompletableFuture.completedFuture(thumbnailUrl);
+    }
+    
+    /**
+     * 画像リサイズ（非同期）
+     */
+    @Async
+    public CompletableFuture<String> resizeImage(String imageUrl, String size) {
+        log.info("Resizing image: {} to {} on thread: {}", 
+                imageUrl, size, Thread.currentThread().getName());
+        
+        try {
+            TimeUnit.SECONDS.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(e);
+        }
+        
+        String resizedUrl = imageUrl.replace(".jpg", "_" + size + ".jpg");
+        log.info("Image resized: {}", resizedUrl);
+        
+        return CompletableFuture.completedFuture(resizedUrl);
+    }
+    
+    /**
+     * 画像の最適化（サムネイル + 複数サイズ）
+     */
+    public CompletableFuture<Map<String, String>> optimizeImage(String imageUrl) {
+        log.info("Starting image optimization for: {}", imageUrl);
+        
+        // 並列で複数の処理を実行
+        CompletableFuture<String> thumbnailFuture = generateThumbnail(imageUrl);
+        CompletableFuture<String> smallFuture = resizeImage(imageUrl, "small");
+        CompletableFuture<String> mediumFuture = resizeImage(imageUrl, "medium");
+        CompletableFuture<String> largeFuture = resizeImage(imageUrl, "large");
+        
+        // 全ての処理が完了したら結果をまとめる
+        return CompletableFuture.allOf(thumbnailFuture, smallFuture, mediumFuture, largeFuture)
+                .thenApply(v -> {
+                    Map<String, String> result = new HashMap<>();
+                    result.put("thumbnail", thumbnailFuture.join());
+                    result.put("small", smallFuture.join());
+                    result.put("medium", mediumFuture.join());
+                    result.put("large", largeFuture.join());
+                    
+                    log.info("Image optimization completed for: {}", imageUrl);
+                    return result;
                 });
     }
+}
+```
 
-    @Operation(summary = "複数タスク並列実行", description = "複数のタスクを並列実行します")
-    @PostMapping("/multiple-tasks")
-    public CompletableFuture<ResponseEntity<String>> executeMultipleTasks() {
-        log.info("複数タスクを並列実行します");
+### 4-2. レポート生成サービス（非同期）
+
+`src/main/java/com/example/hellospringboot/services/ReportService.java`を作成：
+
+```java
+package com.example.hellospringboot.services;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * レポート生成サービス（非同期）
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class ReportService {
+    
+    private final UserService userService;
+    
+    /**
+     * ユーザーレポート生成（重い処理）
+     */
+    @Async
+    public CompletableFuture<Map<String, Object>> generateUserReport(Long userId) {
+        log.info("Generating user report for userId: {} on thread: {}", 
+                userId, Thread.currentThread().getName());
         
-        return asyncTaskService.executeMultipleTasks()
-                .thenApply(result -> ResponseEntity.ok(result))
-                .exceptionally(ex -> {
-                    log.error("タスク実行エラー: {}", ex.getMessage());
-                    return ResponseEntity.internalServerError()
-                            .body("エラーが発生しました: " + ex.getMessage());
-                });
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            // レポート生成処理のシミュレーション（5秒）
+            TimeUnit.SECONDS.sleep(5);
+            
+            Map<String, Object> report = new HashMap<>();
+            report.put("userId", userId);
+            report.put("generatedAt", System.currentTimeMillis());
+            report.put("totalPosts", 42);
+            report.put("totalComments", 128);
+            report.put("totalLikes", 512);
+            
+            long duration = System.currentTimeMillis() - startTime;
+            report.put("generationTime", duration + " ms");
+            
+            log.info("User report generated for userId: {} in {} ms", userId, duration);
+            
+            return CompletableFuture.completedFuture(report);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(e);
+        }
     }
 }
 ```
 
 ---
 
-## 🚀 ステップ5: Cron式の解説
-
-### Cron式の構造
-
-```
-秒 分 時 日 月 曜日
-
-例:
-0 0 12 * * *        # 毎日12時
-0 */5 * * * *       # 5分ごと
-0 0 9-17 * * MON-FRI # 平日9時〜17時の毎時0分
-```
-
-| フィールド | 必須 | 値の範囲 | 特殊文字 |
-|----------|------|---------|---------|
-| 秒 | はい | 0-59 | , - * / |
-| 分 | はい | 0-59 | , - * / |
-| 時 | はい | 0-23 | , - * / |
-| 日 | はい | 1-31 | , - * ? / L W |
-| 月 | はい | 1-12 or JAN-DEC | , - * / |
-| 曜日 | はい | 0-7 or SUN-SAT | , - * ? / L # |
-
----
-
 ## ✅ 動作確認
 
-### 非同期タスク実行
+### 1. アプリケーションを起動
 
 ```bash
-# 非同期タスク（戻り値なし）
-curl -X POST "http://localhost:8080/api/async/task?taskName=TestTask"
-
-# 非同期タスク（戻り値あり）
-curl -X POST "http://localhost:8080/api/async/task-with-result?taskName=TestTask"
-
-# 複数タスク並列実行
-curl -X POST "http://localhost:8080/api/async/multiple-tasks"
+cd /path/to/hello-spring-boot
+./mvnw spring-boot:run
 ```
 
-### ログ確認
+### 2. 同期処理と非同期処理の比較
+
+#### 同期処理（3秒待つ）
+
+```bash
+time curl -X POST "http://localhost:8080/api/emails/send-sync?to=test@example.com"
+```
+
+**期待される結果**:
+```json
+{
+  "message": "Email sent synchronously",
+  "duration": "3000 ms"
+}
+
+real    0m3.050s  ← 3秒かかった
+```
+
+#### 非同期処理（すぐ返る）
+
+```bash
+time curl -X POST "http://localhost:8080/api/emails/send-async?to=test@example.com"
+```
+
+**期待される結果**:
+```json
+{
+  "message": "Email sending started asynchronously",
+  "duration": "5 ms"
+}
+
+real    0m0.050s  ← すぐ返る
+```
+
+**ログ出力**:
+```
+Async email request received for: test@example.com
+Async email request completed in 5 ms
+Sending email to test@example.com asynchronously on thread: async-1
+Email sent to test@example.com on thread: async-1
+```
+
+#### 非同期処理（結果を待つ）
+
+```bash
+time curl -X POST "http://localhost:8080/api/emails/send-async-await?to=test@example.com"
+```
+
+**期待される結果**:
+```json
+{
+  "message": "Email sent to test@example.com",
+  "duration": "3000 ms"
+}
+
+real    0m3.050s  ← 非同期実行だが結果を待つので3秒かかる
+```
+
+**解説**:
+- `CompletableFuture.get()`で結果を待つため、同期処理と同じ時間がかかる
+- ただし、非同期スレッドプールで実行されるため、メインスレッドは占有しない
+- 結果を取得したい場合に有効なパターン
+
+### 3. 並列処理の効果確認
+
+#### 順次処理（1人ずつ送信）なら6秒
+
+```bash
+# 3人に順次送信すると 3人 × 2秒 = 6秒
+```
+
+#### 並列処理（同時送信）なら2秒
+
+```bash
+time curl -X POST http://localhost:8080/api/emails/send-bulk \
+  -H "Content-Type: application/json" \
+  -d '["user1@example.com", "user2@example.com", "user3@example.com"]'
+```
+
+**期待される結果**:
+```json
+{
+  "message": "All emails sent",
+  "count": 3,
+  "results": [
+    "Email sent to user1@example.com",
+    "Email sent to user2@example.com",
+    "Email sent to user3@example.com"
+  ],
+  "duration": "2050 ms"  ← 並列実行で大幅短縮
+}
+
+real    0m2.100s
+```
+
+### 4. スレッド名の確認
+
+ログを見ると、非同期処理が異なるスレッドで実行されていることがわかります：
 
 ```
-非同期タスクをキックします: TestTask
-非同期タスク開始: TestTask [Thread: async-1]
-非同期タスク完了: TestTask
+Sending email to user1@example.com on thread: async-1
+Sending email to user2@example.com on thread: async-2
+Sending email to user3@example.com on thread: async-3
 ```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: リトライ機能
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-`@Retryable`を使って失敗時の再試行を実装してください。
+### チャレンジ 1: タイムアウト処理
 
-### チャレンジ 2: バッチ処理
+**目標**: 非同期処理が一定時間で完了しない場合にタイムアウト
 
-大量データを非同期で分割処理してください。
+**ヒント**:
+```java
+try {
+    String result = future.get(5, TimeUnit.SECONDS);  // 5秒でタイムアウト
+} catch (TimeoutException e) {
+    log.error("Operation timed out");
+    throw new RuntimeException("Email sending timed out", e);
+}
+```
 
-### チャレンジ 3: タスクキャンセル
+### チャレンジ 2: リトライ機能
 
-実行中のタスクをキャンセルできるようにしてください。
+**目標**: 失敗時に自動的に再試行
+
+**ヒント**:
+```java
+<dependency>
+    <groupId>org.springframework.retry</groupId>
+    <artifactId>spring-retry</artifactId>
+</dependency>
+
+@Retryable(
+    value = {RuntimeException.class},
+    maxAttempts = 3,
+    backoff = @Backoff(delay = 1000)
+)
+@Async
+public CompletableFuture<String> sendEmailWithRetry(String to) {
+    // 失敗したら3回まで再試行
+}
+```
+
+### チャレンジ 3: 非同期処理の進捗管理
+
+**目標**: 非同期処理の進捗を追跡できるようにする
+
+**ヒント**:
+```java
+@Service
+public class TaskProgressService {
+    private final Map<String, Integer> progressMap = new ConcurrentHashMap<>();
+    
+    public void updateProgress(String taskId, int progress) {
+        progressMap.put(taskId, progress);
+    }
+    
+    public Integer getProgress(String taskId) {
+        return progressMap.getOrDefault(taskId, 0);
+    }
+}
+
+@Async
+public CompletableFuture<String> processWithProgress(String taskId) {
+    taskProgressService.updateProgress(taskId, 0);
+    // 処理...
+    taskProgressService.updateProgress(taskId, 50);
+    // 処理...
+    taskProgressService.updateProgress(taskId, 100);
+    return CompletableFuture.completedFuture("Done");
+}
+```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "@Asyncが効かない（同期的に実行される）"
+### エラー: 非同期処理が動作しない
 
-**原因**:
-- `@EnableAsync`を付け忘れている
-- 同じクラス内からメソッドを呼んでいる（プロキシが効かない）
-- メソッドが`public`でない
+**原因1**: `@EnableAsync`を付け忘れ
 
 **解決策**:
+```java
+@SpringBootApplication
+@EnableAsync  // 追加
+public class HelloSpringBootApplication {...}
+```
+
+**原因2**: 同じクラス内のメソッド呼び出し
 
 ```java
-// ❌ 同じクラス内から呼ぶと同期実行になる
-@Service
-public class BadAsyncService {
-    @Async
-    public void asyncMethod() {
-        // 非同期処理
+// ❌ 非同期にならない
+public class UserService {
+    public void someMethod() {
+        sendEmailAsync("test@example.com");  // 同じクラス内
     }
     
-    public void caller() {
-        this.asyncMethod();  // ❌ 同期実行される！
-    }
-}
-
-// ✅ 別のクラスから呼ぶ
-@Service
-public class AsyncService {
     @Async
-    public void asyncMethod() {
-        // 非同期処理
-    }
-}
-
-@Service
-@RequiredArgsConstructor
-public class CallerService {
-    private final AsyncService asyncService;
-    
-    public void caller() {
-        asyncService.asyncMethod();  // ✅ 非同期実行される
-    }
+    public void sendEmailAsync(String to) {...}
 }
 ```
 
-### エラー: "TaskRejectedException: Executor has been shut down"
+**解決策**: 別のBeanから呼び出す
 
-**原因**:
-- スレッドプールのキューが満杯
-- アプリケーションシャットダウン中にタスク実行
+### エラー: "TaskRejectedException"
 
-**解決策**:
+**原因**: スレッドプールの容量を超えた
 
-```java
-@Configuration
-@EnableAsync
-public class AsyncConfig implements AsyncConfigurer {
-    
-    @Override
-    public Executor getAsyncExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);  // キュー容量を拡大
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());  // リジェクト時は呼び出し元で実行
-        executor.setWaitForTasksToCompleteOnShutdown(true);  // シャットダウン時にタスク完了を待つ
-        executor.setAwaitTerminationSeconds(60);  // 最大60秒待つ
-        executor.setThreadNamePrefix("async-");
-        executor.initialize();
-        return executor;
-    }
-}
+```
+org.springframework.core.task.TaskRejectedException: Executor [taskExecutor] did not accept task
 ```
 
-### エラー: "非同期メソッドで発生した例外が握りつぶされる"
-
-**原因**:
-- 非同期メソッドの例外はデフォルトで呼び出し元に伝わらない
-- 戻り値が`void`の場合、例外ハンドラが必要
-
-**解決策**:
-
+**解決策**: スレッドプールのサイズを増やす
 ```java
-// AsyncUncaughtExceptionHandlerを設定
+executor.setMaxPoolSize(20);  // 10 → 20
+executor.setQueueCapacity(200);  // 100 → 200
+```
+
+### 非同期処理のエラーが見えない
+
+**原因**: デフォルトではエラーがログに出力されない
+
+**解決策**: AsyncConfigurerでエラーハンドラを設定
+```java
 @Configuration
 @EnableAsync
 public class AsyncConfig implements AsyncConfigurer {
@@ -498,186 +872,189 @@ public class AsyncConfig implements AsyncConfigurer {
     @Override
     public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
         return (ex, method, params) -> {
-            log.error("非同期処理でエラー発生: method={}, params={}", 
-                method.getName(), Arrays.toString(params), ex);
-            // エラー通知やアラート送信などの処理
+            log.error("Async method {} threw exception: {}", 
+                method.getName(), ex.getMessage(), ex);
         };
     }
 }
-
-// または CompletableFuture を使って例外をキャッチ
-@Async
-public CompletableFuture<String> asyncMethodWithException() {
-    try {
-        // 処理
-        return CompletableFuture.completedFuture("Success");
-    } catch (Exception e) {
-        return CompletableFuture.failedFuture(e);
-    }
-}
-
-// 呼び出し側
-asyncService.asyncMethodWithException()
-    .exceptionally(ex -> {
-        log.error("非同期処理エラー", ex);
-        return "Fallback value";
-    });
 ```
 
-### エラー: "@Scheduledタスクが実行されない"
+### メモリリーク
 
-**原因**:
-- `@EnableScheduling`を付け忘れている
-- Cron式の文法エラー
-- タイムゾーンの問題
+**原因**: CompletableFutureが完了しないまま保持される
 
-**解決策**:
-
+**解決策**: タイムアウトを設定
 ```java
-// @EnableScheduling を忘れずに
-@SpringBootApplication
-@EnableScheduling
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
-
-// Cron式を確認（6つのフィールド）
-@Scheduled(cron = "0 0 9 * * *")  // ❌ 5フィールドしかない
-@Scheduled(cron = "0 0 9 * * ?")  // ✅ 6フィールド（秒 分 時 日 月 曜日）
-
-// タイムゾーンを明示
-@Scheduled(cron = "0 0 9 * * ?", zone = "Asia/Tokyo")
-public void scheduledTask() {
-    // 処理
-}
-```
-
-### エラー: "CompletableFuture.allOf()で結果を取得できない"
-
-**原因**:
-- `allOf()`は`CompletableFuture<Void>`を返すため、結果にアクセスできない
-- 各Futureから個別に結果を取得する必要がある
-
-**解決策**:
-
-```java
-// ❌ allOf() だけでは結果が取れない
-CompletableFuture<Void> allFutures = CompletableFuture.allOf(future1, future2, future3);
-allFutures.join();  // 結果が取れない
-
-// ✅ 各Futureから結果を取得
-CompletableFuture<String> future1 = asyncService.task1();
-CompletableFuture<String> future2 = asyncService.task2();
-CompletableFuture<String> future3 = asyncService.task3();
-
-// すべて完了を待つ
-CompletableFuture.allOf(future1, future2, future3).join();
-
-// 個別に結果を取得
-String result1 = future1.join();
-String result2 = future2.join();
-String result3 = future3.join();
-
-// または Stream で一気に取得
-List<CompletableFuture<String>> futures = List.of(future1, future2, future3);
-List<String> results = futures.stream()
-    .map(CompletableFuture::join)
-    .collect(Collectors.toList());
-```
-
-### エラー: "スレッドプールがリークして OOM (Out of Memory) が発生"
-
-**原因**:
-- `Executor`を毎回newしている
-- カスタムExecutorを`@Bean`登録していない
-- スレッドが終了しない
-
-**解決策**:
-
-```java
-// ❌ 毎回newすると古いスレッドプールが残り続ける
-public void badMethod() {
-    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.initialize();  // これを繰り返すとリークする
-}
-
-// ✅ @Bean で1つだけ作成
-@Configuration
-@EnableAsync
-public class AsyncConfig {
-    
-    @Bean(name = "taskExecutor")
-    public Executor taskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("async-");
-        executor.initialize();
-        return executor;
-    }
-}
-
-// 使用時は@Bean名を指定
-@Async("taskExecutor")
-public void asyncMethod() {
-    // 処理
-}
+CompletableFuture<String> future = emailService.sendEmailAsync(to)
+    .orTimeout(10, TimeUnit.SECONDS);  // 10秒でタイムアウト
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ @Asyncによる非同期処理
-- ✅ ThreadPoolTaskExecutorの設定
-- ✅ CompletableFutureの使用
-- ✅ @Scheduledによるスケジュール実行
-- ✅ Cron式の書き方
+- ✅ `@EnableAsync`で非同期処理を有効化
+- ✅ `@Async`アノテーションの使い方
+- ✅ `CompletableFuture`で非同期結果を扱う
+- ✅ `ThreadPoolTaskExecutor`でスレッドプールを設定
+- ✅ 並列処理で複数タスクを同時実行
+- ✅ `CompletableFuture.allOf()`で複数の完了を待つ
+- ✅ 非同期処理のエラーハンドリング
+- ✅ スレッド名のカスタマイズ
+- ✅ 同期処理と非同期処理のパフォーマンス比較
+- ✅ 実践的な非同期処理のユースケース
 
 ---
 
-## 🔄 Phase 7完了！
+## 💡 補足: 非同期処理のベストプラクティス
 
-```bash
-git add .
-git commit -m "Step 33: 非同期処理完了 - Phase 7完了"
-git push origin main
+### 1. 非同期処理が適している場面
+
+| ユースケース | 推奨度 | 理由 |
+|---|---|---|
+| **メール送信** | ⭐⭐⭐ | 時間がかかる外部API呼び出し |
+| **画像処理** | ⭐⭐⭐ | CPU集約的な処理 |
+| **レポート生成** | ⭐⭐⭐ | 重い処理をバックグラウンドで |
+| **ログ記録** | ⭐⭐ | I/O処理を非同期化 |
+| **データ取得** | ❌ | 結果が必要な場合は意味がない |
+
+### 2. 同期 vs 非同期の選択基準
+
+**同期処理が適している**:
+- 結果がすぐに必要
+- 処理が軽い（< 100ms）
+- トランザクションが必要
+
+**非同期処理が適している**:
+- 結果を待つ必要がない
+- 処理が重い（> 1秒）
+- 外部APIの呼び出し
+
+### 3. スレッドプールのサイジング
+
+**CPUバウンド（計算処理）**:
+```java
+// CPU数 + 1 が目安
+int corePoolSize = Runtime.getRuntime().availableProcessors() + 1;
 ```
 
----
-
-
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "このステップのタイトルを記載してコミット"
-git push origin main
+**I/Oバウンド（ネットワーク、ディスク）**:
+```java
+// CPU数 * 2 〜 CPU数 * 4 が目安
+int corePoolSize = Runtime.getRuntime().availableProcessors() * 2;
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+**推奨設定例**:
+```java
+ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+executor.setCorePoolSize(10);      // 常時10スレッド
+executor.setMaxPoolSize(50);       // 最大50スレッド
+executor.setQueueCapacity(100);    // キュー100
+executor.setKeepAliveSeconds(60);  // アイドル60秒で削除
+```
+
+### 4. CompletableFutureのパターン
+
+**チェーン処理**:
+```java
+CompletableFuture.supplyAsync(() -> fetchUser(id))
+    .thenApply(user -> user.getName())
+    .thenAccept(name -> log.info("User name: {}", name));
+```
+
+**並列処理**:
+```java
+CompletableFuture<String> future1 = fetchData1();
+CompletableFuture<String> future2 = fetchData2();
+
+CompletableFuture<Void> combined = CompletableFuture.allOf(future1, future2);
+combined.thenRun(() -> {
+    String result1 = future1.join();
+    String result2 = future2.join();
+    // 両方完了後の処理
+});
+```
+
+**エラーハンドリング**:
+```java
+CompletableFuture<String> future = fetchData()
+    .exceptionally(ex -> {
+        log.error("Error occurred", ex);
+        return "default value";
+    });
+```
+
+### 5. @Asyncの制約と注意点
+
+**❌ 同じクラス内の呼び出しは非同期にならない**:
+```java
+@Service
+public class UserService {
+    public void method1() {
+        method2Async();  // 非同期にならない
+    }
+    
+    @Async
+    public void method2Async() {...}
+}
+```
+
+**✅ 別のBeanから呼び出す**:
+```java
+@Service
+public class UserService {
+    @Autowired
+    private AsyncTaskService asyncTaskService;
+    
+    public void method1() {
+        asyncTaskService.method2Async();  // 非同期になる
+    }
+}
+
+@Service
+public class AsyncTaskService {
+    @Async
+    public void method2Async() {...}
+}
+```
+
+### 6. 非同期処理のモニタリング
+
+**Actuatorでスレッドプールを監視**:
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: metrics, health
+  metrics:
+    enable:
+      executor: true
+```
+
+**カスタムメトリクス**:
+```java
+@Bean
+public ThreadPoolTaskExecutor taskExecutor(MeterRegistry meterRegistry) {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(10);
+    executor.setMaxPoolSize(50);
+    executor.initialize();
+    
+    // メトリクスを登録
+    meterRegistry.gauge("async.pool.size", executor, ThreadPoolTaskExecutor::getPoolSize);
+    meterRegistry.gauge("async.active.count", executor, ThreadPoolTaskExecutor::getActiveCount);
+    
+    return executor;
+}
+```
 
 ---
 
 ## ➡️ 次のステップ
 
-**🎉 Phase 7お疲れさまでした！**
+Phase 7が完了しました！お疲れ様でした！
 
-Phase 7では、本番運用を見据えた設定管理と監視の基礎を学びました。
+次は[Phase 8: 総合演習（最終プロジェクト）](../phase8/STEP_34.md)に進みましょう。
 
-次は**Phase 8: 総合演習（最終プロジェクト）**に進みます。
-
-[Step 34: プロジェクト初期設定とユーザー認証基盤](../phase8/STEP_34.md)で、これまでの学習を統合したミニブログアプリケーションを開発します。
-
----
-
-お疲れさまでした！ 🎉
-
-Phase 7では、実践的な機能を多数実装しました。
-これで本格的なWebアプリケーション開発の準備が整いました！
+Phase 8では、これまで学んだすべての知識を活かして、本格的なWebアプリケーション（ミニブログシステム）を構築します。認証・認可、記事投稿、コメント機能、画像アップロード、検索機能など、実践的な機能を実装していきます。

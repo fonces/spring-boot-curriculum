@@ -2,46 +2,72 @@
 
 ## 🎯 このステップの目標
 
-- JUnit 5を使ったユニットテストを理解する
-- Mockitoでモックを作成する
-- Service層とRepository層のテストを書く
-- テストカバレッジを意識する
+- JUnit 5の基本的な使い方を理解できる
+- Mockitoでモックオブジェクトを作成できる
+- サービス層のユニットテストを実装できる
+- テストの重要性とベストプラクティスを理解できる
 
-**所要時間**: 約1時間30分
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-- Phase 4までのレイヤードアーキテクチャが理解できていること
-- UserService、UserRepositoryが実装されていること
+- [Step 26: JWTトークン認証](STEP_26.md)が完了していること
+- JUnit 5の基本概念を理解していること（推奨）
 
 ---
 
-## 💡 テストの重要性
+## 🧪 なぜテストが必要か
 
-### テストの目的
+### テストがない世界
 
-- ✅ バグの早期発見
-- ✅ リファクタリングの安全性確保
-- ✅ ドキュメントとしての役割
-- ✅ コードの品質向上
+**問題1**: バグを見逃す
+```java
+public UserResponse update(Long id, UserUpdateRequest request) {
+    User user = userRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    
+    // バグ: nameがnullの場合の処理がない
+    user.setName(request.getName());
+    
+    return userMapper.toResponse(userRepository.save(user));
+}
+```
 
-### テストの種類
+**問題2**: リファクタリングが怖い
+- コード変更後に動作確認が大変
+- どこが壊れたか分からない
 
-| 種類 | 範囲 | 速度 | 例 |
-|------|------|------|-----|
-| **ユニットテスト** | 1つのクラス/メソッド | 高速 | UserServiceのテスト |
-| **統合テスト** | 複数のコンポーネント | 中速 | Controller+Service+Repository |
-| **E2Eテスト** | システム全体 | 低速 | ブラウザテスト |
+**問題3**: 仕様書がない
+- コードの意図が分からない
+- 新しいメンバーが理解しにくい
+
+### テストがある世界
+
+**改善1**: バグを早期発見
+```java
+@Test
+void update_WithNullName_ShouldThrowException() {
+    // Nullの場合の動作を確認
+}
+```
+
+**改善2**: 安心してリファクタリング
+- テストが通れば動作保証
+- 自動化されたテスト実行
+
+**改善3**: テストが仕様書
+- テストコードを読めば仕様が分かる
+- ドキュメントより正確
 
 ---
 
-## 🚀 ステップ1: テスト依存関係の確認
+## 🚀 ステップ1: JUnit 5の基本
 
-### 1-1. pom.xmlの確認
+### 1-1. テスト依存関係の確認
 
-Spring Boot Starterに含まれています：
+`pom.xml`に以下が含まれていることを確認（Spring Boot Starterに含まれています）：
 
 ```xml
 <dependency>
@@ -51,134 +77,127 @@ Spring Boot Starterに含まれています：
 </dependency>
 ```
 
-**含まれるライブラリ**:
-- JUnit 5
-- Mockito
-- AssertJ
-- Hamcrest
-- Spring Test
+これに以下が含まれます：
+- **JUnit 5**: テストフレームワーク
+- **Mockito**: モックライブラリ
+- **AssertJ**: アサーションライブラリ
+- **Hamcrest**: マッチャーライブラリ
 
----
+### 1-2. 最初のテストクラスを作成
 
-## 🚀 ステップ2: Repository層のテスト
-
-### 2-1. UserRepositoryTest
-
-**ファイルパス**: `src/test/java/com/example/hellospringboot/repository/UserRepositoryTest.java`
+`src/test/java/com/example/hellospringboot/services/UserServiceTest.java`:
 
 ```java
-package com.example.hellospringboot.repository;
+package com.example.hellospringboot.services;
 
-import com.example.hellospringboot.entity.User;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.context.ActiveProfiles;
 
-import java.util.Optional;
+import static org.junit.jupiter.api.Assertions.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * UserRepositoryのテスト
- */
-@DataJpaTest
-@ActiveProfiles("test")
-@DisplayName("UserRepository Tests")
-class UserRepositoryTest {
-
-    @Autowired
-    private UserRepository userRepository;
-
+class UserServiceTest {
+    
     @Test
-    @DisplayName("ユーザーを保存できること")
-    void testSaveUser() {
-        // Given
-        User user = User.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-
-        // When
-        User savedUser = userRepository.save(user);
-
-        // Then
-        assertThat(savedUser.getId()).isNotNull();
-        assertThat(savedUser.getName()).isEqualTo("Test User");
-        assertThat(savedUser.getEmail()).isEqualTo("test@example.com");
-    }
-
-    @Test
-    @DisplayName("メールアドレスでユーザーを検索できること")
-    void testFindByEmail() {
-        // Given
-        User user = User.builder()
-                .name("John Doe")
-                .email("john@example.com")
-                .age(30)
-                .build();
-        userRepository.save(user);
-
-        // When
-        Optional<User> foundUser = userRepository.findByEmail("john@example.com");
-
-        // Then
-        assertThat(foundUser).isPresent();
-        assertThat(foundUser.get().getName()).isEqualTo("John Doe");
-    }
-
-    @Test
-    @DisplayName("存在しないメールアドレスで検索した場合は空を返すこと")
-    void testFindByEmailNotFound() {
-        // When
-        Optional<User> foundUser = userRepository.findByEmail("notexist@example.com");
-
-        // Then
-        assertThat(foundUser).isEmpty();
-    }
-
-    @Test
-    @DisplayName("メールアドレスの重複をチェックできること")
-    void testExistsByEmail() {
-        // Given
-        User user = User.builder()
-                .name("Jane Doe")
-                .email("jane@example.com")
-                .age(28)
-                .build();
-        userRepository.save(user);
-
-        // When
-        boolean exists = userRepository.existsByEmail("jane@example.com");
-        boolean notExists = userRepository.existsByEmail("notexist@example.com");
-
-        // Then
-        assertThat(exists).isTrue();
-        assertThat(notExists).isFalse();
+    void simpleTest() {
+        // Arrange（準備）
+        int a = 2;
+        int b = 3;
+        
+        // Act（実行）
+        int result = a + b;
+        
+        // Assert（検証）
+        assertEquals(5, result);
     }
 }
 ```
 
+### 1-3. テストを実行
+
+```bash
+./mvnw test
+```
+
+**期待される結果**:
+```
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+```
+
+### 1-4. JUnit 5の基本アノテーション
+
+| アノテーション | 説明 | 実行タイミング |
+|---|---|---|
+| `@Test` | テストメソッドを定義 | 各テスト |
+| `@BeforeEach` | 各テスト前に実行 | テスト前（共通） |
+| `@AfterEach` | 各テスト後に実行 | テスト後（共通） |
+| `@BeforeAll` | 全テスト前に1回実行 | クラス初期化時 |
+| `@AfterAll` | 全テスト後に1回実行 | クラス終了時 |
+| `@DisplayName` | テストの表示名 | - |
+| `@Disabled` | テストを無効化 | - |
+
+**例**:
+```java
+@BeforeEach
+void setUp() {
+    // 各テスト前に実行される初期化処理
+}
+
+@Test
+@DisplayName("ユーザー作成が成功すること")
+void createUser_Success() {
+    // テスト内容
+}
+```
+
+### 1-5. AssertJを使った流暢なアサーション
+
+このカリキュラムでは**AssertJ**を推奨します。JUnit標準のアサーションより読みやすく、エラーメッセージも詳細です。
+
+**JUnit標準のアサーション**:
+```java
+assertEquals(expected, actual);
+assertNotNull(result);
+assertTrue(condition);
+```
+
+**AssertJ（推奨）**:
+```java
+assertThat(actual).isEqualTo(expected);
+assertThat(result).isNotNull();
+assertThat(condition).isTrue();
+```
+
+**AssertJのメリット**:
+- メソッドチェーンで読みやすい
+- IDEの補完が効きやすい
+- エラーメッセージが詳細で分かりやすい
+- より多くのアサーションメソッドが利用可能
+
 ---
 
-## 🚀 ステップ3: Service層のテスト（Mockitoを使用）
+## 🚀 ステップ2: Mockitoでモックを作成
 
-### 3-1. UserServiceTest
+### 2-1. Mockitoとは
 
-**ファイルパス**: `src/test/java/com/example/hellospringboot/service/UserServiceTest.java`
+**モック（Mock）**: 本物の代わりになる偽物のオブジェクト
+
+**例**: `UserRepository`をモックする理由
+- **実際のDB不要**: テストが高速
+- **データ準備不要**: テストが簡単
+- **単体テスト**: Serviceのみをテスト
+
+### 2-2. UserServiceのテストクラスを作成
+
+`src/test/java/com/example/hellospringboot/services/UserServiceTest.java`を更新：
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot.services;
 
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.exception.DuplicateResourceException;
-import com.example.hellospringboot.exception.UserNotFoundException;
-import com.example.hellospringboot.mapper.UserMapper;
-import com.example.hellospringboot.repository.UserRepository;
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserResponse;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
+import com.example.hellospringboot.mappers.UserMapper;
+import com.example.hellospringboot.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -187,585 +206,508 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-/**
- * UserServiceのテスト
- */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("UserService Tests")
 class UserServiceTest {
-
+    
     @Mock
     private UserRepository userRepository;
-
+    
     @Mock
     private UserMapper userMapper;
-
+    
     @InjectMocks
     private UserService userService;
-
+    
     private User testUser;
     private UserCreateRequest createRequest;
     private UserResponse userResponse;
-
+    
     @BeforeEach
     void setUp() {
-        testUser = User.builder()
-                .id(1L)
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-
-        createRequest = UserCreateRequest.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-
-        userResponse = UserResponse.builder()
-                .id(1L)
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-    }
-
-    @Test
-    @DisplayName("ユーザーを作成できること")
-    void testCreateUser() {
-        // Given
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(userMapper.toEntity(any(UserCreateRequest.class))).thenReturn(testUser);
-        when(userRepository.save(any(User.class))).thenReturn(testUser);
-        when(userMapper.toResponse(any(User.class))).thenReturn(userResponse);
-
-        // When
-        UserResponse result = userService.createUser(createRequest);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getName()).isEqualTo("Test User");
-        assertThat(result.getEmail()).isEqualTo("test@example.com");
-
-        verify(userRepository).existsByEmail("test@example.com");
-        verify(userRepository).save(any(User.class));
-        verify(userMapper).toResponse(any(User.class));
-    }
-
-    @Test
-    @DisplayName("メールアドレスが重複している場合は例外をスローすること")
-    void testCreateUserDuplicateEmail() {
-        // Given
-        when(userRepository.existsByEmail(anyString())).thenReturn(true);
-
-        // When & Then
-        assertThatThrownBy(() -> userService.createUser(createRequest))
-                .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("メールアドレス");
-
-        verify(userRepository).existsByEmail("test@example.com");
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    @Test
-    @DisplayName("IDでユーザーを取得できること")
-    void testGetUserById() {
-        // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(userMapper.toResponse(any(User.class))).thenReturn(userResponse);
-
-        // When
-        UserResponse result = userService.getUserById(1L);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getId()).isEqualTo(1L);
+        // テストデータの準備
+        testUser = new User();
+        testUser.setId(1L);
+        testUser.setName("Test User");
+        testUser.setEmail("test@example.com");
+        testUser.setAge(25);
+        testUser.setCreatedAt(LocalDateTime.now());
+        testUser.setUpdatedAt(LocalDateTime.now());
         
-        verify(userRepository).findById(1L);
+        createRequest = new UserCreateRequest("Test User", "test@example.com", 25);
+        
+        userResponse = new UserResponse(
+            1L,
+            "Test User",
+            "test@example.com",
+            25,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        );
     }
-
+    
     @Test
-    @DisplayName("存在しないIDの場合は例外をスローすること")
-    void testGetUserByIdNotFound() {
-        // Given
+    @DisplayName("全ユーザー取得が成功すること")
+    void findAll_Success() {
+        // Arrange: モックの動作を定義
+        List<User> users = Arrays.asList(testUser);
+        when(userRepository.findAll()).thenReturn(users);
+        when(userMapper.toResponse(any(User.class))).thenReturn(userResponse);
+        
+        // Act: メソッドを実行
+        List<UserResponse> result = userService.findAll();
+        
+        // Assert: 結果を検証
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Test User", result.get(0).getName());
+        
+        // モックメソッドが呼ばれたことを検証
+        verify(userRepository, times(1)).findAll();
+        verify(userMapper, times(1)).toResponse(any(User.class));
+    }
+    
+    @Test
+    @DisplayName("ID指定でユーザー取得が成功すること")
+    void findById_Success() {
+        // Arrange
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userMapper.toResponse(testUser)).thenReturn(userResponse);
+        
+        // Act
+        UserResponse result = userService.findById(1L);
+        
+        // Assert
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Test User", result.getName());
+        
+        verify(userRepository, times(1)).findById(1L);
+    }
+    
+    @Test
+    @DisplayName("存在しないIDで例外がスローされること")
+    void findById_NotFound_ThrowsException() {
+        // Arrange
         when(userRepository.findById(999L)).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThatThrownBy(() -> userService.getUserById(999L))
-                .isInstanceOf(UserNotFoundException.class);
-
-        verify(userRepository).findById(999L);
+        
+        // Act & Assert
+        assertThrows(ResourceNotFoundException.class, () -> {
+            userService.findById(999L);
+        });
+        
+        verify(userRepository, times(1)).findById(999L);
     }
-
+    
     @Test
-    @DisplayName("ユーザーを削除できること")
-    void testDeleteUser() {
-        // Given
-        when(userRepository.existsById(1L)).thenReturn(true);
-        doNothing().when(userRepository).deleteById(1L);
-
-        // When
-        userService.deleteUser(1L);
-
-        // Then
-        verify(userRepository).existsById(1L);
-        verify(userRepository).deleteById(1L);
+    @DisplayName("ユーザー作成が成功すること")
+    void create_Success() {
+        // Arrange
+        User newUser = new User();
+        newUser.setName("Test User");
+        newUser.setEmail("test@example.com");
+        newUser.setAge(25);
+        
+        when(userMapper.toEntity(createRequest)).thenReturn(newUser);
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(userMapper.toResponse(testUser)).thenReturn(userResponse);
+        
+        // Act
+        UserResponse result = userService.create(createRequest);
+        
+        // Assert
+        assertNotNull(result);
+        assertEquals("Test User", result.getName());
+        assertEquals("test@example.com", result.getEmail());
+        
+        verify(userMapper, times(1)).toEntity(createRequest);
+        verify(userRepository, times(1)).save(any(User.class));
     }
+    
+    @Test
+    @DisplayName("ユーザー削除が成功すること")
+    void delete_Success() {
+        // Arrange
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        doNothing().when(userRepository).delete(testUser);
+        
+        // Act
+        assertDoesNotThrow(() -> userService.delete(1L));
+        
+        // Assert
+        verify(userRepository, times(1)).findById(1L);
+        verify(userRepository, times(1)).delete(testUser);
+    }
+}
+```
+
+### 2-3. コードの解説
+
+#### `@ExtendWith(MockitoExtension.class)`
+```java
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+```
+- Mockitoを有効化
+- `@Mock`、`@InjectMocks`を使用可能に
+
+#### `@Mock`
+```java
+@Mock
+private UserRepository userRepository;
+```
+- モックオブジェクトを作成
+- 実際のDBにアクセスしない
+
+#### `@InjectMocks`
+```java
+@InjectMocks
+private UserService userService;
+```
+- モックを自動注入
+- `UserService`に`userRepository`を注入
+
+#### `when().thenReturn()`
+```java
+when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+```
+- モックの動作を定義
+- 「〜が呼ばれたら、〜を返す」
+
+#### `verify()`
+```java
+verify(userRepository, times(1)).findById(1L);
+```
+- メソッドが呼ばれたことを検証
+- `times(1)`: 1回呼ばれた
+
+#### `assertThrows()`
+```java
+assertThrows(ResourceNotFoundException.class, () -> {
+    userService.findById(999L);
+});
+```
+- 例外がスローされることを検証
+
+---
+
+## 🚀 ステップ3: AssertJで読みやすいアサーション
+
+### 3-1. AssertJとは
+
+JUnit 5の`assertEquals`より読みやすいアサーションライブラリ
+
+**JUnit 5**:
+```java
+assertEquals(5, result);
+assertEquals("Test User", user.getName());
+assertNotNull(user);
+```
+
+**AssertJ**:
+```java
+assertThat(result).isEqualTo(5);
+assertThat(user.getName()).isEqualTo("Test User");
+assertThat(user).isNotNull();
+```
+
+### 3-2. AssertJを使ったテスト
+
+`UserServiceTest.java`にテストを追加：
+
+```java
+import static org.assertj.core.api.Assertions.*;
+
+@Test
+@DisplayName("全ユーザー取得（AssertJ版）")
+void findAll_WithAssertJ() {
+    // Arrange
+    List<User> users = Arrays.asList(testUser);
+    when(userRepository.findAll()).thenReturn(users);
+    when(userMapper.toResponse(any(User.class))).thenReturn(userResponse);
+    
+    // Act
+    List<UserResponse> result = userService.findAll();
+    
+    // Assert
+    assertThat(result)
+        .isNotNull()
+        .hasSize(1)
+        .extracting(UserResponse::getName)
+        .containsExactly("Test User");
+}
+
+@Test
+@DisplayName("ユーザー作成（AssertJ版）")
+void create_WithAssertJ() {
+    // Arrange
+    User newUser = new User();
+    newUser.setName("Test User");
+    newUser.setEmail("test@example.com");
+    newUser.setAge(25);
+    
+    when(userMapper.toEntity(createRequest)).thenReturn(newUser);
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    when(userMapper.toResponse(testUser)).thenReturn(userResponse);
+    
+    // Act
+    UserResponse result = userService.create(createRequest);
+    
+    // Assert
+    assertThat(result)
+        .isNotNull()
+        .satisfies(response -> {
+            assertThat(response.getName()).isEqualTo("Test User");
+            assertThat(response.getEmail()).isEqualTo("test@example.com");
+            assertThat(response.getAge()).isEqualTo(25);
+        });
 }
 ```
 
 ---
 
-## 🚀 ステップ4: テストの実行
+## 🚀 ステップ4: テストカバレッジの確認
 
-### 4-1. Maven経由でテスト実行
+### 4-1. すべてのテストを実行
 
 ```bash
 ./mvnw test
 ```
 
-### 4-2. VSCodeでテスト実行
-
-1. テストクラスを開く
-2. クラス名やメソッド名の左側に表示される「Run Test」アイコンをクリック
-3. または、Testing サイドバー（フラスコアイコン）からテストを実行
-
-### 4-3. テスト結果
-
-```
-[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
-[INFO] BUILD SUCCESS
-```
-
----
-
-## 🚀 ステップ5: テストカバレッジ
-
-### 5-1. JaCoCoプラグインの追加
-
-**ファイルパス**: `pom.xml`
-
-```xml
-<build>
-    <plugins>
-        <!-- JaCoCo Maven Plugin -->
-        <plugin>
-            <groupId>org.jacoco</groupId>
-            <artifactId>jacoco-maven-plugin</artifactId>
-            <version>0.8.11</version>
-            <executions>
-                <execution>
-                    <goals>
-                        <goal>prepare-agent</goal>
-                    </goals>
-                </execution>
-                <execution>
-                    <id>report</id>
-                    <phase>test</phase>
-                    <goals>
-                        <goal>report</goal>
-                    </goals>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
-</build>
-```
-
-### 5-2. カバレッジレポート生成
+### 4-2. カバレッジレポートの表示
 
 ```bash
-./mvnw clean test
-
-# レポート確認
-open target/site/jacoco/index.html
+./mvnw test jacoco:report
 ```
+
+**レポート場所**:
+```
+target/site/jacoco/index.html
+```
+
+ブラウザで開いて確認してください。
 
 ---
 
-## 🔧 補足: MyBatisのテスト
+## ✅ 動作確認
 
-Phase 3でMyBatisを学習した場合、MyBatis Mapperのテストも重要です。
+### 1. テストを実行
 
-### MyBatis Mapperのテスト
-
-**ファイルパス**: `src/test/java/com/example/hellospringboot/mapper/UserMapperTest.java`
-
-```java
-package com.example.hellospringboot.mapper;
-
-import com.example.hellospringboot.entity.User;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.mybatis.spring.boot.test.autoconfigure.MybatisTest;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.test.context.ActiveProfiles;
-
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * UserMapper のテスト
- */
-@MybatisTest  // MyBatis専用のテストアノテーション
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("test")
-@DisplayName("UserMapper Tests")
-class UserMapperTest {
-
-    @Autowired
-    private UserMapper userMapper;
-
-    @Test
-    @DisplayName("ユーザーを挿入できること")
-    void testInsert() {
-        // Given
-        User user = User.builder()
-                .name("Test User")
-                .email("test@example.com")
-                .age(25)
-                .build();
-
-        // When
-        userMapper.insert(user);
-
-        // Then
-        assertThat(user.getId()).isNotNull();  // IDが自動生成される
-    }
-
-    @Test
-    @DisplayName("IDでユーザーを検索できること")
-    void testFindById() {
-        // Given
-        User user = User.builder()
-                .name("John Doe")
-                .email("john@example.com")
-                .age(30)
-                .build();
-        userMapper.insert(user);
-
-        // When
-        Optional<User> foundUser = userMapper.findById(user.getId());
-
-        // Then
-        assertThat(foundUser).isPresent();
-        assertThat(foundUser.get().getName()).isEqualTo("John Doe");
-    }
-
-    @Test
-    @DisplayName("全ユーザーを取得できること")
-    void testFindAll() {
-        // Given
-        User user1 = User.builder().name("User 1").email("user1@example.com").age(25).build();
-        User user2 = User.builder().name("User 2").email("user2@example.com").age(30).build();
-        userMapper.insert(user1);
-        userMapper.insert(user2);
-
-        // When
-        List<User> users = userMapper.findAll();
-
-        // Then
-        assertThat(users).hasSizeGreaterThanOrEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("ユーザーを更新できること")
-    void testUpdate() {
-        // Given
-        User user = User.builder()
-                .name("Original Name")
-                .email("original@example.com")
-                .age(25)
-                .build();
-        userMapper.insert(user);
-
-        // When
-        user.setName("Updated Name");
-        user.setAge(26);
-        userMapper.update(user);
-
-        // Then
-        Optional<User> updatedUser = userMapper.findById(user.getId());
-        assertThat(updatedUser).isPresent();
-        assertThat(updatedUser.get().getName()).isEqualTo("Updated Name");
-        assertThat(updatedUser.get().getAge()).isEqualTo(26);
-    }
-
-    @Test
-    @DisplayName("ユーザーを削除できること")
-    void testDelete() {
-        // Given
-        User user = User.builder()
-                .name("To Delete")
-                .email("delete@example.com")
-                .age(25)
-                .build();
-        userMapper.insert(user);
-        Long userId = user.getId();
-
-        // When
-        userMapper.deleteById(userId);
-
-        // Then
-        Optional<User> deletedUser = userMapper.findById(userId);
-        assertThat(deletedUser).isEmpty();
-    }
-}
+```bash
+./mvnw test
 ```
 
-### MyBatisテストの依存関係
-
-**pom.xml**:
-```xml
-<dependency>
-    <groupId>org.mybatis.spring.boot</groupId>
-    <artifactId>mybatis-spring-boot-starter-test</artifactId>
-    <version>3.0.3</version>
-    <scope>test</scope>
-</dependency>
+**期待される結果**:
+```
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
 ```
 
-### JPA vs MyBatisのテスト比較
+### 2. 特定のテストクラスのみ実行
 
-| 観点 | JPA (@DataJpaTest) | MyBatis (@MybatisTest) |
-|------|-------------------|------------------------|
-| **テストアノテーション** | `@DataJpaTest` | `@MybatisTest` |
-| **トランザクション** | 自動ロールバック | 自動ロールバック |
-| **テストDB** | インメモリDBなどで可能 | 本番と同じDBを推奨 |
-| **設定** | application-test.yml | application-test.yml |
-| **依存関係** | spring-boot-starter-test | mybatis-spring-boot-starter-test |
+```bash
+./mvnw test -Dtest=UserServiceTest
+```
 
-> **💡 推奨**: MyBatisはSQLを直接記述するため、本番環境と同じデータベース（Docker MySQL等）でテストすることを推奨します。
+### 3. 特定のテストメソッドのみ実行
+
+```bash
+./mvnw test -Dtest=UserServiceTest#findById_Success
+```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: PostServiceのテスト
+### チャレンジ 1: パラメータ化テスト
 
-PostServiceのテストを作成してください。
+**目標**: 複数の入力値で同じテストを実行
 
-### チャレンジ 2: パラメータ化テスト
-
-`@ParameterizedTest`を使って複数のケースをテストしてください。
-
+**ヒント**:
 ```java
 @ParameterizedTest
-@ValueSource(strings = {"test@example.com", "user@test.com"})
-void testValidEmail(String email) {
-    // テストコード
+@ValueSource(strings = {"", "  ", "a"})
+@DisplayName("名前が不正な場合にバリデーションエラー")
+void create_WithInvalidName_ThrowsException(String name) {
+    UserCreateRequest request = new UserCreateRequest(name, "test@example.com", 25);
+    // テスト実行
 }
 ```
 
-### チャレンジ 3: テストカバレッジ80%以上
+### チャレンジ 2: カスタムマッチャー
 
-カバレッジレポートで80%以上を達成してください。
+**目標**: AssertJでカスタムアサーションを作成
+
+**ヒント**:
+```java
+assertThat(user).satisfies(u -> {
+    assertThat(u.getName()).isNotBlank();
+    assertThat(u.getEmail()).contains("@");
+    assertThat(u.getAge()).isBetween(0, 150);
+});
+```
+
+### チャレンジ 3: ArgumentCaptorの使用
+
+**目標**: モックに渡された引数を検証
+
+**ヒント**:
+```java
+ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+verify(userRepository).save(userCaptor.capture());
+User savedUser = userCaptor.getValue();
+assertThat(savedUser.getName()).isEqualTo("Test User");
+```
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "NullPointerException in test"
+
+**原因**: モックが正しく注入されていない
+
+**解決策**:
+```java
+// NG
+@ExtendWith(SpringExtension.class)  // 間違ったExtension
+
+// OK
+@ExtendWith(MockitoExtension.class)  // Mockitoを使う
+```
+
+### テストが遅い
+
+**原因**: 統合テスト（@SpringBootTest）を使っている
+
+**解決策**: ユニットテストには`@ExtendWith(MockitoExtension.class)`を使用
+```java
+// 遅い（Spring起動）
+@SpringBootTest
+class UserServiceTest {
+}
+
+// 速い（モックのみ）
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+}
+```
+
+### モックが機能しない
+
+**原因**: `when()`の条件が一致しない
+
+**デバッグ**:
+```java
+// 引数が一致しているか確認
+when(userRepository.findById(eq(1L))).thenReturn(Optional.of(testUser));
+
+// 任意の引数を許可
+when(userRepository.findById(anyLong())).thenReturn(Optional.of(testUser));
+```
+
+### テストが他のテストに依存する
+
+**問題**: テストの実行順序に依存
+```java
+static User sharedUser;  // NG: 共有状態
+
+@Test
+void test1() {
+    sharedUser = new User();  // 他のテストに影響
+}
+```
+
+**解決策**: 各テストで独立したデータを使用
+```java
+@BeforeEach
+void setUp() {
+    testUser = new User();  // 各テストで新しいインスタンス
+}
+```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ JUnit 5の基本
-- ✅ @DataJpaTestによるRepositoryテスト
-- ✅ Mockitoによるモック作成
-- ✅ Given-When-Then パターン
-- ✅ AssertJによるアサーション
-- ✅ テストカバレッジ
+- ✅ JUnit 5の基本アノテーション
+- ✅ Mockitoでモックオブジェクトを作成
+- ✅ `when().thenReturn()`でモックの動作を定義
+- ✅ `verify()`でメソッド呼び出しを検証
+- ✅ AssertJで読みやすいアサーション
+- ✅ テストの3A原則（Arrange, Act, Assert）
+- ✅ 例外のテスト方法
 
 ---
 
-## � トラブルシューティング
+## 💡 補足: テストのベストプラクティス
 
-### エラー1: "NoSuchBeanDefinitionException"
-
-```
-org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'UserRepository' available
-```
-
-**原因**: テストクラスで`@ExtendWith(MockitoExtension.class)`を使っているのに、モックを作成していない
-
-**解決策**:
-
-```java
-@ExtendWith(MockitoExtension.class)
-class UserServiceTest {
-    
-    @Mock  // ← これが必要
-    private UserRepository userRepository;
-    
-    @InjectMocks
-    private UserService userService;
-}
-```
-
----
-
-### エラー2: "NullPointerException in test"
-
-```
-java.lang.NullPointerException: Cannot invoke "UserRepository.findById()" because "this.userRepository" is null
-```
-
-**原因**: `@InjectMocks`アノテーションをつけ忘れている
-
-**解決策**:
-
-```java
-@Mock
-private UserRepository userRepository;
-
-@InjectMocks  // ← これが必要
-private UserService userService;
-```
-
----
-
-### エラー3: テストで期待した値が返ってこない
+### 1. テスト名は日本語でOK
 
 ```java
 @Test
-void testFindById() {
-    when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-    
-    User result = userService.findById(2L);  // ← 違うIDで呼び出している
-    
-    assertThat(result).isNotNull();  // ← テスト失敗
+@DisplayName("存在しないIDで例外がスローされること")
+void findById_NotFound_ThrowsException() {
 }
 ```
 
-**原因**: モックの設定と実際の呼び出しで引数が異なる
-
-**解決策**:
+### 2. Given-When-Then パターン
 
 ```java
 @Test
-void testFindById() {
-    when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+void create_Success() {
+    // Given (Arrange)
+    UserCreateRequest request = new UserCreateRequest(...);
     
-    User result = userService.findById(1L);  // ← 同じIDで呼び出す
+    // When (Act)
+    UserResponse result = userService.create(request);
     
+    // Then (Assert)
     assertThat(result).isNotNull();
 }
 ```
 
----
-
-### エラー4: "UnnecessaryStubbingException"
-
-```
-org.mockito.exceptions.misusing.UnnecessaryStubbingException: Unnecessary stubbings detected.
-```
-
-**原因**: モックの設定をしたのに、テスト内でそのメソッドを呼び出していない
-
-**解決策**:
+### 3. 1テスト1検証
 
 ```java
+// NG: 複数のことをテスト
 @Test
-void testCreateUser() {
-    // when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));  // ← 使わないモックは削除
-    
-    when(userRepository.save(any(User.class))).thenReturn(testUser);
-    
-    User result = userService.createUser(testUser);
-    assertThat(result).isNotNull();
+void testEverything() {
+    userService.create(...);
+    userService.update(...);
+    userService.delete(...);
 }
-```
 
-または、Mockitoの厳格性を下げる：
-
-```java
-@ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)  // ← 追加
-class UserServiceTest {
-    // ...
-}
-```
-
----
-
-### エラー5: "Wanted but not invoked" エラー
-
-```
-Wanted but not invoked:
-userRepository.save(<any>);
-```
-
-**原因**: `verify()`でメソッド呼び出しを検証しているが、実際には呼ばれていない
-
-**解決策**:
-
-```java
+// OK: 1つのことをテスト
 @Test
-void testCreateUser() {
-    when(userRepository.save(any(User.class))).thenReturn(testUser);
-    
-    userService.createUser(testUser);  // ← このメソッド内でsave()が呼ばれることを確認
-    
-    verify(userRepository).save(any(User.class));  // ← 検証
+void create_Success() {
+    userService.create(...);
+}
+
+@Test
+void update_Success() {
+    userService.update(...);
 }
 ```
 
-デバッグ時は`verifyNoMoreInteractions()`で予期しない呼び出しを検出：
+### 4. テストの独立性
 
-```java
-verify(userRepository).save(any(User.class));
-verifyNoMoreInteractions(userRepository);  // ← 他のメソッドが呼ばれていないことを確認
-```
-
----
-
-### エラー6: AssertJのアサーションが読みにくい
-
-```java
-// ❌ JUnitのアサーションは読みにくい
-assertEquals(expected, actual);
-assertTrue(result > 0);
-```
-
-**解決策**: AssertJの流暢なAPIを使う
-
-```java
-// ✅ AssertJは読みやすい
-assertThat(actual).isEqualTo(expected);
-assertThat(result).isGreaterThan(0);
-
-// 複数のアサーションをまとめて
-assertThat(user)
-    .isNotNull()
-    .extracting(User::getName, User::getEmail)
-    .containsExactly("Alice", "alice@example.com");
-```
-
----
-
-## �🔄 Gitへのコミットとレビュー依頼
-
-```bash
-git add .
-git commit -m "Step 27: ユニットテスト完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+各テストは他のテストに依存せず、独立して実行できること。
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 28: 統合テスト](STEP_28.md)へ進みましょう！
+[Step 28: 統合テスト](STEP_28.md)へ進みましょう！
 
----
-
-お疲れさまでした！ 🎉
+次のステップでは、`@SpringBootTest`を使った統合テストを実装します。実際のSpringコンテキストを起動し、エンドツーエンドでのテストを学びます。

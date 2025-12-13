@@ -2,11 +2,11 @@
 
 ## 🎯 このステップの目標
 
-- Update（更新）機能を実装する
-- Delete（削除）機能を実装する
-- IDで特定のデータを取得する機能を実装する
-- 完全なRESTful APIを完成させる
-- 適切なHTTPメソッド（GET, POST, PUT, DELETE）を使い分ける
+- 商品の更新（Update）を実装できる
+- 商品の削除（Delete）を実装できる
+- CRUD操作の全て（Create, Read, Update, Delete）を理解できる
+- HTTPメソッドとCRUD操作の対応関係を理解できる
+- RESTful APIの設計原則を理解できる
 
 **所要時間**: 約45分
 
@@ -14,122 +14,47 @@
 
 ## 📋 事前準備
 
-- Step 7で作成したUserエンティティとリポジトリ
-- Create（作成）とRead（読み取り）機能が動作していること
-
-**Step 7をまだ完了していない場合**: [Step 7: Spring Data JPAでCRUDの基本](STEP_7.md)を先に進めてください。
-
----
-
-## 💡 CRUDとRESTful API
-
-### CRUDとは？
-
-**CRUD** = データベースの基本操作
-
-| 操作 | 意味 | HTTPメソッド | エンドポイント例 |
-|------|------|--------------|------------------|
-| **C**reate | 作成 | POST | `POST /api/users` |
-| **R**ead | 読み取り | GET | `GET /api/users` |
-| **U**pdate | 更新 | PUT/PATCH | `PUT /api/users/{id}` |
-| **D**elete | 削除 | DELETE | `DELETE /api/users/{id}` |
-
-### RESTful APIの設計
-
-| 操作 | HTTPメソッド | URL | 説明 |
-|------|-------------|-----|------|
-| 一覧取得 | GET | `/api/users` | 全ユーザー取得 |
-| 詳細取得 | GET | `/api/users/{id}` | 特定ユーザー取得 |
-| 作成 | POST | `/api/users` | ユーザー作成 |
-| 更新 | PUT | `/api/users/{id}` | ユーザー更新 |
-| 削除 | DELETE | `/api/users/{id}` | ユーザー削除 |
+- [Step 7](STEP_7.md)が完了していること
+- `ProductRepository`と`ProductController`が作成されていること
+- MySQLコンテナが起動していること
 
 ---
 
-## 🚀 ステップ1: Read - IDで取得
+## 🧩 CRUD操作とHTTPメソッド
 
-### 1-1. UserServiceにメソッド追加
+### RESTful APIの対応関係
 
-`UserService.java`に以下のメソッドを追加します。
+**CRUD**は、データベース操作の4つの基本機能です：
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+| 操作 | 英語 | HTTPメソッド | エンドポイント | 説明 |
+|---|---|---|---|---|
+| **C**reate | 作成 | `POST` | `/api/products` | 新しいリソースを作成 |
+| **R**ead | 読み取り | `GET` | `/api/products` | リソース一覧を取得 |
+| **R**ead | 読み取り | `GET` | `/api/products/{id}` | 特定のリソースを取得 |
+| **U**pdate | 更新 | `PUT` | `/api/products/{id}` | リソース全体を更新 |
+| **U**pdate | 更新 | `PATCH` | `/api/products/{id}` | リソースの一部を更新 |
+| **D**elete | 削除 | `DELETE` | `/api/products/{id}` | リソースを削除 |
 
-```java
-package com.example.hellospringboot.service;
+### PUTとPATCHの違い
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
+- **PUT**: リソース**全体**を置き換える（全フィールド必須）
+- **PATCH**: リソースの**一部**を更新する（変更するフィールドのみ）
 
-import java.util.List;
-import java.util.Optional;
+このステップでは、より一般的な`PUT`を実装します。
 
-@Service
-@RequiredArgsConstructor
-public class UserService {
+---
 
-    private final UserRepository userRepository;
+## 🚀 ステップ1: 更新（Update）の実装
 
-    /**
-     * ユーザーを作成
-     */
-    public User createUser(User user) {
-        return userRepository.save(user);
-    }
+### 1-1. ProductControllerに更新メソッドを追加
 
-    /**
-     * 全ユーザーを取得
-     */
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
-    }
+`ProductController.java`に以下のメソッドを**追加**します：
 
-    /**
-     * IDでユーザーを取得
-     */
-    public Optional<User> getUserById(Long id) {
-        return userRepository.findById(id);
-    }
-}
-```
-
-### 1-2. Optionalとは？
+**ファイルパス**: `src/main/java/com/example/hellospringboot/ProductController.java`
 
 ```java
-public Optional<User> getUserById(Long id) {
-    return userRepository.findById(id);
-}
-```
+package com.example.hellospringboot;
 
-**Optional<T>** = 値が存在するかもしれないし、しないかもしれないことを表す型
-
-**従来の方法（null返却）の問題点**:
-```java
-User user = getUserById(999);
-String name = user.getName();  // NullPointerException発生！
-```
-
-**Optionalを使う利点**:
-```java
-Optional<User> userOpt = getUserById(999);
-if (userOpt.isPresent()) {
-    User user = userOpt.get();
-    String name = user.getName();  // 安全
-}
-```
-
-### 1-3. UserControllerにエンドポイント追加
-
-`UserController.java`に以下のメソッドを追加します。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -138,695 +63,496 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/products")
 @RequiredArgsConstructor
-public class UserController {
-
-    private final UserService userService;
-
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        User createdUser = userService.createUser(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
-    }
-
-    /**
-     * 全ユーザー取得
-     * GET /api/users
-     */
-    @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
-    }
-
-    /**
-     * IDでユーザー取得
-     * GET /api/users/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
-        return userService.getUserById(id)
-                .map(ResponseEntity::ok)
+public class ProductController {
+    
+    private final ProductRepository productRepository;
+    
+    // ここまでは既存のメソッド（Step 7で作成済み）
+    
+    // 商品を更新
+    @PutMapping("/{id}")
+    public ResponseEntity<Product> updateProduct(
+            @PathVariable Long id,
+            @RequestBody Product productDetails) {
+        return productRepository.findById(id)
+                .map(product -> {
+                    product.setName(productDetails.getName());
+                    product.setDescription(productDetails.getDescription());
+                    product.setPrice(productDetails.getPrice());
+                    Product updated = productRepository.save(product);
+                    return ResponseEntity.ok(updated);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 }
 ```
 
-### 1-4. コードの解説
+### 1-2. コードの解説
 
-```java
-@GetMapping("/{id}")
-public ResponseEntity<User> getUserById(@PathVariable Long id) {
-    return userService.getUserById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-}
+#### 更新の流れ
+
+1. `findById(id)`で既存のデータを取得
+2. `.map(product -> { ... })`で値が存在する場合の処理
+3. セッターで新しい値を設定
+4. `save()`で保存（`@PreUpdate`が実行され`updatedAt`が更新される）
+5. 200 OKで返却
+
+#### なぜ`save()`で更新できるのか
+
+`save()`メソッドは以下のロジックで動作します：
+
 ```
-
-- `Optional<User>`から値を取り出す
-- 値が存在する場合: `ResponseEntity.ok(user)` → 200 OK
-- 値が存在しない場合: `ResponseEntity.notFound().build()` → 404 Not Found
-
-### 1-5. 動作確認
-
-まずユーザーを作成：
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Taro",
-    "email": "taro@example.com",
-    "age": 30
-  }'
-```
-
-IDで取得：
-
-```bash
-# 存在するID
-curl http://localhost:8080/api/users/1
-```
-
-**期待される結果**:
-```json
-{
-  "id": 1,
-  "name": "Taro",
-  "email": "taro@example.com",
-  "age": 30
-}
-```
-
-存在しないIDで試す：
-
-```bash
-curl -i http://localhost:8080/api/users/999
-```
-
-**期待される結果**:
-```
-HTTP/1.1 404
+IDが設定されていない → INSERT
+IDが設定されている → UPDATE（既存レコードを更新）
 ```
 
 ---
 
-## 🚀 ステップ2: Update - 更新
+## 🚀 ステップ2: 削除（Delete）の実装
 
-### 2-1. UserServiceにupdateメソッド追加
+### 2-1. ProductControllerに削除メソッドを追加
 
-`UserService.java`に以下を追加：
+`ProductController.java`に以下のメソッドを**追加**します：
 
 ```java
-/**
- * ユーザーを更新
- */
-public Optional<User> updateUser(Long id, User userDetails) {
-    return userRepository.findById(id)
-            .map(existingUser -> {
-                existingUser.setName(userDetails.getName());
-                existingUser.setEmail(userDetails.getEmail());
-                existingUser.setAge(userDetails.getAge());
-                return userRepository.save(existingUser);
-            });
-}
+    // 商品を削除
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        return productRepository.findById(id)
+                .map(product -> {
+                    productRepository.delete(product);
+                    return ResponseEntity.noContent().<Void>build();
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
 ```
 
 ### 2-2. コードの解説
 
-```java
-public Optional<User> updateUser(Long id, User userDetails) {
-    return userRepository.findById(id)  // ①IDでユーザーを検索
-            .map(existingUser -> {      // ②存在する場合
-                existingUser.setName(userDetails.getName());
-                existingUser.setEmail(userDetails.getEmail());
-                existingUser.setAge(userDetails.getAge());
-                return userRepository.save(existingUser);  // ③保存
-            });  // ④存在しない場合はOptional.empty()を返す
-}
-```
+#### `ResponseEntity<Void>`
 
-**処理の流れ**:
-1. IDでユーザーを検索
-2. 見つかった場合、フィールドを更新
-3. データベースに保存
-4. 見つからない場合、`Optional.empty()`を返す
+削除成功時は本文（body）を返す必要がないため、`Void`を指定します。
 
-### 2-3. UserControllerにupdateエンドポイント追加
+#### `ResponseEntity.noContent().build()`
 
-`UserController.java`に以下を追加：
+削除成功時は`204 No Content`を返すのが一般的です。
+
+- `200 OK`: 削除したリソースの情報を返す場合
+- `204 No Content`: 削除のみで本文を返さない場合（推奨）
+
+#### 削除の方法
+
+`JpaRepository`には2つの削除メソッドがあります：
 
 ```java
-/**
- * ユーザー更新
- * PUT /api/users/{id}
- */
-@PutMapping("/{id}")
-public ResponseEntity<User> updateUser(
-        @PathVariable Long id,
-        @RequestBody User userDetails) {
-    return userService.updateUser(id, userDetails)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-}
+productRepository.delete(product);      // エンティティを渡す
+productRepository.deleteById(id);       // IDを渡す
 ```
 
-### 2-4. 動作確認
+今回は「存在確認→削除」の流れのため、`delete()`を使用しています。
 
-ユーザーを更新：
+---
+
+## ✅ ステップ3: 動作確認
+
+### 3-1. アプリケーションの再起動
 
 ```bash
-curl -X PUT http://localhost:8080/api/users/1 \
+./mvnw clean install
+./mvnw spring-boot:run
+```
+
+### 3-2. テストデータの作成
+
+まず、テスト用の商品を作成します：
+
+```bash
+curl -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Taro Yamada Updated",
-    "email": "taro.updated@example.com",
-    "age": 31
+    "name": "テストノートPC",
+    "description": "更新・削除のテスト用",
+    "price": 100000
   }'
 ```
 
 **期待される結果**:
+
 ```json
 {
   "id": 1,
-  "name": "Taro Yamada Updated",
-  "email": "taro.updated@example.com",
-  "age": 31
+  "name": "テストノートPC",
+  "description": "更新・削除のテスト用",
+  "price": 100000,
+  "createdAt": "2025-12-13T11:00:00.123456",
+  "updatedAt": "2025-12-13T11:00:00.123456"
 }
 ```
 
-確認：
+**重要**: 返却された`id`をメモしてください（以下の例では`id=1`として進めます）。
+
+### 3-3. 商品を更新（PUT）
 
 ```bash
-curl http://localhost:8080/api/users/1
-```
-
-更新された内容が返ってきます。
-
-存在しないIDで試す：
-
-```bash
-curl -i -X PUT http://localhost:8080/api/users/999 \
+curl -X PUT http://localhost:8080/api/products/1 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Test",
-    "email": "test@example.com",
-    "age": 20
+    "name": "更新後ノートPC",
+    "description": "価格を値下げしました",
+    "price": 80000
   }'
-```
-
-**期待される結果**: `404 Not Found`
-
----
-
-## 🚀 ステップ3: Delete - 削除
-
-### 3-1. UserServiceにdeleteメソッド追加
-
-`UserService.java`に以下を追加：
-
-```java
-/**
- * ユーザーを削除
- */
-public boolean deleteUser(Long id) {
-    if (userRepository.existsById(id)) {
-        userRepository.deleteById(id);
-        return true;
-    }
-    return false;
-}
-```
-
-### 3-2. コードの解説
-
-```java
-public boolean deleteUser(Long id) {
-    if (userRepository.existsById(id)) {  // ①存在チェック
-        userRepository.deleteById(id);     // ②削除
-        return true;                        // ③成功
-    }
-    return false;                          // ④存在しない
-}
-```
-
-**なぜ存在チェックが必要？**
-- `deleteById()`は存在しないIDでもエラーにならない
-- 削除成功/失敗を呼び出し側に伝えるため
-
-### 3-3. UserControllerにdeleteエンドポイント追加
-
-`UserController.java`に以下を追加：
-
-```java
-/**
- * ユーザー削除
- * DELETE /api/users/{id}
- */
-@DeleteMapping("/{id}")
-public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-    if (userService.deleteUser(id)) {
-        return ResponseEntity.noContent().build();  // 204 No Content
-    }
-    return ResponseEntity.notFound().build();  // 404 Not Found
-}
-```
-
-### 3-4. HTTPステータスコードの使い分け
-
-| ステータスコード | 意味 | 使用場面 |
-|-----------------|------|----------|
-| 200 OK | 成功（レスポンスボディあり） | 取得、更新成功 |
-| 201 Created | 作成成功 | ユーザー作成 |
-| 204 No Content | 成功（レスポンスボディなし） | 削除成功 |
-| 404 Not Found | リソースが存在しない | ID不一致 |
-
-### 3-5. 動作確認
-
-ユーザーを作成：
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Delete Test",
-    "email": "delete@example.com",
-    "age": 20
-  }'
-```
-
-IDが2とします。削除実行：
-
-```bash
-curl -i -X DELETE http://localhost:8080/api/users/2
 ```
 
 **期待される結果**:
-```
-HTTP/1.1 204
-```
 
-確認：
-
-```bash
-curl -i http://localhost:8080/api/users/2
-```
-
-**期待される結果**: `404 Not Found`
-
-全ユーザーを確認：
-
-```bash
-curl http://localhost:8080/api/users
-```
-
-ID=2のユーザーが削除されています。
-
----
-
-## ✅ 完成したコード全体
-
-### UserService.java
-
-```java
-package com.example.hellospringboot.service;
-
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.Optional;
-
-@Service
-@RequiredArgsConstructor
-public class UserService {
-
-    private final UserRepository userRepository;
-
-    /**
-     * ユーザーを作成
-     */
-    public User createUser(User user) {
-        return userRepository.save(user);
-    }
-
-    /**
-     * 全ユーザーを取得
-     */
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
-    }
-
-    /**
-     * IDでユーザーを取得
-     */
-    public Optional<User> getUserById(Long id) {
-        return userRepository.findById(id);
-    }
-
-    /**
-     * ユーザーを更新
-     */
-    public Optional<User> updateUser(Long id, User userDetails) {
-        return userRepository.findById(id)
-                .map(existingUser -> {
-                    existingUser.setName(userDetails.getName());
-                    existingUser.setEmail(userDetails.getEmail());
-                    existingUser.setAge(userDetails.getAge());
-                    return userRepository.save(existingUser);
-                });
-    }
-
-    /**
-     * ユーザーを削除
-     */
-    public boolean deleteUser(Long id) {
-        if (userRepository.existsById(id)) {
-            userRepository.deleteById(id);
-            return true;
-        }
-        return false;
-    }
+```json
+{
+  "id": 1,
+  "name": "更新後ノートPC",
+  "description": "価格を値下げしました",
+  "price": 80000,
+  "createdAt": "2025-12-13T11:00:00.123456",
+  "updatedAt": "2025-12-13T11:05:00.654321"
 }
 ```
 
-### UserController.java
+**ポイント**:
+- `createdAt`は変わらない（`updatable = false`のため）
+- `updatedAt`は現在時刻に更新される（`@PreUpdate`のおかげ）
 
-```java
-package com.example.hellospringboot.controller;
+### 3-4. 更新内容の確認（GET）
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.service.UserService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+```bash
+curl http://localhost:8080/api/products/1
+```
 
-import java.util.List;
+更新が反映されていることを確認してください。
 
-@RestController
-@RequestMapping("/api/users")
-@RequiredArgsConstructor
-public class UserController {
+### 3-5. MySQLで確認
 
-    private final UserService userService;
+```bash
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot \
+  -e "SELECT * FROM products WHERE id = 1;"
+```
 
-    /**
-     * ユーザー作成
-     * POST /api/users
-     */
-    @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        User createdUser = userService.createUser(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
-    }
+`updated_at`が`created_at`より新しくなっていることを確認してください。
 
-    /**
-     * 全ユーザー取得
-     * GET /api/users
-     */
-    @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
-    }
+### 3-6. 商品を削除（DELETE）
 
-    /**
-     * IDでユーザー取得
-     * GET /api/users/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
-        return userService.getUserById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
+```bash
+curl -i -X DELETE http://localhost:8080/api/products/1
+```
 
-    /**
-     * ユーザー更新
-     * PUT /api/users/{id}
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<User> updateUser(
-            @PathVariable Long id,
-            @RequestBody User userDetails) {
-        return userService.updateUser(id, userDetails)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
+**期待される結果**:
 
-    /**
-     * ユーザー削除
-     * DELETE /api/users/{id}
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        if (userService.deleteUser(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
-    }
-}
+```
+HTTP/1.1 204 
+Date: Fri, 13 Dec 2025 11:10:00 GMT
+```
+
+`204 No Content`が返却されればOKです。
+
+### 3-7. 削除の確認（GET）
+
+```bash
+curl -i http://localhost:8080/api/products/1
+```
+
+**期待される結果**:
+
+```
+HTTP/1.1 404 
+Content-Length: 0
+```
+
+`404 Not Found`が返却されればOKです。
+
+### 3-8. 存在しない商品の更新
+
+```bash
+curl -i -X PUT http://localhost:8080/api/products/999 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "存在しない商品",
+    "description": "test",
+    "price": 1000
+  }'
+```
+
+**期待される結果**:
+
+```
+HTTP/1.1 404 
+Content-Length: 0
+```
+
+### 3-9. 存在しない商品の削除
+
+```bash
+curl -i -X DELETE http://localhost:8080/api/products/999
+```
+
+**期待される結果**:
+
+```
+HTTP/1.1 404 
+Content-Length: 0
 ```
 
 ---
 
-## 🎨 完全なCRUD操作テスト
+## 🚀 ステップ4: 完全なCRUDの確認
 
-一連の流れをテストしてみましょう：
+全ての操作をまとめて確認しましょう。
+
+### 4-1. Create（作成）
 
 ```bash
-# 1. ユーザー作成
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com","age":28}'
+  -d '{
+    "name": "マウス",
+    "description": "ワイヤレスマウス",
+    "price": 3000
+  }'
+```
 
-# 2. 全ユーザー取得
-curl http://localhost:8080/api/users
+### 4-2. Read（読み取り - 全件）
 
-# 3. IDで取得
-curl http://localhost:8080/api/users/1
+```bash
+curl http://localhost:8080/api/products
+```
 
-# 4. 更新
-curl -X PUT http://localhost:8080/api/users/1 \
+### 4-3. Read（読み取り - 単一）
+
+```bash
+curl http://localhost:8080/api/products/2
+```
+
+### 4-4. Update（更新）
+
+```bash
+curl -X PUT http://localhost:8080/api/products/2 \
   -H "Content-Type: application/json" \
-  -d '{"name":"Alice Smith","email":"alice.smith@example.com","age":29}'
+  -d '{
+    "name": "マウス",
+    "description": "ワイヤレスマウス（値下げ！）",
+    "price": 2500
+  }'
+```
 
-# 5. 更新確認
-curl http://localhost:8080/api/users/1
+### 4-5. Delete（削除）
 
-# 6. 削除
-curl -X DELETE http://localhost:8080/api/users/1
-
-# 7. 削除確認（404になる）
-curl -i http://localhost:8080/api/users/1
+```bash
+curl -X DELETE http://localhost:8080/api/products/2
 ```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: 部分更新（PATCH）
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-現在の実装では、更新時にすべてのフィールドを送る必要があります。
-一部のフィールドだけを更新できるように改良してください。
+### チャレンジ 1: PATCH（部分更新）の実装
+
+全フィールドではなく、変更があったフィールドのみ更新できるようにしてください。
 
 **ヒント**:
+
 ```java
-public Optional<User> patchUser(Long id, User userDetails) {
-    return userRepository.findById(id)
-            .map(existingUser -> {
-                if (userDetails.getName() != null) {
-                    existingUser.setName(userDetails.getName());
-                }
-                if (userDetails.getEmail() != null) {
-                    existingUser.setEmail(userDetails.getEmail());
-                }
-                if (userDetails.getAge() != null) {
-                    existingUser.setAge(userDetails.getAge());
-                }
-                return userRepository.save(existingUser);
-            });
-}
-
-// Controller
 @PatchMapping("/{id}")
-public ResponseEntity<User> patchUser(@PathVariable Long id, @RequestBody User userDetails) {
-    // ...
+public ResponseEntity<Product> patchProduct(
+        @PathVariable Long id,
+        @RequestBody Map<String, Object> updates) {
+    return productRepository.findById(id)
+            .map(product -> {
+                updates.forEach((key, value) -> {
+                    switch (key) {
+                        case "name" -> product.setName((String) value);
+                        case "description" -> product.setName((String) value);
+                        case "price" -> product.setPrice((Integer) value);
+                    }
+                });
+                Product updated = productRepository.save(product);
+                return ResponseEntity.ok(updated);
+            })
+            .orElse(ResponseEntity.notFound().build());
 }
 ```
 
-### チャレンジ 2: 削除時にメッセージを返す
+**テスト**:
 
-削除成功時に、以下のようなメッセージを返すようにしてください。
+```bash
+# 価格のみ更新
+curl -X PATCH http://localhost:8080/api/products/1 \
+  -H "Content-Type: application/json" \
+  -d '{"price": 90000}'
+```
 
-```json
-{
-  "message": "User deleted successfully",
-  "id": 1
+### チャレンジ 2: 一括削除
+
+複数の商品をまとめて削除できるようにしてください。
+
+**ヒント**:
+
+```java
+@DeleteMapping
+public ResponseEntity<Void> deleteProducts(@RequestBody List<Long> ids) {
+    productRepository.deleteAllById(ids);
+    return ResponseEntity.noContent().build();
 }
 ```
 
-**ヒント**: レスポンス用のDTOを作成します。
+**テスト**:
 
-### チャレンジ 3: バルク削除
+```bash
+curl -X DELETE http://localhost:8080/api/products \
+  -H "Content-Type: application/json" \
+  -d '[1, 2, 3]'
+```
 
-複数のユーザーを一度に削除するAPIを追加してください。
+### チャレンジ 3: 論理削除
 
-**エンドポイント**: `DELETE /api/users`  
-**リクエストボディ**: `{"ids": [1, 2, 3]}`
+物理削除ではなく、`deleted`フラグで論理削除を実装してください。
+
+**手順**:
+
+1. `Product`エンティティに`deleted`フィールドを追加
+
+```java
+@Column(nullable = false)
+private Boolean deleted = false;
+```
+
+2. 削除時は`deleted = true`に更新
+
+```java
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+    return productRepository.findById(id)
+            .map(product -> {
+                product.setDeleted(true);
+                productRepository.save(product);
+                return ResponseEntity.noContent().<Void>build();
+            })
+            .orElse(ResponseEntity.notFound().build());
+}
+```
+
+3. 取得時は`deleted = false`のものだけ取得
+
+```java
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    List<Product> findByDeletedFalse();
+}
+```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### "Detached entity passed to persist"
+### PUT/DELETEが405 Method Not Allowedになる
 
-**症状**: 更新時にエラー
+**原因**: リバースプロキシやファイアウォールがPUT/DELETEを制限している
 
-**原因**: エンティティがデタッチ状態
-
-**解決策**: `save()`を呼び出す
-
-### 削除後もデータが残っている
-
-**症状**: `DELETE`後も`GET`でデータが取得できる
-
-**原因**: トランザクションがコミットされていない（通常は自動）
-
-**解決策**: アプリケーションを再起動、またはDBeaverで確認
-
-### PUTとPATCHの違いがわからない
-
-**PUT**: リソース全体を置き換え（全フィールド必須）  
-**PATCH**: リソースの一部を更新（一部フィールドのみ）
+**確認**:
 
 ```bash
-# PUT - 全フィールド必要
-curl -X PUT http://localhost:8080/api/users/1 \
-  -d '{"name":"New Name","email":"new@example.com","age":30}'
-
-# PATCH - 一部だけでOK
-curl -X PATCH http://localhost:8080/api/users/1 \
-  -d '{"name":"New Name"}'
+curl -i -X PUT http://localhost:8080/api/products/1 \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-### 404 vs 204の使い分け
+**解決策**:
 
-**削除成功**: 204 No Content（レスポンスボディなし）  
-**削除失敗（IDが存在しない）**: 404 Not Found
+ローカル環境（localhost）では通常問題ありませんが、デプロイ先で発生する場合は、サーバー設定を確認してください。
+
+### 更新しても`updatedAt`が変わらない
+
+**原因**: `@PreUpdate`が実行されていない
+
+**確認ポイント**:
+
+1. `@PreUpdate`メソッドが`protected`または`public`であるか
+2. エンティティが`@Entity`アノテーションを持っているか
+3. 実際にフィールドの値が変更されているか（同じ値なら更新されない）
+
+### 削除後にGETすると404ではなく200が返る
+
+**原因**: キャッシュが有効になっている、またはコードが正しく実装されていない
+
+**解決策**:
+
+`findById()`の実装を確認:
+
+```java
+return productRepository.findById(id)
+        .map(ResponseEntity::ok)
+        .orElse(ResponseEntity.notFound().build());
+```
+
+### PUTで一部フィールドを省略するとnullになる
+
+**原因**: PUTは全フィールド必須
+
+**解決策**:
+
+1. 全フィールドを送信する
+2. PATCH（部分更新）を実装する（チャレンジ課題参照）
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ `findById()`でIDによる検索
-- ✅ `Optional<T>`での安全なnull処理
-- ✅ `save()`を使った更新処理
-- ✅ `deleteById()`による削除
-- ✅ `existsById()`での存在チェック
-- ✅ RESTful APIの完全な実装（CRUD）
-- ✅ HTTPステータスコードの適切な使い分け
-- ✅ PUT, DELETE, GETの使い分け
-
----
-
-## 💡 補足: saveメソッドの動作
-
-### saveは作成と更新の両方に使える
-
-```java
-User user = new User();
-user.setName("Taro");
-userRepository.save(user);  // INSERT（新規作成）
-
-user.setName("Taro Updated");
-userRepository.save(user);  // UPDATE（更新）
-```
-
-**どうやって区別？**
-- IDが`null`または存在しない → INSERT
-- IDが存在する → UPDATE
-
-**内部の動作**:
-```java
-public <S extends T> S save(S entity) {
-    if (entity.isNew()) {
-        entityManager.persist(entity);  // INSERT
-    } else {
-        entity = entityManager.merge(entity);  // UPDATE
-    }
-    return entity;
-}
-```
+- ✅ 商品の更新（Update）を実装した
+- ✅ 商品の削除（Delete）を実装した
+- ✅ CRUD操作の全て（Create, Read, Update, Delete）を完成させた
+- ✅ HTTPメソッド（POST, GET, PUT, DELETE）とCRUD操作の対応を理解した
+- ✅ `save()`が新規作成と更新の両方に使えることを学んだ
+- ✅ `@PreUpdate`で更新時の処理を自動実行できることを学んだ
+- ✅ RESTful APIの基本的な設計パターンを理解した
+- ✅ 適切なHTTPステータスコード（200, 204, 404）を返せるようになった
 
 ---
 
 ## 💡 補足: RESTful APIのベストプラクティス
 
-### URLの設計
+### HTTPステータスコードの使い分け
 
-**良い例** ✅:
-```
-GET    /api/users       # 一覧
-GET    /api/users/1     # 詳細
-POST   /api/users       # 作成
-PUT    /api/users/1     # 更新
-DELETE /api/users/1     # 削除
-```
+| コード | 名前 | 使用場面 |
+|---|---|---|
+| `200 OK` | 成功 | GET, PUT, PATCHの成功時 |
+| `201 Created` | 作成成功 | POSTでリソース作成成功時 |
+| `204 No Content` | 成功（本文なし） | DELETE成功時 |
+| `400 Bad Request` | 不正なリクエスト | バリデーションエラー |
+| `404 Not Found` | 見つからない | リソースが存在しない |
+| `409 Conflict` | 競合 | 一意制約違反など |
+| `500 Internal Server Error` | サーバーエラー | 予期しないエラー |
 
-**悪い例** ❌:
-```
-GET    /api/getUsers
-GET    /api/getUserById?id=1
-POST   /api/createUser
-POST   /api/updateUser
-POST   /api/deleteUser
-```
+### エンドポイント設計の原則
 
-### ステータスコードの使い分け
+1. **リソース指向**: URLはリソース（名詞）を表す
+   - ✅ `/api/products`
+   - ❌ `/api/getProducts`
 
-| 操作 | 成功時 | 失敗時 |
-|------|--------|--------|
-| GET | 200 OK | 404 Not Found |
-| POST | 201 Created | 400 Bad Request |
-| PUT | 200 OK | 404 Not Found |
-| DELETE | 204 No Content | 404 Not Found |
+2. **複数形を使用**: コレクションは複数形
+   - ✅ `/api/products`
+   - ❌ `/api/product`
 
----
+3. **階層構造**: 関連リソースは階層で表現
+   - ✅ `/api/products/1/reviews`
+   - ❌ `/api/product-reviews?productId=1`
 
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 8: CRUD操作完成（Update, Delete実装）"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+4. **動詞を避ける**: HTTPメソッドで操作を表現
+   - ✅ `POST /api/products`
+   - ❌ `POST /api/products/create`
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 9: @Transactionalでトランザクション管理](STEP_9.md)へ進みましょう！
+[Step 9: @Transactionalでトランザクション管理](STEP_9.md)へ進みましょう！
 
-次のステップでは、複数のデータベース操作を1つのトランザクションとしてまとめて実行し、
-エラー時に自動的にロールバックする方法を学びます。データの整合性を保つ重要な技術です！
-
----
-
-お疲れさまでした！ 🎉
-
-完全なCRUD操作ができるREST APIが完成しました！
-これで基本的なデータベース操作はすべてマスターです。
-次はトランザクション管理という、さらに実践的なテーマに進みましょう！
+次のステップでは、複数のデータベース操作をまとめてロールバックできるトランザクション管理を学びます。

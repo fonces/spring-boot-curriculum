@@ -2,123 +2,205 @@
 
 ## 🎯 このステップの目標
 
-- MyBatisとは何かを理解する
-- JPAとMyBatisの違いを学ぶ
-- MyBatisでCRUD操作を実装する
-- Mapper XMLとMapperインターフェースの基本を理解する
+- MyBatisとは何か、なぜ必要なのかを理解できる
+- Spring BootでMyBatisを設定できる
+- XMLマッパーとアノテーションベースのクエリを書ける
+- MyBatisでCRUD操作を実装できる
+- JPAとMyBatisの違いを理解できる
 
-**所要時間**: 約1時間
+**所要時間**: 約60分
 
 ---
 
 ## 📋 事前準備
 
-- Phase 2 (Step 6〜11) の完了
-- `User`エンティティとJPAでのCRUD実装の理解
-- MySQLが起動していること
+- [Phase 2](../phase2/STEP_11.md)が完了していること
+- MySQLコンテナが起動していること
+- `Product`エンティティと`ProductRepository`（JPA）が実装済みであること
 
 ---
 
-## 💡 MyBatisとは？
+## 🧩 MyBatisとは
 
 ### MyBatisの特徴
 
-**MyBatis** は、JavaでSQLを扱うためのORMフレームワークです。
+**MyBatis** は、SQLを直接記述できるJavaの永続化フレームワークです。
 
-**主な特徴**:
-- **SQLを直接記述**: 複雑なクエリも自由に書ける
-- **パフォーマンス最適化**: 必要なカラムだけを取得可能
-- **動的SQL**: 条件に応じたクエリを柔軟に生成
-- **学習コストが低い**: SQLを知っていればすぐに使える
+```
+┌─────────────────────────────────────────┐
+│  Spring Data JPA (Hibernate)            │
+│  ・メソッド名でクエリ自動生成             │
+│  ・抽象度が高い                          │
+│  ・SQLを意識しにくい                     │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│  MyBatis                                │
+│  ・SQLを直接記述                         │
+│  ・細かい制御が可能                       │
+│  ・パフォーマンスチューニングしやすい      │
+└─────────────────────────────────────────┘
+```
 
 ### JPAとMyBatisの比較
 
 | 観点 | JPA (Hibernate) | MyBatis |
-|------|----------------|---------|
-| **SQL制御** | 自動生成（抽象化） | 手動記述（明示的） |
-| **複雑なクエリ** | JPQLやCriteria API（煩雑） | SQL直接記述（柔軟） |
-| **学習コスト** | やや高い（概念が多い） | 低い（SQLがわかれば可） |
-| **開発速度** | 速い（CRUD自動生成） | やや遅い（SQL手書き） |
-| **パフォーマンス最適化** | やや難しい（N+1問題など） | 容易（SQLを直接最適化） |
-| **保守性** | エンティティベース | SQLベース |
+|---|---|---|
+| **SQL記述** | 自動生成（JPQL/Criteria） | 手動で記述 |
+| **学習コスト** | 高い（ORM概念の理解が必要） | 低い（SQLが書ければOK） |
+| **複雑なクエリ** | 難しい | 簡単 |
+| **保守性** | エンティティ中心 | SQL中心 |
+| **パフォーマンス** | N+1問題に注意 | SQLを最適化しやすい |
+| **推奨用途** | シンプルなCRUD | 複雑な検索、集計、レポート |
 
-### 使い分けの目安
+### MyBatisが適している場面
 
-**JPAが向いている場合**:
-- シンプルなCRUD操作が中心
-- エンティティ間のリレーションが複雑
-- オブジェクト指向的な設計を重視
+- ✅ 複雑なJOIN、サブクエリが必要
+- ✅ 既存のSQLを流用したい
+- ✅ パフォーマンスを細かくチューニングしたい
+- ✅ 動的なSQLを構築したい
+- ✅ レガシーDBとの連携
 
-**MyBatisが向いている場合**:
-- 複雑な検索条件やレポート生成
-- パフォーマンスチューニングが必要
-- 既存のSQLを活用したい
-- レガシーDBスキーマに対応
+### JPAが適している場面
+
+- ✅ シンプルなCRUD操作
+- ✅ エンティティ間のリレーションシップが複雑
+- ✅ トランザクション管理を簡潔にしたい
+- ✅ キャッシュ機能を活用したい
 
 ---
 
-## 🏗️ 実装手順
+## 🚀 ステップ1: MyBatisの依存関係追加
 
-### Step 1: MyBatis依存関係の追加
+### 1-1. pom.xmlに依存関係を追加
 
-`pom.xml`に以下を追加:
+`pom.xml`に以下を追加します：
 
 ```xml
-<dependencies>
-    <!-- 既存の依存関係 -->
-    
-    <!-- MyBatis Spring Boot Starter -->
-    <dependency>
-        <groupId>org.mybatis.spring.boot</groupId>
-        <artifactId>mybatis-spring-boot-starter</artifactId>
-        <version>3.0.3</version>
-    </dependency>
-</dependencies>
+<!-- Spring Data JPA -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+
+<!-- MyBatis Spring Boot Starter -->
+<dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter</artifactId>
+    <version>3.0.3</version>
+</dependency>
+
+<!-- MySQL Connector -->
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+    <scope>runtime</scope>
+</dependency>
 ```
 
-**ポイント**:
-- `mybatis-spring-boot-starter`でMyBatisとSpring Bootの統合が簡単に
-- バージョン3.0.3はSpring Boot 3系に対応
+### 1-2. 依存関係の解説
 
-### Step 2: application.ymlにMyBatis設定を追加
+#### `mybatis-spring-boot-starter`
+
+MyBatisをSpring Bootで簡単に使えるようにするスターターです。
+
+**含まれるもの**:
+- MyBatisコア
+- MyBatis-Spring連携
+- 自動設定
+
+**バージョン指定**:
+Spring Boot 3.5.8では、MyBatis 3.0.3を使用します。
+
+---
+
+## 🚀 ステップ2: application.yamlの設定
+
+### 2-1. MyBatis設定を追加
+
+`src/main/resources/application.yaml`に以下を追加します：
 
 ```yaml
 spring:
+  application:
+    name: hello-spring-boot
+
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_curriculum
-    username: user
-    password: password
+    url: jdbc:mysql://localhost:3306/hello_spring_boot?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+    username: springuser
+    password: springpass
     driver-class-name: com.mysql.cj.jdbc.Driver
+
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
 
 # MyBatis設定
 mybatis:
-  # Mapper XMLファイルの場所
+  # Mapperインターフェースの場所
   mapper-locations: classpath:mapper/**/*.xml
-  # エイリアスのパッケージ
-  type-aliases-package: com.example.hellospringboot.entity
+  # 型エイリアスのパッケージ
+  type-aliases-package: com.example.hellospringboot
   configuration:
-    # キャメルケース⇔スネークケース自動変換
+    # キャメルケース ↔ スネークケース自動変換
     map-underscore-to-camel-case: true
-    # SQLログ出力
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # ログ出力
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+server:
+  port: 8080
+
+app:
+  name: Hello Spring Boot Application
+  version: 1.0.0
+  welcome-message: Welcome to Spring Boot Configuration Management!
+  description: This is a demo application for learning Spring Boot configuration.
 ```
 
-**設定の意味**:
-- `mapper-locations`: Mapper XMLファイルの配置場所
-- `type-aliases-package`: エンティティクラスのパッケージ（XMLで短縮名が使える）
-- `map-underscore-to-camel-case`: `user_name` ⇔ `userName` の自動変換
-- `log-impl`: 実行されるSQLをコンソールに出力   
+### 2-2. 設定の解説
 
-### Step 3: Productエンティティの作成
+#### `mapper-locations`
 
-新しいエンティティ `Product` を作成します（MyBatis専用のため、JPAアノテーションは不要）:
+XMLマッパーファイルの配置場所を指定します。
+
+- `classpath:mapper/**/*.xml`: `src/main/resources/mapper/`以下の全XMLファイル
+- ワイルドカード`**`でサブディレクトリも対象
+
+#### `type-aliases-package`
+
+Javaクラスの型エイリアスを自動設定します。
+
+**例**:
+- `com.example.hellospringboot.User` → `User`
+- XML内で完全修飾名を書かずに済む
+
+#### `map-underscore-to-camel-case`
+
+データベースのスネークケース（`user_name`）とJavaのキャメルケース（`userName`）を自動変換します。
+
+| DB | Java |
+|---|---|
+| `user_name` | `userName` |
+| `created_at` | `createdAt` |
+| `category_id` | `categoryId` |
+
+---
+
+## 🚀 ステップ3: Orderエンティティの作成
+
+### 3-1. Orderエンティティ
+
+MyBatis用の`Order`クラスを作成します（JPAアノテーションは不要）。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/Order.java`
 
 ```java
-package com.example.hellospringboot.entity;
+package com.example.hellospringboot.mybatis;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -130,104 +212,211 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Product {
+public class Order {
+    
     private Long id;
-    private String name;
-    private String description;
-    private BigDecimal price;
-    private Integer stock;
+    private Long userId;
+    private BigDecimal totalAmount;
+    private String status;  // PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
+    private LocalDateTime orderDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    
+    // 検索結果用の追加フィールド（JOINで取得）
+    private String userName;
+    private String userEmail;
 }
 ```
 
-**ポイント**:
-- `@Entity`などのJPAアノテーションは不要
-- POJOとして定義するだけでOK
-- Lombokで冗長なコードを削減
+### 3-2. JPAエンティティとの違い
 
-### Step 4: MySQLにテーブルを作成
+| JPA Entity | MyBatis Model |
+|---|---|
+| `@Entity` | 不要 |
+| `@Table` | 不要 |
+| `@Id`, `@GeneratedValue` | 不要 |
+| `@Column` | 不要 |
+| `@PrePersist`, `@PreUpdate` | 不要 |
 
-MySQLに接続してテーブルを作成します:
+**理由**:
+MyBatisはSQLを直接記述するため、ORマッピングのアノテーションは不要です。
 
-```sql
-CREATE TABLE products (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    stock INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+---
 
--- サンプルデータ挿入
-INSERT INTO products (name, description, price, stock) VALUES
-('ノートPC', '高性能なノートパソコン', 120000.00, 10),
-('マウス', 'ワイヤレスマウス', 2500.00, 50),
-('キーボード', 'メカニカルキーボード', 15000.00, 20);
-```
+## 🚀 ステップ4: OrderMapperインターフェースの作成
 
-### Step 5: Mapperインターフェースの作成
+### 4-1. Mapperインターフェース
 
-`src/main/java/com/example/hellospringboot/mapper/ProductMapper.java`:
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderMapper.java`
 
 ```java
-package com.example.hellospringboot.mapper;
+package com.example.hellospringboot.mybatis;
 
-import com.example.hellospringboot.entity.Product;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
 @Mapper
-public interface ProductMapper {
+public interface OrderMapper {
     
-    // 全件取得
-    @Select("SELECT * FROM products ORDER BY id")
-    List<Product> findAll();
+    // アノテーションベースのクエリ
+    @Select("SELECT * FROM orders WHERE id = #{id}")
+    Order findById(Long id);
     
-    // ID検索
-    @Select("SELECT * FROM products WHERE id = #{id}")
-    Product findById(Long id);
+    @Select("SELECT * FROM orders ORDER BY order_date DESC")
+    List<Order> findAll();
     
-    // 新規作成
-    @Insert("INSERT INTO products (name, description, price, stock) " +
-            "VALUES (#{name}, #{description}, #{price}, #{stock})")
+    @Insert("INSERT INTO orders (user_id, total_amount, status, order_date, created_at, updated_at) " +
+            "VALUES (#{userId}, #{totalAmount}, #{status}, #{orderDate}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
-    void insert(Product product);
+    void insert(Order order);
     
-    // 更新
-    @Update("UPDATE products SET name = #{name}, description = #{description}, " +
-            "price = #{price}, stock = #{stock} WHERE id = #{id}")
-    int update(Product product);
+    @Update("UPDATE orders SET user_id = #{userId}, total_amount = #{totalAmount}, " +
+            "status = #{status}, order_date = #{orderDate}, updated_at = NOW() WHERE id = #{id}")
+    void update(Order order);
     
-    // 削除
-    @Delete("DELETE FROM products WHERE id = #{id}")
-    int deleteById(Long id);
+    @Delete("DELETE FROM orders WHERE id = #{id}")
+    void delete(Long id);
     
-    // 名前で検索（部分一致）
-    @Select("SELECT * FROM products WHERE name LIKE CONCAT('%', #{keyword}, '%')")
-    List<Product> searchByName(String keyword);
+    // XMLマッパーで定義（次のステップ）
+    List<Order> findByUserId(Long userId);
+    
+    List<Order> findByStatus(String status);
 }
 ```
 
-**重要なアノテーション**:
-- `@Mapper`: MyBatisのMapperであることを示す
-- `@Select`, `@Insert`, `@Update`, `@Delete`: SQL文を直接記述
-- `#{変数名}`: プレースホルダー（SQLインジェクション対策済み）
-- `@Options(useGeneratedKeys = true)`: 自動生成されたIDを取得
+### 4-2. コードの解説
 
-### Step 6: Serviceクラスの作成
+#### `@Mapper`
 
-`src/main/java/com/example/hellospringboot/service/ProductService.java`:
+MyBatisのMapperインターフェースであることを示します。
+
+**Spring Bootの自動設定**:
+- `@Mapper`を付けると、Spring Bootが自動的にBeanとして登録
+- `@MapperScan`でパッケージをスキャンさせることも可能
+
+#### `@Select`, `@Insert`, `@Update`, `@Delete`
+
+SQLを直接アノテーションに記述します。
+
+**パラメータバインディング**:
+- `#{id}`: プリペアドステートメントのパラメータ
+- メソッド引数の名前と一致させる
+
+#### `@Options(useGeneratedKeys = true, keyProperty = "id")`
+
+INSERT時に自動生成されたIDを取得します。
+
+- `useGeneratedKeys = true`: 自動生成キーを使用
+- `keyProperty = "id"`: `User`オブジェクトの`id`フィールドにセット
+
+---
+
+## 🚀 ステップ5: XMLマッパーファイルの作成
+
+### 5-1. ディレクトリ構成
+
+```
+src/main/resources/
+└── mapper/
+    └── UserMapper.xml
+```
+
+### 5-2. UserMapper.xmlの作成
+
+**ファイルパス**: `src/main/resources/mapper/OrderMapper.xml`
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.hellospringboot.mybatis.OrderMapper">
+
+    <!-- ResultMap定義 -->
+    <resultMap id="OrderResultMap" type="Order">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="status" column="status"/>
+        <result property="orderDate" column="order_date"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- ユーザーIDで検索 -->
+    <select id="findByUserId" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE user_id = #{userId}
+        ORDER BY order_date DESC
+    </select>
+
+    <!-- ステータスで検索 -->
+    <select id="findByStatus" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE status = #{status}
+        ORDER BY order_date DESC
+    </select>
+
+</mapper>
+```
+
+### 5-3. XMLマッパーの解説
+
+#### `<mapper namespace="...">`
+
+Mapperインターフェースの完全修飾名を指定します。
+
+#### `<resultMap>`
+
+DBカラムとJavaオブジェクトのプロパティをマッピングします。
+
+```xml
+<resultMap id="OrderResultMap" type="Order">
+    <id property="id" column="id"/>                     <!-- 主キー -->
+    <result property="userId" column="user_id"/>        <!-- 通常カラム -->
+    <result property="totalAmount" column="total_amount"/>
+</resultMap>
+```
+
+**`map-underscore-to-camel-case`が有効なら省略可能**:
+- `user_id` → `userId` は自動変換される
+- `total_amount` → `totalAmount` は自動変換される
+- `created_at` → `createdAt` は自動変換される
+
+#### `<select id="findByUserId">`
+
+- `id`: Mapperインターフェースのメソッド名
+- `resultMap`: 使用するResultMap
+- `#{userId}`: パラメータバインディング
+
+#### XML内でのエスケープ
+
+| 記号 | XML表記 |
+|---|---|
+| `<` | `&lt;` |
+| `>` | `&gt;` |
+| `&` | `&amp;` |
+
+**例**:
+```xml
+WHERE age &gt; #{age}  <!-- age > #{age} -->
+```
+
+---
+
+## 🚀 ステップ6: OrderServiceとControllerの作成
+
+### 6-1. OrderService
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderService.java`
 
 ```java
-package com.example.hellospringboot.service;
+package com.example.hellospringboot.mybatis;
 
-import com.example.hellospringboot.entity.Product;
-import com.example.hellospringboot.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -235,286 +424,273 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class ProductService {
+@Slf4j
+public class OrderService {
     
-    private final ProductMapper productMapper;
+    private final OrderMapper orderMapper;
     
-    public List<Product> getAllProducts() {
-        return productMapper.findAll();
+    @Transactional(readOnly = true)
+    public Order findById(Long id) {
+        log.info("Finding order by id: {}", id);
+        return orderMapper.findById(id);
     }
     
-    public Product getProductById(Long id) {
-        return productMapper.findById(id);
+    @Transactional(readOnly = true)
+    public List<Order> findAll() {
+        log.info("Finding all orders");
+        return orderMapper.findAll();
     }
     
     @Transactional
-    public Product createProduct(Product product) {
-        productMapper.insert(product);
-        return product; // IDが自動設定される
+    public Order create(Order order) {
+        log.info("Creating order: {}", order);
+        orderMapper.insert(order);
+        return order;  // IDが自動セットされている
     }
     
     @Transactional
-    public Product updateProduct(Long id, Product product) {
-        product.setId(id);
-        int updated = productMapper.update(product);
-        if (updated == 0) {
-            throw new RuntimeException("Product not found: " + id);
+    public Order update(Long id, Order orderDetails) {
+        log.info("Updating order id: {}", id);
+        Order order = orderMapper.findById(id);
+        if (order == null) {
+            throw new RuntimeException("Order not found with id: " + id);
         }
-        return productMapper.findById(id);
+        
+        order.setUserId(orderDetails.getUserId());
+        order.setTotalAmount(orderDetails.getTotalAmount());
+        order.setStatus(orderDetails.getStatus());
+        order.setOrderDate(orderDetails.getOrderDate());
+        
+        orderMapper.update(order);
+        return order;
     }
     
     @Transactional
-    public void deleteProduct(Long id) {
-        int deleted = productMapper.deleteById(id);
-        if (deleted == 0) {
-            throw new RuntimeException("Product not found: " + id);
+    public void delete(Long id) {
+        log.info("Deleting order id: {}", id);
+        Order order = orderMapper.findById(id);
+        if (order == null) {
+            throw new RuntimeException("Order not found with id: " + id);
         }
+        orderMapper.delete(id);
     }
     
-    public List<Product> searchProducts(String keyword) {
-        return productMapper.searchByName(keyword);
+    @Transactional(readOnly = true)
+    public List<Order> findByUserId(Long userId) {
+        log.info("Finding orders by userId: {}", userId);
+        return orderMapper.findByUserId(userId);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<Order> findByStatus(String status) {
+        log.info("Finding orders by status: {}", status);
+        return orderMapper.findByStatus(status);
     }
 }
 ```
 
-**ポイント**:
-- Mapperを直接使ってビジネスロジックを実装
-- `@Transactional`でトランザクション管理
+### 6-2. OrderController
 
-### Step 7: Controllerクラスの作成
-
-`src/main/java/com/example/hellospringboot/controller/ProductController.java`:
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderController.java`
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.mybatis;
 
-import com.example.hellospringboot.entity.Product;
-import com.example.hellospringboot.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/api/orders")
 @RequiredArgsConstructor
-public class ProductController {
+public class OrderController {
     
-    private final ProductService productService;
+    private final OrderService orderService;
     
-    // 全件取得
     @GetMapping
-    public List<Product> getAllProducts() {
-        return productService.getAllProducts();
+    public List<Order> getAllOrders() {
+        return orderService.findAll();
     }
     
-    // ID検索
     @GetMapping("/{id}")
-    public Product getProduct(@PathVariable Long id) {
-        return productService.getProductById(id);
+    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
+        Order order = orderService.findById(id);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(order);
     }
     
-    // 新規作成
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Product createProduct(@RequestBody Product product) {
-        return productService.createProduct(product);
+    public ResponseEntity<Order> createOrder(@RequestBody Order order) {
+        Order created = orderService.create(order);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
-    // 更新
     @PutMapping("/{id}")
-    public Product updateProduct(@PathVariable Long id, @RequestBody Product product) {
-        return productService.updateProduct(id, product);
+    public ResponseEntity<Order> updateOrder(
+            @PathVariable Long id,
+            @RequestBody Order orderDetails) {
+        try {
+            Order updated = orderService.update(id, orderDetails);
+            return ResponseEntity.ok(updated);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
     
-    // 削除
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteProduct(@PathVariable Long id) {
-        productService.deleteProduct(id);
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
+        try {
+            orderService.delete(id);
+            return ResponseEntity.noContent().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
     
-    // 名前で検索
-    @GetMapping("/search")
-    public List<Product> searchProducts(@RequestParam String keyword) {
-        return productService.searchProducts(keyword);
+    @GetMapping("/user/{userId}")
+    public List<Order> getOrdersByUserId(@PathVariable Long userId) {
+        return orderService.findByUserId(userId);
+    }
+    
+    @GetMapping("/status/{status}")
+    public List<Order> getOrdersByStatus(@PathVariable String status) {
+        return orderService.findByStatus(status);
     }
 }
 ```
 
 ---
 
-## ✅ 動作確認
+## ✅ ステップ7: 動作確認
 
-### 1. アプリケーション起動
-
-```bash
-mvn spring-boot:run
-```
-
-起動ログで以下を確認:
-```
-o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port(s): 8080 (http)
-```
-
-### 2. 全件取得
+### 7-1. ordersテーブルを作成
 
 ```bash
-curl http://localhost:8080/api/products
+docker exec -it hello-spring-boot-mysql mysql -uroot -prootpassword -e "
+USE hello_spring_boot;
+CREATE TABLE IF NOT EXISTS orders (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    order_date DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+"
+```
+
+### 7-2. アプリケーションを再起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 7-3. 注文を作成
+
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 1,
+    "totalAmount": 15000.00,
+    "status": "PENDING",
+    "orderDate": "2025-12-13T10:00:00"
+  }'
 ```
 
 **期待される結果**:
+
 ```json
-[
-  {
-    "id": 1,
-    "name": "ノートPC",
-    "description": "高性能なノートパソコン",
-    "price": 120000.00,
-    "stock": 10,
-    "createdAt": "2025-10-29T10:00:00",
-    "updatedAt": "2025-10-29T10:00:00"
-  },
-  {
-    "id": 2,
-    "name": "マウス",
-    "description": "ワイヤレスマウス",
-    "price": 2500.00,
-    "stock": 50,
-    "createdAt": "2025-10-29T10:00:00",
-    "updatedAt": "2025-10-29T10:00:00"
-  }
-]
+{
+  "id": 1,
+  "userId": 1,
+  "totalAmount": 15000.00,
+  "status": "PENDING",
+  "orderDate": "2025-12-13T10:00:00",
+  "createdAt": "2025-12-13T17:16:33",
+  "updatedAt": "2025-12-13T17:16:33"
+}
 ```
 
-### 3. 新規作成
+### 7-4. 全注文を取得
 
 ```bash
-curl -X POST http://localhost:8080/api/products \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "モニター",
-    "description": "27インチ4Kモニター",
-    "price": 45000.00,
-    "stock": 15
-  }'
+curl http://localhost:8080/api/orders
 ```
 
-### 4. ID検索
+### 7-5. ユーザーIDで検索
 
 ```bash
-curl http://localhost:8080/api/products/1
+curl "http://localhost:8080/api/orders/user/1"
 ```
 
-### 5. 更新
+### 7-6. ステータスで検索
 
 ```bash
-curl -X PUT http://localhost:8080/api/products/1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "ノートPC",
-    "description": "超高性能なノートパソコン",
-    "price": 150000.00,
-    "stock": 8
-  }'
-```
-
-### 6. 名前で検索
-
-```bash
-curl "http://localhost:8080/api/products/search?keyword=マウス"
-```
-
-### 7. 削除
-
-```bash
-curl -X DELETE http://localhost:8080/api/products/3
+curl "http://localhost:8080/api/orders/status/PENDING"
 ```
 
 ---
 
-## 🔍 アノテーションベースとXMLベースの比較
+## 🎨 チャレンジ課題
 
-### アノテーションベース（現在の実装）
+### チャレンジ 1: 動的SQLで複数条件検索
 
-**メリット**:
-- Javaコード内で完結
-- シンプルなSQLに最適
-- IDEの補完が効く
+ユーザーID、ステータス、金額範囲で検索できるメソッドを実装してください（Step 13で詳しく学びます）。
 
-**デメリット**:
-- 複雑なSQLは見づらい
-- 動的SQLが書きにくい
-
-### XMLベース（次のステップで学習）
-
-**メリット**:
-- 複雑なSQLが書きやすい
-- 動的SQLが得意
-- SQLとJavaコードの分離
-
-**デメリット**:
-- ファイルが分散する
-- XMLの記述が必要
-
-**例**: `src/main/resources/mapper/ProductMapper.xml`
+**ヒント**: `<where>`と`<if>`を使います。
 
 ```xml
-<?xml version="1.0" encoding="UTF-8" ?>
-<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.hellospringboot.mapper.ProductMapper">
-    
-    <select id="findAll" resultType="Product">
-        SELECT * FROM products ORDER BY id
-    </select>
-    
-    <select id="findById" resultType="Product">
-        SELECT * FROM products WHERE id = #{id}
-    </select>
-    
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO products (name, description, price, stock)
-        VALUES (#{name}, #{description}, #{price}, #{stock})
-    </insert>
-</mapper>
+<select id="searchOrders" resultMap="OrderResultMap">
+    SELECT * FROM orders
+    <where>
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="minAmount != null">
+            AND total_amount &gt;= #{minAmount}
+        </if>
+        <if test="maxAmount != null">
+            AND total_amount &lt;= #{maxAmount}
+        </if>
+    </where>
+</select>
 ```
 
----
+### チャレンジ 2: 一括INSERT
 
-## 📝 理解度チェック
+複数の注文を一度に登録するメソッドを実装してください。
 
-以下の質問に答えられるか確認しましょう:
+**ヒント**: `<foreach>`を使います。
 
-1. **MyBatisとJPAの主な違いは何ですか？**
-2. **`@Mapper`アノテーションの役割は何ですか？**
-3. **`#{変数名}`の記法は何のためにありますか？**
-4. **MyBatisでトランザクション管理は必要ですか？**
-5. **どのような場合にMyBatisを選ぶべきですか？**
+```xml
+<insert id="insertBatch">
+    INSERT INTO orders (user_id, total_amount, status, order_date, created_at, updated_at)
+    VALUES
+    <foreach collection="orders" item="order" separator=",">
+        (#{order.userId}, #{order.totalAmount}, #{order.status}, #{order.orderDate}, NOW(), NOW())
+    </foreach>
+</insert>
+```
 
----
+### チャレンジ 3: ページネーション
 
-## 💡 ベストプラクティス
+`LIMIT`と`OFFSET`を使ってページネーションを実装してください。
 
-1. **Mapperは薄く保つ**: ビジネスロジックはServiceに
-2. **SQLインジェクション対策**: 必ず`#{}`を使う（`${}`は危険）
-3. **適切なトランザクション**: 更新系は`@Transactional`で囲む
-4. **命名規則**: MapperメソッドはSQL操作を表す名前に
-5. **ログ確認**: 実行されるSQLを確認して最適化
-
----
-
-## 📚 このステップで学んだこと
-
-このステップでは、MyBatis基礎について学びました：
-
-- ✅ MyBatisとは何か、JPAとの違いを理解
-- ✅ MyBatisの依存関係追加とセットアップ
-- ✅ @Mapperアノテーションでマッパーインターフェース作成
-- ✅ @Select, @Insert, @Update, @Deleteアノテーションの基本
-- ✅ アノテーションベースとXMLベースの比較
-- ✅ MyBatis設定（mybatis.configuration）のカスタマイズ
+```java
+@Select("SELECT * FROM orders ORDER BY order_date DESC LIMIT #{limit} OFFSET #{offset}")
+List<Order> findWithPagination(@Param("limit") int limit, @Param("offset") int offset);
+```
 
 ---
 
@@ -522,85 +698,139 @@ curl -X DELETE http://localhost:8080/api/products/3
 
 ### エラー: "Invalid bound statement (not found)"
 
-**原因**: Mapperインターフェースのメソッドとマッピングが見つからない
+**原因**: XMLマッパーが見つからない、またはnamespaceが間違っている
 
 **解決策**:
-1. `@Mapper`アノテーションが付いているか確認
-2. `@MapperScan`のパッケージパスが正しいか確認
-3. メソッド名とアノテーション内のSQLが対応しているか確認
-4. プロジェクトをクリーンビルド: `mvn clean install`
 
-### エラー: "There is no getter for property named 'xxx'"
+1. `application.yaml`の`mapper-locations`を確認
+2. XMLの`namespace`がMapperインターフェースの完全修飾名と一致しているか確認
+3. XMLの`<select id="..."/>`のidがメソッド名と一致しているか確認
 
-**原因**: エンティティクラスにgetterがない、またはプロパティ名が一致しない
+```yaml
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml  # 正しいパス
+```
 
-**解決策**:
-1. エンティティクラスに`@Data`または`@Getter`を追加（Lombok使用時）
-2. プロパティ名とSQL内の`#{propertyName}`が一致しているか確認
-3. キャメルケース変換が有効か確認: `mybatis.configuration.map-underscore-to-camel-case=true`
+### エラー: "Parameter 'XXX' not found"
 
-### エラー: "Error updating database. Cause: java.sql.SQLSyntaxErrorException"
-
-**原因**: SQLの構文エラー
+**原因**: 複数パラメータの場合、`@Param`アノテーションが必要
 
 **解決策**:
-1. `logging.level.com.example.hellospringboot.mapper=DEBUG`でSQLログを確認
-2. SQLをMySQLクライアントで直接実行してみる
-3. テーブル名、カラム名のスペルミスを確認
-4. `#{}`と`${}`を間違えていないか確認（基本は`#{}`を使用）
 
-### エラー: "MyBatis configuration error: Property 'sqlSessionFactory' or 'sqlSessionTemplate' are required"
+```java
+// ❌ 悪い例
+List<Order> searchByUserIdAndStatus(Long userId, String status);
 
-**原因**: MyBatisの自動設定が正しく動作していない
+// ✅ 良い例
+List<Order> searchByUserIdAndStatus(@Param("userId") Long userId, @Param("status") String status);
+```
 
-**解決策**:
-1. `mybatis-spring-boot-starter`の依存関係が正しく追加されているか確認
-2. `application.yml`のデータソース設定を確認
-3. Spring Bootのバージョンとの互換性を確認
+### エラー: "There is no getter for property named 'XXX'"
 
-### エラー: トランザクションがロールバックされない
-
-**原因**: `@Transactional`がないか、スコープが間違っている
+**原因**: ResultMapのプロパティ名がクラスのフィールド名と一致していない
 
 **解決策**:
-1. Service層のメソッドに`@Transactional`を追加
-2. `@Transactional`はpublicメソッドに付ける（privateは効かない）
-3. 例外がRuntimeException継承でない場合は`@Transactional(rollbackFor = Exception.class)`を指定
+
+```xml
+<!-- ❌ 悪い例 -->
+<result property="amount" column="total_amount"/>  <!-- Orderクラスにamountフィールドが存在しない -->
+
+<!-- ✅ 良い例 -->
+<result property="totalAmount" column="total_amount"/>
+```
+
+### SQLがログに出ない
+
+**原因**: ログレベルが設定されていない
+
+**解決策**: `application.yaml`に追加
+
+```yaml
+logging:
+  level:
+    com.example.hellospringboot.mybatis: DEBUG
+```
+
+### エラー: "Foreign key constraint fails"
+
+**原因**: 存在しないユーザーIDで注文を作成しようとしている
+
+**解決策**: 先にユーザーを作成してから注文を作成する
+
+```bash
+# まずユーザーを作成（JPA）
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "田中太郎", "email": "tanaka@example.com", "age": 30}'
+
+# 次に注文を作成（MyBatis）
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 1, "totalAmount": 15000.00, "status": "PENDING", "orderDate": "2025-12-13T10:00:00"}'
+```
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 📚 このステップで学んだこと
 
-進捗を記録してレビューを受けましょう：
+- ✅ MyBatisはSQLを直接記述できる永続化フレームワークである
+- ✅ JPAとMyBatisは用途によって使い分ける
+- ✅ `@Mapper`でMapperインターフェースを定義できる
+- ✅ `@Select`, `@Insert`, `@Update`, `@Delete`でアノテーションベースのクエリを書ける
+- ✅ XMLマッパーで複雑なクエリを記述できる
+- ✅ `<resultMap>`でDBカラムとJavaオブジェクトをマッピングできる
+- ✅ `map-underscore-to-camel-case`でスネークケースとキャメルケースを自動変換できる
+- ✅ MyBatisでも`@Transactional`によるトランザクション管理が可能
 
-```bash
-git add .
-git commit -m "Step 12: MyBatisの基礎完了"
-git push origin main
+---
+
+## 💡 補足: MyBatisとJPAの共存
+
+### 同じプロジェクトで併用可能
+
+Spring BootではMyBatisとJPAを同時に使用できます。
+
+**このプロジェクトでの実装例**:
+- **JPA**: Product, User, Post（Phase 2で実装）
+- **MyBatis**: Order（Phase 3で実装）
+
+### トランザクション管理
+
+MyBatisとJPAは同じSpringのトランザクション管理を使用します。
+
+```java
+@Service
+public class SomeService {
+    private final ProductRepository productRepository;  // JPA
+    private final UserRepository userRepository;        // JPA
+    private final OrderMapper orderMapper;              // MyBatis
+    
+    @Transactional  // 両方を同じトランザクションで管理
+    public void createOrderWithProduct(Long userId, Long productId, BigDecimal amount) {
+        // JPAでユーザーと商品を取得
+        User user = userRepository.findById(userId).orElseThrow();
+        Product product = productRepository.findById(productId).orElseThrow();
+        
+        // MyBatisで注文を作成
+        Order order = new Order();
+        order.setUserId(userId);
+        order.setTotalAmount(amount);
+        order.setStatus("PENDING");
+        order.setOrderDate(LocalDateTime.now());
+        orderMapper.insert(order);
+    }
+}
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+**利点**:
+- シンプルなCRUDはJPAで簡潔に記述
+- 複雑な検索・集計はMyBatisで柔軟に実装
+- 両方を同じトランザクション内で安全に使用可能
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 13: MyBatisで複雑なクエリ](STEP_13.md)へ進みましょう！
+[Step 13: MyBatisで複雑なクエリ](STEP_13.md)へ進みましょう！
 
-次のStep 13では、MyBatisの真骨頂である**動的SQL**と**複雑なクエリ**を学びます:
-- `<if>`, `<choose>`, `<foreach>`を使った条件分岐
-- JOINを使った複数テーブルの結合
-- ResultMapでの複雑なマッピング
-- ページネーションの実装
-
----
-
-## 🔖 参考リンク
-
-- [MyBatis公式ドキュメント](https://mybatis.org/mybatis-3/ja/)
-- [MyBatis-Spring-Boot-Starter](https://mybatis.org/spring-boot-starter/mybatis-spring-boot-autoconfigure/)
-- [MyBatis Dynamic SQL](https://mybatis.org/mybatis-dynamic-sql/docs/introduction.html)
-
----
-
-お疲れ様でした！🎉 MyBatisの基礎が理解できたら、次のステップに進みましょう。
+次のステップでは、動的SQL、JOINクエリ、集計関数など、MyBatisの強力な機能を学びます。

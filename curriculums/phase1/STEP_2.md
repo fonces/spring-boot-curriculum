@@ -2,10 +2,11 @@
 
 ## 🎯 このステップの目標
 
-- `@PathVariable`でパスパラメータを受け取る方法を理解する
-- `@RequestParam`でクエリパラメータを受け取る方法を理解する
-- パラメータのオプション設定（必須/任意、デフォルト値）を学ぶ
-- 実用的な挨拶APIを実装する
+- `@PathVariable`を使ってパスパラメータ（URL内の動的な値）を受け取れる
+- `@RequestParam`を使ってクエリパラメータ（`?key=value`形式）を受け取れる
+- 必須パラメータとオプショナルパラメータの違いを理解し、実装できる
+- 複数のパラメータを組み合わせた実践的なREST APIを作成できる
+- パスパラメータとクエリパラメータの使い分けを理解できる
 
 **所要時間**: 約45分
 
@@ -13,304 +14,154 @@
 
 ## 📋 事前準備
 
-- Step 1で作成した`hello-spring-boot`プロジェクト
-- アプリケーションが起動できること
+このステップを始める前に、以下を確認してください：
 
-**Step 1をまだ完了していない場合**: [Step 1: Hello World REST API](STEP_1.md)を先に進めてください。
+- [Step 1: Hello World REST API](STEP_1.md)が完了している
+- `hello-spring-boot`プロジェクトが作成されている
+- `HelloController.java`に`/hello`エンドポイントが実装されている
+- アプリケーションが正常に起動・動作することを確認している
 
----
+### 環境確認
 
-## 💡 パスパラメータとクエリパラメータとは？
+Step 1で作成したプロジェクトディレクトリに移動し、アプリケーションが起動することを確認しましょう：
 
-REST APIでは、URLを通じてデータを受け取る方法が2つあります。
-
-### パスパラメータ（Path Variable）
-
-URLのパスの一部としてデータを埋め込む方式：
-
-```
-GET /users/123
-GET /products/apple
-GET /greet/Taro
+```bash
+cd ~/workspace/hello-spring-boot
+./mvnw spring-boot:run
 ```
 
-**特徴**:
-- リソースの識別に使用
-- 必須パラメータとして扱われる
-- URLの一部として明確
+別のターミナルで動作確認：
 
-### クエリパラメータ（Query Parameter）
-
-URLの末尾に`?`以降で渡す方式：
-
-```
-GET /users?page=1&size=10
-GET /search?keyword=spring&sort=date
-GET /greet?language=ja&formal=true
+```bash
+curl http://localhost:8080/hello
 ```
 
-**特徴**:
-- フィルタリングやオプション設定に使用
-- 任意パラメータにできる
-- 複数のパラメータを簡単に渡せる
+**期待される結果**:
+```
+Hello, Spring Boot!
+```
+
+確認できたら、`Ctrl+C`でアプリケーションを停止してください。
 
 ---
 
 ## 🚀 ステップ1: パスパラメータの実装
 
-### 1-1. 名前を受け取る挨拶API
+パスパラメータは、URL内に埋め込まれた動的な値です。例えば、`/users/123`の`123`や`/products/apple`の`apple`がパスパラメータです。
 
-`HelloController.java`に以下のメソッドを追加します：
+### 1-1. パスパラメータとは
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/HelloController.java`
+**パスパラメータ（Path Parameter）** は、URLの一部として渡される変数です。RESTful APIでは、リソースの識別子（IDや名前）を表すために使用されます。
+
+**例**:
+- `/users/1` → ユーザーID `1`のユーザー情報を取得
+- `/users/2` → ユーザーID `2`のユーザー情報を取得
+- `/products/laptop` → 商品名 `laptop`の商品情報を取得
+
+### 1-2. @PathVariableを使った実装
+
+`HelloController.java`に、パスパラメータを受け取る新しいメソッドを追加します。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/HelloController.java`
 
 ```java
-import org.springframework.web.bind.annotation.PathVariable;
+package com.example.hellospringboot;
 
-@GetMapping("/greet/{name}")
-public String greet(@PathVariable String name) {
-    return "Hello, " + name + "!";
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    // パスパラメータを使ったエンドポイント
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
 }
 ```
 
-### 1-2. コードの解説
+### 1-3. コードの解説
 
-#### `@GetMapping("/greet/{name}")`
-- URLパスに`{name}`というプレースホルダーを定義
-- `{}`で囲まれた部分がパスパラメータとなる
+#### `@GetMapping("/users/{id}")`
 
-#### `@PathVariable String name`
-- URLの`{name}`部分の値を`name`変数で受け取る
-- 変数名とプレースホルダー名が一致している必要がある
+- `{id}` はパスパラメータのプレースホルダーです
+- URLの該当部分に入る値が、メソッドのパラメータに渡されます
+- `/users/1`、`/users/999`など、任意の値を受け取れます
 
-### 1-3. 動作確認
+#### `@PathVariable Long id`
 
-アプリケーションを起動して以下を実行：
+- `@PathVariable`は、URLのパスパラメータをメソッドの引数にバインドするアノテーションです
+- `Long id`は、パスパラメータの値を`Long`型で受け取ることを意味します
+- Spring Bootが自動的に文字列を`Long`型に変換してくれます
 
-```bash
-curl http://localhost:8080/greet/Taro
+> **💡 型変換の仕組み**: URLはすべて文字列ですが、Spring Bootが自動的に指定した型（`Long`、`Integer`、`String`など）に変換します。変換できない値（例: `/users/abc`）が渡されると、`400 Bad Request`エラーが返されます。
+
+### 1-4. 複数のパスパラメータ
+
+パスパラメータは複数使用することもできます。以下のメソッドを`HelloController.java`に追加しましょう：
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
+
+    // 複数のパスパラメータ
+    @GetMapping("/users/{userId}/posts/{postId}")
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
+        return "User ID: " + userId + ", Post ID: " + postId;
+    }
+}
 ```
 
-**期待される結果**:
-```
-Hello, Taro!
-```
+#### コードの解説
 
-別の名前でも試してみましょう：
-
-```bash
-curl http://localhost:8080/greet/Hanako
-curl http://localhost:8080/greet/Spring
-```
+- `/users/{userId}/posts/{postId}` では、2つのパスパラメータを使用しています
+- `@PathVariable Long userId` と `@PathVariable Long postId` で、それぞれの値を受け取ります
+- パラメータ名（`userId`、`postId`）は、URL内のプレースホルダー名と一致させる必要があります
 
 ---
 
 ## 🚀 ステップ2: クエリパラメータの実装
 
-### 2-1. 言語を指定できる挨拶API
+クエリパラメータは、URLの`?`以降に`key=value`の形式で渡されるパラメータです。フィルタリング、ソート、ページネーションなどに使用されます。
 
-パスパラメータとクエリパラメータを組み合わせます。
+### 2-1. クエリパラメータとは
 
-`HelloController.java`の`greet`メソッドを以下のように**修正**します：
+**クエリパラメータ（Query Parameter）** は、URLの末尾に`?`で区切って渡される追加の情報です。
 
-```java
-import org.springframework.web.bind.annotation.RequestParam;
+**例**:
+- `/search?keyword=spring` → 検索キーワード `spring`
+- `/users?page=1&size=10` → ページ番号 `1`、表示件数 `10`
+- `/products?category=electronics&sort=price` → カテゴリ `electronics`、ソート `price`
 
-@GetMapping("/greet/{name}")
-public String greet(
-    @PathVariable String name,
-    @RequestParam(required = false, defaultValue = "en") String language
-) {
-    if (language.equals("ja")) {
-        return "こんにちは、" + name + "さん！";
-    } else if (language.equals("es")) {
-        return "¡Hola, " + name + "!";
-    } else {
-        return "Hello, " + name + "!";
-    }
-}
-```
+### 2-2. @RequestParamを使った実装
 
-### 2-2. コードの解説
-
-#### `@RequestParam`
-- クエリパラメータを受け取るアノテーション
-- `?language=ja`の`language`パラメータの値を受け取る
-
-#### `required = false`
-- このパラメータは任意（省略可能）であることを示す
-- デフォルトは`required = true`（必須）
-
-#### `defaultValue = "en"`
-- パラメータが省略された場合のデフォルト値
-- `required = false`と組み合わせて使用
-
-### 2-3. 動作確認
-
-```bash
-# 英語（デフォルト）
-curl http://localhost:8080/greet/Taro
-
-# 日本語
-curl http://localhost:8080/greet/Taro?language=ja
-
-# スペイン語
-curl http://localhost:8080/greet/Taro?language=es
-```
-
-**期待される結果**:
-```
-Hello, Taro!
-こんにちは、Taroさん！
-¡Hola, Taro!
-```
-
----
-
-## 🚀 ステップ3: 複数のパスパラメータ
-
-### 3-1. ユーザーIDと投稿IDを受け取るAPI
-
-`HelloController.java`に以下のメソッドを**追加**します：
+`HelloController.java`に、クエリパラメータを受け取るメソッドを追加します：
 
 ```java
-@GetMapping("/users/{userId}/posts/{postId}")
-public String getUserPost(
-    @PathVariable Long userId,
-    @PathVariable Long postId
-) {
-    return "User ID: " + userId + ", Post ID: " + postId;
-}
-```
-
-### 3-2. コードの解説
-
-#### 複数のパスパラメータ
-- URLに複数の`{}`プレースホルダーを定義可能
-- それぞれに対応する`@PathVariable`を用意
-
-#### `Long`型の使用
-- 数値のIDを受け取る場合は`Long`型を使用
-- Spring Bootが自動的に文字列から数値に変換
-
-### 3-3. 動作確認
-
-```bash
-curl http://localhost:8080/users/123/posts/456
-```
-
-**期待される結果**:
-```
-User ID: 123, Post ID: 456
-```
-
----
-
-## 🚀 ステップ4: 複数のクエリパラメータ
-
-### 4-1. 検索APIの実装
-
-`HelloController.java`に以下のメソッドを**追加**します：
-
-```java
-@GetMapping("/search")
-public String search(
-    @RequestParam String keyword,
-    @RequestParam(required = false, defaultValue = "10") int limit,
-    @RequestParam(required = false, defaultValue = "date") String sort
-) {
-    return String.format("Searching for '%s' (limit: %d, sort by: %s)", 
-                         keyword, limit, sort);
-}
-```
-
-### 4-2. コードの解説
-
-#### 必須パラメータと任意パラメータの混在
-- `keyword`: 必須（`required`を指定しないとデフォルトで`true`）
-- `limit`と`sort`: 任意（`required = false`）
-
-#### `int`型の使用
-- 数値パラメータは`int`型で受け取れる
-- 自動的に型変換される
-
-### 4-3. 動作確認
-
-```bash
-# 必須パラメータのみ
-curl "http://localhost:8080/search?keyword=spring"
-
-# すべてのパラメータを指定
-curl "http://localhost:8080/search?keyword=spring&limit=20&sort=relevance"
-
-# 必須パラメータを省略（エラーになる）
-curl http://localhost:8080/search
-```
-
-**期待される結果**:
-```
-Searching for 'spring' (limit: 10, sort by: date)
-Searching for 'spring' (limit: 20, sort by: relevance)
-{"timestamp":"2025-10-27T...","status":400,"error":"Bad Request",...}
-```
-
----
-
-## 🚀 ステップ5: パラメータ名のカスタマイズ
-
-### 5-1. パラメータ名と変数名を別にする
-
-URLのパラメータ名とJavaの変数名を別にしたい場合：
-
-```java
-@GetMapping("/greet-formal/{userName}")
-public String greetFormal(
-    @PathVariable(name = "userName") String name,
-    @RequestParam(name = "lang", defaultValue = "en") String language
-) {
-    if (language.equals("ja")) {
-        return name + "様、ようこそ。";
-    } else {
-        return "Welcome, Mr./Ms. " + name + ".";
-    }
-}
-```
-
-### 5-2. コードの解説
-
-#### `@PathVariable(name = "userName")`
-- URLでは`userName`というパラメータ名
-- Javaのコードでは`name`という変数名で受け取る
-
-#### `@RequestParam(name = "lang")`
-- URLでは`lang`というパラメータ名
-- Javaのコードでは`language`という変数名で受け取る
-
-**使い分け**:
-- URLは短く簡潔に（`lang`）
-- コードは読みやすく（`language`）
-
-### 5-3. 動作確認
-
-```bash
-curl "http://localhost:8080/greet-formal/Tanaka?lang=ja"
-curl "http://localhost:8080/greet-formal/Smith?lang=en"
-```
-
-**期待される結果**:
-```
-Tanaka様、ようこそ。
-Welcome, Mr./Ms. Smith.
-```
-
----
-
-## ✅ 完成したコード全体
-
-`HelloController.java`の最終形：
-
-```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -325,107 +176,502 @@ public class HelloController {
         return "Hello, Spring Boot!";
     }
 
-    @GetMapping("/greet/{name}")
-    public String greet(
-        @PathVariable String name,
-        @RequestParam(required = false, defaultValue = "en") String language
-    ) {
-        if (language.equals("ja")) {
-            return "こんにちは、" + name + "さん！";
-        } else if (language.equals("es")) {
-            return "¡Hola, " + name + "!";
-        } else {
-            return "Hello, " + name + "!";
-        }
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
     }
 
     @GetMapping("/users/{userId}/posts/{postId}")
-    public String getUserPost(
-        @PathVariable Long userId,
-        @PathVariable Long postId
-    ) {
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
+        return "User ID: " + userId + ", Post ID: " + postId;
+    }
+
+    // クエリパラメータを使ったエンドポイント
+    @GetMapping("/search")
+    public String search(@RequestParam String keyword) {
+        return "Search keyword: " + keyword;
+    }
+}
+```
+
+### 2-3. コードの解説
+
+#### `@RequestParam String keyword`
+
+- `@RequestParam`は、クエリパラメータをメソッドの引数にバインドするアノテーションです
+- `String keyword`は、URLの`?keyword=xxx`の値を受け取ります
+- デフォルトでは**必須パラメータ**となり、パラメータがない場合は`400 Bad Request`エラーになります
+
+---
+
+## 🚀 ステップ3: オプショナルパラメータとデフォルト値
+
+### 3-1. オプショナルなクエリパラメータ
+
+クエリパラメータは、必須ではなくオプション（任意）にすることができます。以下のメソッドを追加しましょう：
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
+
+    @GetMapping("/users/{userId}/posts/{postId}")
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
         return "User ID: " + userId + ", Post ID: " + postId;
     }
 
     @GetMapping("/search")
-    public String search(
-        @RequestParam String keyword,
-        @RequestParam(required = false, defaultValue = "10") int limit,
-        @RequestParam(required = false, defaultValue = "date") String sort
-    ) {
-        return String.format("Searching for '%s' (limit: %d, sort by: %s)", 
-                             keyword, limit, sort);
+    public String search(@RequestParam String keyword) {
+        return "Search keyword: " + keyword;
     }
 
-    @GetMapping("/greet-formal/{userName}")
-    public String greetFormal(
-        @PathVariable(name = "userName") String name,
-        @RequestParam(name = "lang", defaultValue = "en") String language
-    ) {
-        if (language.equals("ja")) {
-            return name + "様、ようこそ。";
-        } else {
-            return "Welcome, Mr./Ms. " + name + ".";
+    // オプショナルなクエリパラメータ（required = false）
+    @GetMapping("/greet")
+    public String greet(@RequestParam(required = false) String name) {
+        if (name == null) {
+            return "Hello, Guest!";
         }
+        return "Hello, " + name + "!";
     }
 }
+```
+
+#### コードの解説
+
+- `@RequestParam(required = false)` で、パラメータをオプショナルにしています
+- パラメータが指定されなかった場合、`name`の値は`null`になります
+- `if (name == null)` で、パラメータがない場合の処理を分岐しています
+
+### 3-2. デフォルト値の設定
+
+オプショナルパラメータには、デフォルト値を設定することもできます：
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
+
+    @GetMapping("/users/{userId}/posts/{postId}")
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
+        return "User ID: " + userId + ", Post ID: " + postId;
+    }
+
+    @GetMapping("/search")
+    public String search(@RequestParam String keyword) {
+        return "Search keyword: " + keyword;
+    }
+
+    @GetMapping("/greet")
+    public String greet(@RequestParam(required = false) String name) {
+        if (name == null) {
+            return "Hello, Guest!";
+        }
+        return "Hello, " + name + "!";
+    }
+
+    // デフォルト値を持つクエリパラメータ
+    @GetMapping("/page")
+    public String getPage(@RequestParam(defaultValue = "1") int page,
+                          @RequestParam(defaultValue = "10") int size) {
+        return "Page: " + page + ", Size: " + size;
+    }
+}
+```
+
+#### コードの解説
+
+- `@RequestParam(defaultValue = "1")` で、デフォルト値を設定しています
+- パラメータが指定されなかった場合、デフォルト値が使用されます
+- デフォルト値を設定すると、自動的に`required = false`となります
+- 複数のクエリパラメータを組み合わせることができます
+
+---
+
+## 🚀 ステップ4: 複数パラメータの組み合わせ
+
+実際のREST APIでは、パスパラメータとクエリパラメータを組み合わせて使用することが多くあります。
+
+### 4-1. パスパラメータとクエリパラメータの組み合わせ
+
+以下のメソッドを`HelloController.java`に追加します：
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
+
+    @GetMapping("/users/{userId}/posts/{postId}")
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
+        return "User ID: " + userId + ", Post ID: " + postId;
+    }
+
+    @GetMapping("/search")
+    public String search(@RequestParam String keyword) {
+        return "Search keyword: " + keyword;
+    }
+
+    @GetMapping("/greet")
+    public String greet(@RequestParam(required = false) String name) {
+        if (name == null) {
+            return "Hello, Guest!";
+        }
+        return "Hello, " + name + "!";
+    }
+
+    @GetMapping("/page")
+    public String getPage(@RequestParam(defaultValue = "1") int page,
+                          @RequestParam(defaultValue = "10") int size) {
+        return "Page: " + page + ", Size: " + size;
+    }
+
+    // パスパラメータとクエリパラメータの組み合わせ
+    @GetMapping("/users/{id}/posts")
+    public String getUserPosts(@PathVariable Long id,
+                               @RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "10") int size) {
+        return "User ID: " + id + ", Page: " + page + ", Size: " + size;
+    }
+}
+```
+
+#### コードの解説
+
+- `/users/{id}/posts` では、ユーザーIDをパスパラメータで受け取っています
+- `page` と `size` をクエリパラメータで受け取り、ページネーション情報を指定できます
+- リクエスト例: `/users/123/posts?page=2&size=20`
+
+### 4-2. 実践的な例：複数条件での検索
+
+さらに実践的な検索エンドポイントを追加しましょう：
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+
+    @GetMapping("/users/{id}")
+    public String getUser(@PathVariable Long id) {
+        return "User ID: " + id;
+    }
+
+    @GetMapping("/users/{userId}/posts/{postId}")
+    public String getUserPost(@PathVariable Long userId, @PathVariable Long postId) {
+        return "User ID: " + userId + ", Post ID: " + postId;
+    }
+
+    @GetMapping("/search")
+    public String search(@RequestParam String keyword) {
+        return "Search keyword: " + keyword;
+    }
+
+    @GetMapping("/greet")
+    public String greet(@RequestParam(required = false) String name) {
+        if (name == null) {
+            return "Hello, Guest!";
+        }
+        return "Hello, " + name + "!";
+    }
+
+    @GetMapping("/page")
+    public String getPage(@RequestParam(defaultValue = "1") int page,
+                          @RequestParam(defaultValue = "10") int size) {
+        return "Page: " + page + ", Size: " + size;
+    }
+
+    @GetMapping("/users/{id}/posts")
+    public String getUserPosts(@PathVariable Long id,
+                               @RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "10") int size) {
+        return "User ID: " + id + ", Page: " + page + ", Size: " + size;
+    }
+
+    // 複数の条件を持つ検索エンドポイント
+    @GetMapping("/products/search")
+    public String searchProducts(@RequestParam String keyword,
+                                 @RequestParam(required = false) String category,
+                                 @RequestParam(defaultValue = "10") int limit) {
+        StringBuilder result = new StringBuilder("Search - Keyword: " + keyword);
+        if (category != null) {
+            result.append(", Category: ").append(category);
+        }
+        result.append(", Limit: ").append(limit);
+        return result.toString();
+    }
+}
+```
+
+#### コードの解説
+
+- `keyword` は必須パラメータ
+- `category` はオプショナル（指定されていない場合は`null`）
+- `limit` はデフォルト値`10`を持つオプショナルパラメータ
+- `StringBuilder`を使って、動的に結果文字列を構築しています
+
+---
+
+## ✅ 動作確認
+
+アプリケーションを起動して、すべてのエンドポイントを確認しましょう。
+
+### 起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 1. パスパラメータの確認
+
+```bash
+# 単一のパスパラメータ
+curl http://localhost:8080/users/123
+```
+
+**期待される結果**:
+```
+User ID: 123
+```
+
+```bash
+# 複数のパスパラメータ
+curl http://localhost:8080/users/1/posts/456
+```
+
+**期待される結果**:
+```
+User ID: 1, Post ID: 456
+```
+
+### 2. クエリパラメータの確認
+
+```bash
+# 必須のクエリパラメータ
+curl http://localhost:8080/search?keyword=spring
+```
+
+**期待される結果**:
+```
+Search keyword: spring
+```
+
+```bash
+# オプショナルなクエリパラメータ（パラメータあり）
+curl http://localhost:8080/greet?name=Taro
+```
+
+**期待される結果**:
+```
+Hello, Taro!
+```
+
+```bash
+# オプショナルなクエリパラメータ（パラメータなし）
+curl http://localhost:8080/greet
+```
+
+**期待される結果**:
+```
+Hello, Guest!
+```
+
+### 3. デフォルト値の確認
+
+```bash
+# デフォルト値を使用
+curl http://localhost:8080/page
+```
+
+**期待される結果**:
+```
+Page: 1, Size: 10
+```
+
+```bash
+# カスタム値を指定
+curl "http://localhost:8080/page?page=3&size=20"
+```
+
+**期待される結果**:
+```
+Page: 3, Size: 20
+```
+
+> **💡 ヒント**: URLに`&`が含まれる場合、シェルが誤解釈しないようにダブルクォートで囲みます。
+
+### 4. パスパラメータとクエリパラメータの組み合わせ
+
+```bash
+# 組み合わせ（デフォルト値を使用）
+curl http://localhost:8080/users/5/posts
+```
+
+**期待される結果**:
+```
+User ID: 5, Page: 1, Size: 10
+```
+
+```bash
+# 組み合わせ（カスタム値を指定）
+curl "http://localhost:8080/users/5/posts?page=2&size=25"
+```
+
+**期待される結果**:
+```
+User ID: 5, Page: 2, Size: 25
+```
+
+### 5. 複数条件の検索
+
+```bash
+# すべてのパラメータを指定
+curl "http://localhost:8080/products/search?keyword=laptop&category=electronics&limit=5"
+```
+
+**期待される結果**:
+```
+Search - Keyword: laptop, Category: electronics, Limit: 5
+```
+
+```bash
+# オプショナルなcategoryを省略
+curl "http://localhost:8080/products/search?keyword=laptop&limit=20"
+```
+
+**期待される結果**:
+```
+Search - Keyword: laptop, Limit: 20
+```
+
+```bash
+# limitもデフォルト値を使用
+curl "http://localhost:8080/products/search?keyword=laptop"
+```
+
+**期待される結果**:
+```
+Search - Keyword: laptop, Limit: 10
 ```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-基本が理解できたら、以下にチャレンジしてみましょう：
+基本が理解できたら、以下にチャレンジしてみましょう！
 
-### チャレンジ 1: 計算API
+### チャレンジ 1: ブログ記事のURL
 
-2つの数値をパスパラメータで受け取り、計算結果を返すAPIを作成してください。
+ブログの記事を年月日で取得するエンドポイントを作成してください：
 
-**エンドポイント例**:
-```
-GET /calc/add/5/3  → "Result: 8"
-GET /calc/multiply/4/7  → "Result: 28"
-```
+- URL: `/posts/{year}/{month}/{day}`
+- 例: `/posts/2024/12/25` → `"Article Date: 2024-12-25"`
 
 **ヒント**:
 ```java
-@GetMapping("/calc/add/{a}/{b}")
-public String add(@PathVariable int a, @PathVariable int b) {
-    // ここに実装
+@GetMapping("/posts/{year}/{month}/{day}")
+public String getArticleByDate(/* ここにパラメータを追加 */) {
+    // 実装してみましょう
 }
 ```
 
-### チャレンジ 2: フィルタリングAPI
+### チャレンジ 2: ソート機能付きユーザー一覧
 
-商品一覧を取得するAPIで、カテゴリと価格範囲でフィルタリングできるようにしてください。
+ユーザー一覧を取得するエンドポイントで、ソート機能を追加してください：
 
-**エンドポイント例**:
-```
-GET /products?category=electronics&minPrice=1000&maxPrice=5000
-```
+- URL: `/users`
+- クエリパラメータ:
+  - `sort`: ソートフィールド（デフォルト: `id`）
+  - `order`: ソート順（`asc` または `desc`、デフォルト: `asc`）
+- 例: `/users?sort=name&order=desc` → `"Users sorted by name (desc)"`
 
 **ヒント**:
 ```java
-@GetMapping("/products")
-public String getProducts(
-    @RequestParam(required = false) String category,
-    @RequestParam(required = false, defaultValue = "0") int minPrice,
-    @RequestParam(required = false, defaultValue = "999999") int maxPrice
-) {
-    // ここに実装
+@GetMapping("/users")
+public String getUsers(@RequestParam(/* デフォルト値を設定 */) String sort,
+                       @RequestParam(/* デフォルト値を設定 */) String order) {
+    // 実装してみましょう
 }
 ```
 
-### チャレンジ 3: 日付範囲検索
+### チャレンジ 3: パラメータの範囲チェック
 
-開始日と終了日をクエリパラメータで受け取り、その範囲を表示するAPIを作成してください。
+`/page` エンドポイントを改良して、以下の条件をチェックしてください：
 
-**エンドポイント例**:
+- `page` は 1 以上
+- `size` は 1 以上 100 以下
+
+範囲外の値が渡された場合は、エラーメッセージを返すようにしましょう。
+
+**ヒント**:
+```java
+@GetMapping("/page/validated")
+public String getPageValidated(@RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "10") int size) {
+    if (page < 1) {
+        return "Error: page must be >= 1";
+    }
+    // sizeのバリデーションも追加してみましょう
+}
 ```
-GET /reports?startDate=2025-01-01&endDate=2025-12-31
-```
 
-**ヒント**: まずは文字列で受け取ってOKです（日付型への変換は後のステップで学びます）。
+> **💡 次のステップで学ぶこと**: このチャレンジでは手動でバリデーションを実装しましたが、後のステップ（Step 18）で、Spring Bootの**バリデーション機能**を使ったより洗練された方法を学びます。
 
 ---
 
@@ -433,130 +679,209 @@ GET /reports?startDate=2025-01-01&endDate=2025-12-31
 
 ### エラー: "Required request parameter 'xxx' is not present"
 
-**原因**: 必須パラメータ（`required = true`）が指定されていない
-
-**解決策**:
-1. クエリパラメータを付けてリクエストする
-2. または`required = false`にする
-
-```java
-// 修正前（必須）
-@RequestParam String keyword
-
-// 修正後（任意）
-@RequestParam(required = false) String keyword
-```
-
-### エラー: "Failed to convert value of type 'java.lang.String' to required type 'int'"
-
-**原因**: 数値型のパラメータに数値以外が渡された
-
-**例**: `?limit=abc` → `int`型に変換できない
-
-**解決策**:
-- 正しい数値を渡す: `?limit=10`
-- より高度なバリデーションは後のステップで学びます
-
-### 日本語が文字化けする
-
-**原因**: URLエンコードの問題
-
-**解決策**:
-curlで日本語を渡す場合は`--data-urlencode`を使うか、手動でエンコード：
+**症状**: クエリパラメータを指定せずにリクエストすると、エラーが返される
 
 ```bash
-# 方法1: ブラウザで確認（自動エンコードされる）
-# 方法2: エンコード済みURLを使用
-curl "http://localhost:8080/greet/%E5%A4%AA%E9%83%8E?language=ja"
+curl http://localhost:8080/search
+# {"timestamp":"...","status":400,"error":"Bad Request","message":"Required request parameter 'keyword' is not present",...}
 ```
 
-### パスパラメータが認識されない
+**原因**: `@RequestParam`はデフォルトで必須パラメータとなります
 
-**原因**: プレースホルダー名と変数名が一致していない
+**解決策**:
+1. **クエリパラメータを指定する**:
+   ```bash
+   curl http://localhost:8080/search?keyword=test
+   ```
+
+2. **オプショナルにする**（コードを修正）:
+   ```java
+   @GetMapping("/search")
+   public String search(@RequestParam(required = false) String keyword) {
+       if (keyword == null) {
+           return "Please provide a keyword";
+       }
+       return "Search keyword: " + keyword;
+   }
+   ```
+
+3. **デフォルト値を設定する**（コードを修正）:
+   ```java
+   @GetMapping("/search")
+   public String search(@RequestParam(defaultValue = "all") String keyword) {
+       return "Search keyword: " + keyword;
+   }
+   ```
+
+### エラー: "Failed to convert value of type 'java.lang.String' to required type 'java.lang.Long'"
+
+**症状**: パスパラメータに数値以外を指定すると、エラーが返される
+
+```bash
+curl http://localhost:8080/users/abc
+# {"timestamp":"...","status":400,"error":"Bad Request",...}
+```
+
+**原因**: `@PathVariable Long id` で`Long`型を期待していますが、文字列`"abc"`を変換できません
+
+**解決策**:
+1. **正しい型の値を指定する**:
+   ```bash
+   curl http://localhost:8080/users/123
+   ```
+
+2. **String型で受け取り、手動でバリデーション**（コードを修正）:
+   ```java
+   @GetMapping("/users/{id}")
+   public String getUser(@PathVariable String id) {
+       try {
+           Long userId = Long.parseLong(id);
+           return "User ID: " + userId;
+       } catch (NumberFormatException e) {
+           return "Error: Invalid user ID format";
+       }
+   }
+   ```
+
+### クエリパラメータに日本語を含む場合
+
+**症状**: 日本語のクエリパラメータが文字化けする
+
+```bash
+curl http://localhost:8080/search?keyword=こんにちは
+```
+
+**解決策**: URLエンコードを使用します
+
+```bash
+# macOS/Linux
+curl "http://localhost:8080/search?keyword=$(echo -n 'こんにちは' | jq -sRr @uri)"
+
+# より簡単な方法（最近のcurlでは自動エンコードされることが多い）
+curl --get --data-urlencode "keyword=こんにちは" http://localhost:8080/search
+
+# または、手動でURLエンコード
+curl "http://localhost:8080/search?keyword=%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%81%AF"
+```
+
+> **💡 ヒント**: ブラウザでアクセスする場合、日本語は自動的にURLエンコードされるため、問題なく動作します。
+
+### パラメータ名のミスマッチ
+
+**症状**: パラメータを指定しているのに、受け取れない
+
+```bash
+curl "http://localhost:8080/page?pageNumber=2"
+# Page: 1, Size: 10  ← pageNumberが反映されていない
+```
+
+**原因**: メソッドのパラメータ名（`page`）とクエリパラメータ名（`pageNumber`）が一致していません
+
+**解決策**:
+1. **クエリパラメータ名を合わせる**:
+   ```bash
+   curl "http://localhost:8080/page?page=2"
+   ```
+
+2. **@RequestParamで明示的に指定する**（コードを修正）:
+   ```java
+   @GetMapping("/page")
+   public String getPage(@RequestParam(name = "pageNumber", defaultValue = "1") int page,
+                         @RequestParam(defaultValue = "10") int size) {
+       return "Page: " + page + ", Size: " + size;
+   }
+   ```
+
+---
+
+## 💡 補足: パスパラメータ vs クエリパラメータの使い分け
+
+RESTful APIを設計する際、パスパラメータとクエリパラメータのどちらを使うべきか迷うことがあります。以下のガイドラインを参考にしてください。
+
+### パスパラメータを使うべきケース
+
+**リソースの識別子** を表す場合に使用します：
+
+- ✅ `/users/{id}` - 特定のユーザーを識別
+- ✅ `/products/{productId}` - 特定の商品を識別
+- ✅ `/posts/{year}/{month}/{day}` - 特定の日付の記事を識別
+
+**特徴**:
+- URLの一部としてリソースを表す
+- 階層構造を表現できる
+- 必須の値（省略できない）
+
+### クエリパラメータを使うべきケース
+
+**フィルタリング、ソート、ページネーション** など、リソースの取得方法を指定する場合に使用します：
+
+- ✅ `/users?role=admin` - 管理者ユーザーでフィルタリング
+- ✅ `/products?sort=price&order=asc` - 価格でソート
+- ✅ `/posts?page=2&size=20` - ページネーション
+- ✅ `/search?keyword=spring&category=books` - 検索条件
+
+**特徴**:
+- リソースの取得方法を調整
+- オプショナルな値が多い
+- 複数の条件を組み合わせやすい
+
+### 実践例
+
+以下の例で使い分けを確認しましょう：
 
 ```java
-// NG: 名前が一致していない
-@GetMapping("/users/{id}")
-public String getUser(@PathVariable Long userId) { ... }
+// 良い設計 ✅
+@GetMapping("/users/{id}")          // ユーザーID: パスパラメータ
+@GetMapping("/users")                // ユーザー一覧
+@GetMapping("/users")                // フィルタリング: クエリパラメータ
+// 例: /users?role=admin&status=active
 
-// OK: 名前を一致させる
-@GetMapping("/users/{id}")
-public String getUser(@PathVariable Long id) { ... }
+// 悪い設計 ❌
+@GetMapping("/users")                // ユーザーIDをクエリで渡す
+// 例: /users?id=123  ← リソースの識別子はパスパラメータにすべき
 
-// OK: name属性で明示的に指定
-@GetMapping("/users/{id}")
-public String getUser(@PathVariable(name = "id") Long userId) { ... }
+@GetMapping("/users/{role}")         // フィルタ条件をパスに含める
+// 例: /users/admin  ← フィルタはクエリパラメータにすべき
+```
+
+### 組み合わせの例
+
+実際には、両方を組み合わせることが多くあります：
+
+```java
+// ユーザーIDで特定し、その投稿をページネーション
+@GetMapping("/users/{id}/posts")
+// 例: /users/123/posts?page=1&size=10
+
+// 商品IDで特定し、レビューを評価でフィルタリング
+@GetMapping("/products/{id}/reviews")
+// 例: /products/456/reviews?rating=5
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ `@PathVariable`でURLパスの一部を変数として受け取る
-- ✅ `@RequestParam`でクエリパラメータを受け取る
-- ✅ `required`属性で必須/任意を制御
-- ✅ `defaultValue`でデフォルト値を設定
-- ✅ 複数のパラメータを組み合わせて使用
-- ✅ パラメータの型変換（String, int, Long）
-- ✅ パスパラメータとクエリパラメータの使い分け
-
----
-
-## 💡 補足: パラメータの使い分けガイドライン
-
-### パスパラメータを使うべき場合
-
-- **リソースの識別**: `/users/{id}`, `/products/{productId}`
-- **階層構造**: `/users/{userId}/orders/{orderId}`
-- **必須の情報**: URLの一部として意味を持つもの
-
-### クエリパラメータを使うべき場合
-
-- **フィルタリング**: `/products?category=electronics`
-- **ソート順**: `/users?sort=name&order=asc`
-- **ページネーション**: `/items?page=2&size=20`
-- **任意の情報**: 省略可能なオプション
-
-### REST APIの設計例
-
-```
-# 良い設計
-GET /users/123                    # ユーザー詳細取得
-GET /users?role=admin&active=true # ユーザー一覧（フィルタ付き）
-GET /users/123/posts              # 特定ユーザーの投稿一覧
-GET /users/123/posts?status=published  # フィルタリング
-
-# 避けるべき設計
-GET /users?id=123                 # IDはパスパラメータにすべき
-GET /getUser/123                  # 動詞は不要（HTTPメソッドで表現）
-```
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 2: パスパラメータとクエリパラメータの実装完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+- ✅ **@PathVariable**を使って、URLのパスパラメータを受け取れる
+- ✅ **@RequestParam**を使って、クエリパラメータを受け取れる
+- ✅ **required = false**で、オプショナルなパラメータを実装できる
+- ✅ **defaultValue**で、デフォルト値を設定できる
+- ✅ **複数のパラメータ**を組み合わせた実践的なエンドポイントを作成できる
+- ✅ **パスパラメータとクエリパラメータの使い分け**を理解できる
+- ✅ Spring Bootの**自動型変換**により、文字列を数値型などに変換できる
+- ✅ RESTful APIの設計における**基本的なベストプラクティス**を理解できる
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 3: POSTリクエストとリクエストボディ](STEP_3.md)へ進みましょう！
+[Step 3: POSTリクエストとリクエストボディ](STEP_3.md)へ進みましょう！
 
-次のステップでは、GETだけでなくPOSTメソッドを使って、JSONデータを送受信する方法を学びます。
-ユーザー登録APIを作成して、より実践的なREST APIの実装に挑戦します！
+次のステップでは、以下を学びます：
 
----
+- **POSTリクエスト**でデータを送信する方法
+- **@PostMapping**と**@RequestBody**の使い方
+- **JSON形式**でデータを送受信する方法
+- ユーザー登録や商品作成など、**データを作成するAPI**の実装
 
-お疲れさまでした！ 🎉
-
-パラメータの扱い方は、REST API開発の基本中の基本です。
-しっかりマスターして次のステップへ進みましょう！
+これまではGETリクエストで**データを取得**する方法を学びました。次はPOSTリクエストで**データを作成**する方法を学び、より実践的なREST APIを構築しましょう！

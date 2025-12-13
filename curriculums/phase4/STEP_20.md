@@ -2,124 +2,113 @@
 
 ## 🎯 このステップの目標
 
-- ログレベル（TRACE、DEBUG、INFO、WARN、ERROR）を理解する
-- `@Slf4j`を使ってログ出力を実装できる
-- `application.yml`でログ設定をカスタマイズできる
-- `logback-spring.xml`で詳細なログ設定ができる
-- 環境別（開発/本番）のログ設定を分けられる
+- ロギングの重要性と目的を理解できる
+- SLF4J + Logbackを使った適切なログ出力を実装できる
+- ログレベル（TRACE, DEBUG, INFO, WARN, ERROR）を正しく使い分けできる
+- 環境別（開発/本番）のログ設定を構成できる
+- ログのフォーマットやローテーション設定をカスタマイズできる
 
-**所要時間**: 約1時間
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-このステップを始める前に、以下を確認してください：
-
-- Step 19（DTOとEntityの分離）が完了していること
-- Lombokを使った開発経験があること
-- アプリケーションの監視やデバッグの必要性を理解していること
+- [Step 19: DTOとEntityの分離](STEP_19.md)が完了していること
+- `application.yml`の基本的な使い方を理解していること
+- Spring Bootのアプリケーションを起動・実行できること
 
 ---
 
-## 📝 概要
-ログは、アプリケーションの動作を追跡し、問題を診断するための重要な手段です。Spring Bootでは、デフォルトで**SLF4J + Logback**が使われます。
+## 📝 なぜロギングが重要なのか
 
-## 📚 ログレベルの理解
-
-| レベル | 用途 | 例 |
-|---|---|---|
-| **TRACE** | 最も詳細な情報（通常は使わない） | メソッドの入出力、ループの各反復 |
-| **DEBUG** | デバッグ情報 | SQLクエリ、内部状態の確認 |
-| **INFO** | 重要な処理の記録 | アプリ起動、リクエスト処理、重要な処理の開始/完了 |
-| **WARN** | 警告（異常ではないが注意が必要） | 非推奨APIの使用、リトライ処理 |
-| **ERROR** | エラー（処理は続行可能） | 例外のキャッチ、想定外の入力 |
-| **FATAL** | 致命的エラー（Logbackでは使わない） | - |
-
-## 🔧 基本的な使い方
-
-### 1. Lombokの`@Slf4j`を使う（推奨）
+### Before（System.out.printlnを使用）
 
 ```java
-package com.example.hellospringboot.service;
-
-import com.example.hellospringboot.dto.request.UserCreateRequest;
-import com.example.hellospringboot.dto.response.UserResponse;
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.exception.ResourceNotFoundException;
-import com.example.hellospringboot.mapper.UserMapper;
-import com.example.hellospringboot.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-
 @Service
-@RequiredArgsConstructor
-@Slf4j  // ⭐ ログ機能を追加
-@Transactional(readOnly = true)
 public class UserService {
     
-    private final UserRepository userRepository;
-    private final UserMapper userMapper;
-    
-    public List<UserResponse> findAll() {
-        log.info("全ユーザー取得を開始");
-        List<User> users = userRepository.findAll();
-        log.info("{}件のユーザーを取得しました", users.size());
+    public User createUser(UserCreateRequest request) {
+        System.out.println("Creating user: " + request.getName());  // ❌ 非推奨
         
-        return users.stream()
-            .map(userMapper::toResponse)
-            .toList();
-    }
-    
-    public UserResponse findById(Long id) {
-        log.debug("ユーザー取得: id={}", id);
+        User user = userDtoMapper.toEntity(request);
+        userRepository.save(user);
         
-        User user = userRepository.findById(id)
-            .orElseThrow(() -> {
-                log.warn("ユーザーが見つかりません: id={}", id);
-                return new ResourceNotFoundException("User", "id", id);
-            });
-        
-        log.debug("ユーザーを取得しました: {}", user.getName());
-        return userMapper.toResponse(user);
-    }
-    
-    @Transactional
-    public UserResponse create(UserCreateRequest request) {
-        log.info("ユーザー作成を開始: email={}", request.getEmail());
-        
-        try {
-            User user = userMapper.toEntity(request);
-            User saved = userRepository.save(user);
-            
-            log.info("ユーザーを作成しました: id={}, name={}", saved.getId(), saved.getName());
-            return userMapper.toResponse(saved);
-            
-        } catch (Exception e) {
-            log.error("ユーザー作成に失敗しました: email={}", request.getEmail(), e);
-            throw e;
-        }
-    }
-    
-    @Transactional
-    public void delete(Long id) {
-        log.info("ユーザー削除を開始: id={}", id);
-        
-        User user = userRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
-        
-        userRepository.delete(user);
-        log.info("ユーザーを削除しました: id={}, name={}", id, user.getName());
+        System.out.println("User created successfully: " + user.getId());  // ❌ 非推奨
+        return user;
     }
 }
 ```
 
-### 2. SLF4Jを直接使う
+**問題点**:
+- ❌ ログレベルがない（重要度が不明）
+- ❌ 本番環境でもコンソールに出力される
+- ❌ ログファイルに記録されない
+- ❌ タイムスタンプやスレッド情報がない
+- ❌ ログの集約・分析ができない
+- ❌ パフォーマンスに影響（同期処理）
 
+---
+
+### After（SLF4Jを使用）
+
+```java
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+public class UserService {
+    
+    public User createUser(UserCreateRequest request) {
+        log.info("Creating user with email: {}", request.getEmail());
+        
+        User user = userDtoMapper.toEntity(request);
+        userRepository.save(user);
+        
+        log.info("User created successfully. ID: {}, Name: {}", user.getId(), user.getName());
+        return user;
+    }
+}
+```
+
+**出力例**:
+```
+2025-01-15 15:00:00.123 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService : Creating user with email: alice@example.com
+2025-01-15 15:00:00.456 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService : User created successfully. ID: 1, Name: Alice
+```
+
+**改善点**:
+- ✅ タイムスタンプ、スレッド名、クラス名が自動記録
+- ✅ ログレベル（INFO）で重要度を明示
+- ✅ 環境ごとにログレベルを変更可能
+- ✅ ログファイルに保存・ローテーション可能
+- ✅ プレースホルダー（`{}`）でパフォーマンス向上
+- ✅ 外部ツールで集約・分析可能
+
+---
+
+## 🚀 ステップ1: SLF4Jの基本
+
+### 1-1. 依存関係の確認
+
+Spring Bootには`spring-boot-starter-logging`が標準で含まれています（`spring-boot-starter-web`に内包）。
+
+**pom.xml**（確認のみ、追加不要）:
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+    <!-- この中にSLF4J + Logbackが含まれている -->
+</dependency>
+```
+
+---
+
+### 1-2. Lombokの`@Slf4j`アノテーション
+
+Lombokを使うと、ロガーのインスタンス生成が不要になります。
+
+**手動でロガーを作成（冗長）**:
 ```java
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,109 +117,247 @@ import org.slf4j.LoggerFactory;
 public class UserService {
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
     
-    public void someMethod() {
-        log.info("処理を開始します");
+    public void createUser(UserCreateRequest request) {
+        log.info("Creating user: {}", request.getName());
     }
 }
 ```
 
-## 🎨 ログ出力のベストプラクティス
-
-### 1. プレースホルダーを使う（パフォーマンス向上）
-
+**Lombokで簡潔に**:
 ```java
-// ❌ 非効率（文字列連結が毎回実行される）
-log.debug("User: " + user.getName() + ", Age: " + user.getAge());
+import lombok.extern.slf4j.Slf4j;
 
-// ✅ 推奨（DEBUGレベルが無効なら文字列連結されない）
-log.debug("User: {}, Age: {}", user.getName(), user.getAge());
-```
-
-### 2. 例外のログ出力
-
-```java
-try {
-    userRepository.save(user);
-} catch (Exception e) {
-    // ✅ スタックトレースを含める
-    log.error("ユーザー保存に失敗しました: userId={}", user.getId(), e);
-    throw e;
+@Slf4j
+@Service
+public class UserService {
+    // log変数が自動生成される
+    
+    public void createUser(UserCreateRequest request) {
+        log.info("Creating user: {}", request.getName());
+    }
 }
 ```
 
-### 3. 個人情報の保護
+---
+
+## 🚀 ステップ2: ログレベルの使い分け
+
+### 2-1. ログレベルの種類
+
+| レベル | 用途 | 使用例 |
+|---|---|---|
+| **TRACE** | 最も詳細なデバッグ情報 | メソッドの入出力、ループの各反復 |
+| **DEBUG** | 開発時のデバッグ情報 | SQL実行、変数の値、処理の流れ |
+| **INFO** | 通常の動作情報 | サービス起動、ユーザー操作、重要な処理 |
+| **WARN** | 警告（エラーではないが注意が必要） | 非推奨APIの使用、リトライ処理 |
+| **ERROR** | エラー（処理は続行可能） | 例外発生、処理失敗 |
+
+---
+
+### 2-2. 実践例
+
+以下のファイルを`src/main/java/com/example/hellospringboot/services/UserService.java`に修正します：
 
 ```java
-// ❌ パスワードをログに出力
-log.info("User created: {}", user);  // user.toString()にパスワード含む
+package com.example.hellospringboot.services;
 
-// ✅ 必要な情報のみ
-log.info("User created: id={}, email={}", user.getId(), user.getEmail());
-```
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
+import com.example.hellospringboot.exceptions.InvalidRequestException;
+import com.example.hellospringboot.mappers.UserDtoMapper;
+import com.example.hellospringboot.repositories.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
-### 4. 条件付きログ
+import java.util.List;
 
-```java
-// ❌ 重い処理が毎回実行される
-log.debug("Result: " + expensiveOperation());
-
-// ✅ DEBUGレベルが有効な場合のみ実行
-if (log.isDebugEnabled()) {
-    log.debug("Result: {}", expensiveOperation());
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository userRepository;
+    private final UserDtoMapper userDtoMapper;
+    
+    public List<User> getAllUsers() {
+        log.debug("Fetching all users");
+        List<User> users = userRepository.findAll();
+        log.info("Retrieved {} users", users.size());
+        return users;
+    }
+    
+    public User getUserById(Long id) {
+        log.debug("Fetching user with ID: {}", id);
+        
+        return userRepository.findById(id)
+            .map(user -> {
+                log.info("User found: ID={}, Name={}", user.getId(), user.getName());
+                return user;
+            })
+            .orElseThrow(() -> {
+                log.warn("User not found with ID: {}", id);
+                return new ResourceNotFoundException("User", "id", id);
+            });
+    }
+    
+    public User createUser(UserCreateRequest request) {
+        log.info("Creating new user with email: {}", request.getEmail());
+        
+        // メールアドレスの重複チェック
+        if (userRepository.existsByEmail(request.getEmail())) {
+            log.warn("Email already exists: {}", request.getEmail());
+            throw new InvalidRequestException("Email already exists: " + request.getEmail());
+        }
+        
+        User user = userDtoMapper.toEntity(request);
+        userRepository.save(user);
+        
+        log.info("User created successfully. ID: {}, Name: {}", user.getId(), user.getName());
+        return user;
+    }
+    
+    public User updateUser(Long id, UserUpdateRequest request) {
+        log.info("Updating user with ID: {}", id);
+        
+        User existingUser = userRepository.findById(id)
+            .orElseThrow(() -> {
+                log.error("User not found for update. ID: {}", id);
+                return new ResourceNotFoundException("User", "id", id);
+            });
+        
+        existingUser.setName(request.getName());
+        existingUser.setEmail(request.getEmail());
+        existingUser.setAge(request.getAge());
+        
+        userRepository.save(existingUser);
+        log.info("User updated successfully. ID: {}", id);
+        return existingUser;
+    }
+    
+    public void deleteUser(Long id) {
+        log.info("Deleting user with ID: {}", id);
+        
+        if (!userRepository.existsById(id)) {
+            log.error("User not found for deletion. ID: {}", id);
+            throw new ResourceNotFoundException("User", "id", id);
+        }
+        
+        userRepository.deleteById(id);
+        log.info("User deleted successfully. ID: {}", id);
+    }
 }
 ```
 
-## ⚙️ application.yml でのログ設定
+---
 
-### 基本設定
+### 2-3. 例外発生時のログ
+
+```java
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ProductService {
+    private final ProductRepository productRepository;
+    
+    public Product getProductById(Long id) {
+        try {
+            log.debug("Attempting to fetch product with ID: {}", id);
+            
+            Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product", "id", id));
+            
+            log.info("Product found: {}", product.getName());
+            return product;
+            
+        } catch (ResourceNotFoundException e) {
+            log.error("Failed to fetch product. ID: {}", id, e);
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error while fetching product. ID: {}", id, e);
+            throw e;
+        }
+    }
+}
+```
+
+**ポイント**:
+- `log.error("message", e)`: 例外のスタックトレースも記録
+- `log.error("message: {}", value, e)`: プレースホルダーと例外を併用
+
+---
+
+## 🚀 ステップ3: ログ設定のカスタマイズ
+
+### 3-1. application.ymlでログレベル設定
+
+`src/main/resources/application.yml`に以下を追加します：
 
 ```yaml
-# application.yml
 logging:
   level:
-    root: INFO                                    # デフォルト
-    com.example.hellospringboot: DEBUG                       # 自分のパッケージはDEBUG
-    com.example.hellospringboot.controller: INFO             # Controller層はINFO
-    com.example.hellospringboot.repository: DEBUG            # Repository層はDEBUG
-    org.springframework.web: DEBUG                # Spring WebのDEBUG情報
-    org.hibernate.SQL: DEBUG                      # SQL出力
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # バインド変数の値
-
-  # ログファイル出力
-  file:
-    name: logs/application.log                    # ログファイル名
-    max-size: 10MB                                # ファイルサイズ上限
-    max-history: 30                               # 保持日数
-
-  # コンソール出力のパターン
+    root: INFO                                      # デフォルトはINFO
+    com.example.hellospringboot: DEBUG              # 自分のパッケージはDEBUG
+    org.springframework.web: INFO                   # Spring WebはINFO
+    org.hibernate.SQL: DEBUG                        # SQLログを出力（JPA使用時）
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # SQLパラメータ（JPA使用時）
+    
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] %-40.40logger{39} : %m%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] %-40.40logger{39} : %m%n"
+  
+  file:
+    name: logs/spring-boot-app.log
+    max-size: 10MB
+    max-history: 30
 ```
 
-### 環境別設定
+**設定の説明**:
+- `logging.level.root`: すべてのロガーのデフォルトレベル
+- `logging.level.com.example.hellospringboot`: 自分のアプリのログレベル
+- `logging.pattern.console`: コンソール出力フォーマット
+- `logging.pattern.file`: ファイル出力フォーマット
+- `logging.file.name`: ログファイルのパス
+- `logging.file.max-size`: ログファイルの最大サイズ
+- `logging.file.max-history`: 保持する過去のログファイル数
 
+---
+
+### 3-2. 環境別のログ設定
+
+**application-dev.yml**（開発環境）:
 ```yaml
-# application-dev.yml（開発環境）
 logging:
   level:
-    com.example.hellospringboot: DEBUG
+    root: INFO
+    com.example.hellospringboot: DEBUG  # 開発環境では詳細ログ
     org.hibernate.SQL: DEBUG
-  pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-
-# application-prod.yml（本番環境）
-logging:
-  level:
-    com.example.hellospringboot: INFO
-    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  
   file:
-    name: /var/log/myapp/application.log
+    name: logs/dev-app.log
 ```
 
-## 📄 logback-spring.xml でのカスタマイズ
+**application-prod.yml**（本番環境）:
+```yaml
+logging:
+  level:
+    root: WARN                           # 本番環境では警告以上のみ
+    com.example.hellospringboot: INFO    # 自分のアプリはINFO
+    org.hibernate.SQL: WARN              # SQLログは出力しない
+  
+  file:
+    name: /var/log/spring-boot-app.log
+    max-size: 50MB
+    max-history: 90
+```
 
-より詳細な設定が必要な場合は、`src/main/resources/logback-spring.xml`を作成します。
+---
+
+### 3-3. logback-spring.xmlでの詳細設定
+
+より高度な設定が必要な場合は、`src/main/resources/logback-spring.xml`を作成します：
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -238,75 +365,69 @@ logging:
     <!-- コンソール出力 -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] %-40.40logger{39} : %m%n</pattern>
+            <charset>UTF-8</charset>
         </encoder>
     </appender>
-
-    <!-- ファイル出力（全レベル） -->
+    
+    <!-- ファイル出力（ローテーション） -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/application.log</file>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
+        <file>logs/spring-boot-app.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- 日次でローテーション -->
-            <fileNamePattern>logs/application-%d{yyyy-MM-dd}.log</fileNamePattern>
-            <!-- 30日間保持 -->
+            <!-- 日次ローテーション -->
+            <fileNamePattern>logs/spring-boot-app-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
             <maxHistory>30</maxHistory>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>10MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
         </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] %-40.40logger{39} : %m%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
     </appender>
-
-    <!-- エラーログのみ別ファイル -->
+    
+    <!-- エラーログのみを別ファイルに出力 -->
     <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>logs/error.log</file>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
             <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
         </filter>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>logs/error-%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>90</maxHistory>
         </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%t] %-40.40logger{39} : %m%n%ex{full}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
     </appender>
-
-    <!-- デフォルト設定（プロファイル未指定時も適用） -->
-    <root level="DEBUG">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="ERROR_FILE"/>
+    
+    <!-- ロガー設定 -->
+    <logger name="com.example.hellospringboot" level="DEBUG" />
+    <logger name="org.springframework.web" level="INFO" />
+    <logger name="org.hibernate.SQL" level="DEBUG" />
+    
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
+        <appender-ref ref="ERROR_FILE" />
     </root>
-
-    <!-- 開発環境のみ適用 -->
-    <springProfile name="dev">
-        <root level="DEBUG">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
-        </root>
-    </springProfile>
-
-    <!-- 本番環境 -->
-    <springProfile name="prod">
-        <root level="INFO">
-            <appender-ref ref="FILE"/>
-            <appender-ref ref="ERROR_FILE"/>
-        </root>
-    </springProfile>
-
-    <!-- パッケージ別のログレベル -->
-    <logger name="com.example.hellospringboot" level="DEBUG"/>
-    <logger name="org.springframework.web" level="INFO"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
 </configuration>
 ```
 
-## 🔍 実践例: リクエスト/レスポンスのロギング
+---
 
-### 1. Interceptorでリクエストログ
+## 🚀 ステップ4: リクエスト/レスポンスのログ
+
+### 4-1. リクエストログのインターセプター
+
+以下のファイルを`src/main/java/com/example/hellospringboot/config/LoggingInterceptor.java`に作成します：
 
 ```java
-package com.example.hellospringboot.interceptor;
+package com.example.hellospringboot.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -314,37 +435,48 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-@Component
 @Slf4j
+@Component
 public class LoggingInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        log.info("==> {} {}", request.getMethod(), request.getRequestURI());
-        log.debug("Query String: {}", request.getQueryString());
+        long startTime = System.currentTimeMillis();
+        request.setAttribute("startTime", startTime);
+        
+        log.info("Request Start: {} {}", request.getMethod(), request.getRequestURI());
         return true;
     }
     
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        log.info("<== {} {} - Status: {}", 
-            request.getMethod(), 
-            request.getRequestURI(), 
-            response.getStatus());
+        long startTime = (Long) request.getAttribute("startTime");
+        long endTime = System.currentTimeMillis();
+        long duration = endTime - startTime;
+        
+        log.info("Request End: {} {} - Status: {} - Duration: {}ms",
+            request.getMethod(),
+            request.getRequestURI(),
+            response.getStatus(),
+            duration
+        );
         
         if (ex != null) {
-            log.error("リクエスト処理中にエラーが発生しました", ex);
+            log.error("Request failed with exception", ex);
         }
     }
 }
 ```
 
-### 2. Interceptorの登録
+---
+
+### 4-2. インターセプター登録
+
+以下のファイルを`src/main/java/com/example/hellospringboot/config/WebMvcConfig.java`に作成します：
 
 ```java
 package com.example.hellospringboot.config;
 
-import com.example.hellospringboot.interceptor.LoggingInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -352,374 +484,255 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @RequiredArgsConstructor
-public class WebConfig implements WebMvcConfigurer {
+public class WebMvcConfig implements WebMvcConfigurer {
     
     private final LoggingInterceptor loggingInterceptor;
     
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(loggingInterceptor)
-            .addPathPatterns("/api/**");  // /api/配下のみ
+            .addPathPatterns("/api/**");  // /api/**のパスに適用
     }
 }
 ```
 
-### 3. 実行時間の計測
+---
 
-```java
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class UserService {
-    
-    public List<UserResponse> findAll() {
-        long startTime = System.currentTimeMillis();
-        
-        List<User> users = userRepository.findAll();
-        List<UserResponse> responses = users.stream()
-            .map(userMapper::toResponse)
-            .toList();
-        
-        long elapsedTime = System.currentTimeMillis() - startTime;
-        log.info("全ユーザー取得完了: {}件, 処理時間: {}ms", responses.size(), elapsedTime);
-        
-        return responses;
-    }
-}
-```
+## ✅ ステップ5: 動作確認
 
-### 4. AOPでメソッド実行ログ
-
-```java
-package com.example.hellospringboot.aspect;
-
-import lombok.extern.slf4j.Slf4j;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.Around;
-import org.aspectj.lang.annotation.Aspect;
-import org.springframework.stereotype.Component;
-
-@Aspect
-@Component
-@Slf4j
-public class LoggingAspect {
-    
-    @Around("execution(* com.example.hellospringboot.service.*.*(..))")
-    public Object logExecutionTime(ProceedingJoinPoint joinPoint) throws Throwable {
-        long start = System.currentTimeMillis();
-        String methodName = joinPoint.getSignature().toShortString();
-        
-        log.debug(">>> {}", methodName);
-        
-        try {
-            Object result = joinPoint.proceed();
-            long elapsedTime = System.currentTimeMillis() - start;
-            log.debug("<<< {} - {}ms", methodName, elapsedTime);
-            return result;
-        } catch (Exception e) {
-            log.error("!!! {} - エラー発生", methodName, e);
-            throw e;
-        }
-    }
-}
-```
-
-**依存関係**:
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-aop</artifactId>
-</dependency>
-```
-
-## 📊 ログ出力例
-
-### コンソール出力
-
-```
-2024-01-15 10:30:00.123 [http-nio-8080-exec-1] INFO  c.e.d.controller.UserController - ==> GET /api/users
-2024-01-15 10:30:00.125 [http-nio-8080-exec-1] DEBUG c.e.d.service.UserService - >>> UserService.findAll()
-2024-01-15 10:30:00.150 [http-nio-8080-exec-1] DEBUG o.h.SQL - select user0_.id as id1_0_, user0_.name as name2_0_ from users user0_
-2024-01-15 10:30:00.180 [http-nio-8080-exec-1] INFO  c.e.d.service.UserService - 全ユーザー取得完了: 10件, 処理時間: 55ms
-2024-01-15 10:30:00.181 [http-nio-8080-exec-1] DEBUG c.e.d.service.UserService - <<< UserService.findAll() - 56ms
-2024-01-15 10:30:00.185 [http-nio-8080-exec-1] INFO  c.e.d.controller.UserController - <== GET /api/users - Status: 200
-```
-
-## ✅ 動作確認
-
-### 1. アプリケーション起動
+### 5-1. アプリケーション起動
 
 ```bash
+cd workspace/hello-spring-boot
 ./mvnw spring-boot:run
 ```
 
-### 2. APIリクエスト
+---
+
+### 5-2. ログ出力の確認
+
+**ユーザー作成リクエスト**:
 
 ```bash
-curl http://localhost:8080/api/users
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice",
+    "email": "alice@example.com",
+    "age": 25
+  }'
 ```
 
-### 3. ログファイルの確認
+**期待されるログ出力**:
+
+```
+2025-01-15 15:30:00.123 INFO  [http-nio-8080-exec-1] c.e.h.config.LoggingInterceptor         : Request Start: POST /api/users
+2025-01-15 15:30:00.125 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService              : Creating new user with email: alice@example.com
+2025-01-15 15:30:00.250 DEBUG [http-nio-8080-exec-1] org.hibernate.SQL                       : insert into users (name, email, age) values (?, ?, ?)
+2025-01-15 15:30:00.255 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService              : User created successfully. ID: 1, Name: Alice
+2025-01-15 15:30:00.260 INFO  [http-nio-8080-exec-1] c.e.h.config.LoggingInterceptor         : Request End: POST /api/users - Status: 201 - Duration: 137ms
+```
+
+---
+
+### 5-3. エラーログの確認
+
+**存在しないユーザーを取得**:
 
 ```bash
-# 全ログ
-tail -f logs/application.log
-
-# エラーログのみ
-tail -f logs/error.log
-
-# 特定の文字列を含むログ
-grep "UserService" logs/application.log
+curl http://localhost:8080/api/users/999
 ```
+
+**期待されるログ出力**:
+
+```
+2025-01-15 15:32:00.100 INFO  [http-nio-8080-exec-2] c.e.h.config.LoggingInterceptor         : Request Start: GET /api/users/999
+2025-01-15 15:32:00.102 DEBUG [http-nio-8080-exec-2] c.e.h.services.UserService              : Fetching user with ID: 999
+2025-01-15 15:32:00.120 WARN  [http-nio-8080-exec-2] c.e.h.services.UserService              : User not found with ID: 999
+2025-01-15 15:32:00.125 INFO  [http-nio-8080-exec-2] c.e.h.config.LoggingInterceptor         : Request End: GET /api/users/999 - Status: 404 - Duration: 25ms
+```
+
+---
 
 ## 🎨 チャレンジ課題
 
-### 課題1: 構造化ログ（JSON形式）
+### チャレンジ 1: 構造化ログ（JSON形式）
 
-ログ解析ツール（ELK Stack、Splunkなど）で処理しやすいJSON形式のログ。
+ログをJSON形式で出力し、外部ツール（Elasticsearch, Splunkなど）で解析しやすくしてください。
 
+**ヒント**:
+
+`pom.xml`に依存関係追加：
 ```xml
 <dependency>
-    <groupId>ch.qos.logback.contrib</groupId>
-    <artifactId>logback-json-classic</artifactId>
-    <version>0.1.5</version>
-</dependency>
-<dependency>
-    <groupId>ch.qos.logback.contrib</groupId>
-    <artifactId>logback-jackson</artifactId>
-    <version>0.1.5</version>
+    <groupId>net.logstash.logback</groupId>
+    <artifactId>logstash-logback-encoder</artifactId>
+    <version>7.4</version>
 </dependency>
 ```
 
+`logback-spring.xml`:
 ```xml
-<!-- logback-spring.xml -->
 <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>logs/application.json</file>
-    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-        <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
-            <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSS</timestampFormat>
-        </layout>
-    </encoder>
+    <file>logs/app.json</file>
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder" />
 </appender>
 ```
 
-### 課題2: MDC（Mapped Diagnostic Context）でリクエストIDを追加
+---
+
+### チャレンジ 2: MDC（Mapped Diagnostic Context）
+
+リクエストIDを全ログに含めて、リクエストをトレースしやすくしてください。
+
+**ヒント**:
 
 ```java
 @Component
-@Slf4j
-public class LoggingInterceptor implements HandlerInterceptor {
+public class RequestIdInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String requestId = UUID.randomUUID().toString();
         MDC.put("requestId", requestId);
-        log.info("Request started");
+        response.setHeader("X-Request-ID", requestId);
         return true;
     }
     
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        log.info("Request completed");
         MDC.clear();
     }
 }
 ```
 
+`logback-spring.xml`:
 ```xml
-<!-- logback-spring.xml -->
-<pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n</pattern>
+<pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{requestId}] [%t] %-40.40logger{39} : %m%n</pattern>
 ```
 
-### 課題3: Slack通知
+---
 
-エラー発生時にSlackに通知。
+## 🐛 トラブルシューティング
 
-```java
-@RestControllerAdvice
-@RequiredArgsConstructor
-@Slf4j
-public class GlobalExceptionHandler {
-    
-    private final SlackNotifier slackNotifier;
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleException(Exception ex) {
-        log.error("予期しないエラーが発生しました", ex);
-        
-        // Slackに通知
-        slackNotifier.sendError(
-            "予期しないエラー",
-            ex.getMessage(),
-            ExceptionUtils.getStackTrace(ex)
-        );
-        
-        return ResponseEntity.status(500).body(new ErrorResponse("Internal Server Error"));
-    }
-}
+### エラー 1: "Cannot resolve symbol 'log'"
+
+**原因**: Lombokの`@Slf4j`が認識されていない
+
+**解決策**: Lombokのアノテーション処理を有効化
+
+---
+
+### エラー 2: "ログファイルが作成されない"
+
+**原因**: ディレクトリの書き込み権限がない
+
+**解決策**: `logging.file.name`を書き込み可能なパスに変更
+
+```yaml
+logging:
+  file:
+    name: ./logs/app.log  # カレントディレクトリのlogsフォルダ
 ```
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ ログレベル（TRACE、DEBUG、INFO、WARN、ERROR）の使い分け
-- ✅ `@Slf4j`を使った簡潔なログ実装
-- ✅ プレースホルダー`{}`によるパフォーマンス向上
-- ✅ 例外のスタックトレースの記録方法
-- ✅ `application.yml`でのログ設定（レベル、ファイル出力）
-- ✅ `logback-spring.xml`での詳細なカスタマイズ
-- ✅ 環境別のログ設定（開発/本番）
-- ✅ Interceptorを使ったリクエスト/レスポンスログ
-- ✅ AOPによるメソッド実行時間の計測
-- ✅ MDC（Mapped Diagnostic Context）でリクエストIDの追加
-
-**ロギングのベストプラクティス**:
-- 個人情報（パスワード等）をログに出力しない
-- プレースホルダーを使って効率的にログ出力
-- 環境に応じてログレベルを調整
-- ファイルローテーションで容量を管理
-- 本番環境では構造化ログ（JSON）を検討
+- ✅ **SLF4J + Logback**: Spring Bootの標準ロギングフレームワーク
+- ✅ **ログレベル**: TRACE, DEBUG, INFO, WARN, ERROR
+- ✅ **`@Slf4j`**: Lombokによるロガー自動生成
+- ✅ **ログ設定**: application.ymlとlogback-spring.xml
+- ✅ **環境別設定**: 開発環境と本番環境でログレベルを切り替え
+- ✅ **ログローテーション**: ファイルサイズ・日付によるローテーション
+- ✅ **リクエストログ**: インターセプターでリクエスト/レスポンスを記録
 
 ---
 
-## 🐛 トラブルシューティング
+## 💡 補足: ログのベストプラクティス
 
-### エラー: ログが出力されない
-
-**原因**: ログレベルが高すぎる、またはロガー名が間違っている
-
-**解決策**:
-```yaml
-# application.yml
-logging:
-  level:
-    # ✅ パッケージ名を正確に指定
-    com.example.hellospringboot: DEBUG  # プロジェクトのパッケージ
-    root: INFO  # デフォルトレベル
-```
+### 1. ログレベルの使い分け
 
 ```java
-// ✅ @Slf4jを使う（推奨）
-@Slf4j
-@Service
-public class UserService {
-    public void method() {
-        log.debug("Debug message");  // logging.level.com.example.hellospringboot=DEBUG以上で出力
-    }
+// ✅ 良い例
+log.debug("User search query: {}", query);          // デバッグ情報
+log.info("User logged in: {}", username);           // 通常の操作
+log.warn("Deprecated API used: {}", apiName);       // 警告
+log.error("Failed to send email", exception);       // エラー
+
+// ❌ 悪い例
+log.info("x = {}, y = {}, z = {}", x, y, z);        // 過剰な詳細（DEBUGにすべき）
+log.error("User not found");                        // エラーでなくWARN
+```
+
+---
+
+### 2. プレースホルダーを使う
+
+```java
+// ✅ 良い例
+log.info("User created: {}", user.getName());
+
+// ❌ 悪い例（文字列連結はパフォーマンスに影響）
+log.info("User created: " + user.getName());
+```
+
+---
+
+### 3. 例外をログに含める
+
+```java
+// ✅ 良い例
+try {
+    userService.createUser(request);
+} catch (Exception e) {
+    log.error("Failed to create user", e);  // スタックトレースも記録
+    throw e;
+}
+
+// ❌ 悪い例（例外情報が失われる）
+try {
+    userService.createUser(request);
+} catch (Exception e) {
+    log.error("Failed to create user");
 }
 ```
 
-### エラー: "SLF4J: Failed to load class org.slf4j.impl.StaticLoggerBinder"
+---
 
-**原因**: SLF4Jの実装（Logback）が見つからない
+## 📖 参考資料
 
-**解決策**:
-Spring Boot Starterを使っていれば自動的に含まれています。手動で追加した場合：
-```xml
-<dependency>
-    <groupId>ch.qos.logback</groupId>
-    <artifactId>logback-classic</artifactId>
-</dependency>
-```
+### 公式ドキュメント
 
-### 問題: ログファイルが肥大化する
-
-**原因**: ログローテーションが設定されていない
-
-**解決策**:
-```yaml
-# application.yml
-logging:
-  file:
-    name: logs/app.log
-  logback:
-    rollingpolicy:
-      max-file-size: 10MB  # ファイルサイズが10MBを超えたらローテーション
-      max-history: 30  # 30日分保持
-      total-size-cap: 1GB  # 合計1GBまで
-```
-
-### 問題: パスワードやトークンがログに出力されてしまう
-
-**原因**: オブジェクト全体をログ出力している
-
-**解決策**:
-```java
-// ❌ NG: オブジェクトをそのまま出力
-log.info("User created: {}", user);  // パスワードも出力される
-
-// ✅ OK: 必要な情報だけ出力
-log.info("User created: id={}, name={}", user.getId(), user.getName());
-
-// ✅ OK: DTOにtoString()をカスタマイズ（Lombokの場合）
-@ToString(exclude = {"password"})  // パスワードをtoString()から除外
-public class User {
-    private String name;
-    private String password;
-}
-```
-
-### 問題: 本番環境でDEBUGログが出すぎる
-
-**原因**: 環境別の設定がされていない
-
-**解決策**:
-```yaml
-# application-dev.yml（開発環境）
-logging:
-  level:
-    com.example.hellospringboot: DEBUG
-
-# application-prod.yml（本番環境）
-logging:
-  level:
-    com.example.hellospringboot: INFO  # 本番はINFO以上
-    root: WARN
-```
-
-### 問題: どのログレベルを使うべきかわからない
-
-**ログレベルの使い分け**:
-
-| レベル | 用途 | 例 |
-|--------|------|-----|
-| **ERROR** | エラー発生、処理継続不可 | `log.error("Failed to save user", e)` |
-| **WARN** | 警告、処理は継続可能 | `log.warn("Deprecated API called")` |
-| **INFO** | 重要な処理の記録 | `log.info("User registered: id={}", userId)` |
-| **DEBUG** | 開発時のデバッグ情報 | `log.debug("Query result: {}", result)` |
-| **TRACE** | 非常に詳細な情報 | `log.trace("Entering method with params: {}", params)` |
-
-**迷ったら**:
-- 本番環境で必要な情報 → INFO
-- 開発時のみ必要 → DEBUG
-- エラー → ERROR（例外も一緒にログ出力）
+- [Spring Boot - Logging](https://docs.spring.io/spring-boot/reference/features/logging.html)
+- [Logback Documentation](https://logback.qos.ch/documentation.html)
+- [SLF4J Manual](https://www.slf4j.org/manual.html)
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 🎉 Phase 4 完了！
 
-Phase 4の学習が完了しました！進捗を記録してレビューを受けましょう：
+おめでとうございます！Phase 4「アーキテクチャとベストプラクティス」を完了しました。
 
-```bash
-# 変更をステージング
-git add .
-
-# コミット
-git commit -m "Step 20: ロギング完了 - Phase 4完了"
-
-# リモートにプッシュ
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+**このPhaseで学んだこと**:
+- ✅ レイヤー化アーキテクチャ（Controller/Service/Repository）
+- ✅ 依存性注入（DI）とIoCコンテナ
+- ✅ 例外ハンドリング（`@ControllerAdvice`, カスタム例外）
+- ✅ バリデーション（Jakarta Bean Validation, カスタムバリデーター）
+- ✅ DTOとEntityの分離（MapStruct）
+- ✅ ロギング（SLF4J + Logback）
 
 ---
 
-## ➡️ 次のステップ
+## ➡️ 次のPhaseへ
 
-おめでとうございます！🎉 **Phase 4: アーキテクチャとベストプラクティス**が完了しました！
+[Phase 5: Thymeleafでサーバーサイドレンダリング](../phase5/STEP_21.md)へ進みましょう！
 
-レビューが完了したら、**[Phase 5: Thymeleafでサーバーサイドレンダリング](../phase5/STEP_21.md)** へ進みましょう！
+次のPhaseでは、Spring BootでWebページを生成するThymeleafテンプレートエンジンを学びます：
 
-Thymeleafテンプレートエンジンを使って、サーバーサイドでHTMLをレンダリングする方法を学びます。
+- Thymeleafの基本構文
+- フォーム送信とバリデーション
+- レイアウトとフラグメント
+- REST APIとの連携
+
+サーバーサイドレンダリングの基礎を習得し、フルスタックなWebアプリケーション開発に挑戦しましょう！

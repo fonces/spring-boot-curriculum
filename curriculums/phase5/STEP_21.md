@@ -2,107 +2,89 @@
 
 ## 🎯 このステップの目標
 
-- Thymeleafテンプレートエンジンの基本を理解する
-- `@Controller`と`@RestController`の違いを学ぶ
-- Modelを使ったデータ渡しを実装する
-- 基本的なテンプレート構文（`th:text`, `th:each`など）を習得する
-- サーバーサイドレンダリングの仕組みを理解する
+- Thymeleafテンプレートエンジンの基本的な仕組みを理解できる
+- Spring BootでThymeleafを使用したHTMLレンダリングができる
+- Thymeleaf式（変数式、選択変数式）を使ったデータバインディングができる
+- 条件分岐とループ処理を使った動的なHTMLを生成できる
 
-**所要時間**: 約2時間
+**所要時間**: 約45分
 
 ---
 
 ## 📋 事前準備
 
-- Phase 1〜4の完了
-- JPAまたはMyBatisでのデータ取得の理解
-- HTMLとCSSの基礎知識
+- [Phase 4](../phase4/STEP_20.md)までのプロジェクトが完成していること
+- Spring Boot 3.5.8の環境が構築済みであること
+- HTMLとCSSの基礎知識があること
 
 ---
 
-## 💡 Thymeleafとは？
+## 🎓 Thymeleafとは
 
-### サーバーサイドレンダリング（SSR）
+### サーバーサイドテンプレートエンジンの必要性
 
-**Thymeleaf**は、サーバー側でHTMLを生成するテンプレートエンジンです。
+**REST APIだけでは不十分な場合**:
+- 管理画面など、JavaScriptフレームワークを使うほどでもないシンプルなUI
+- SEOが重要なWebサイト（サーバーサイドレンダリングが有利）
+- フォーム入力とバリデーションが中心の業務アプリケーション
 
-```
-クライアント → サーバー（Spring Boot + Thymeleaf）
-                ↓
-         データベースからデータ取得
-                ↓
-         HTMLに埋め込んで生成
-                ↓
-クライアント ← 完成したHTML
-```
+**Thymeleafの特徴**:
+- **Natural Templates**: HTMLとして正しい形式（ブラウザで直接開いても表示可能）
+- **Spring統合**: Spring Bootと深く統合され、設定不要で使える
+- **表現力**: 条件分岐、ループ、フラグメントなど豊富な機能
+- **国際化対応**: メッセージプロパティとの連携が簡単
 
-### REST APIとの違い
+### ThymeleafとReact/Vueの比較
 
-| 項目 | REST API | Thymeleaf（SSR） |
-|------|----------|------------------|
-| **レスポンス** | JSON | HTML |
-| **描画場所** | クライアント（JavaScript） | サーバー |
-| **SEO** | 不利 | 有利 |
-| **初回表示** | 遅い（JS読み込み必要） | 速い |
-| **リッチなUI** | 得意（React等） | やや不得意 |
-
-### 使い分け
-
-- **REST API**: SPAアプリ、モバイルアプリ
-- **Thymeleaf**: 管理画面、SEO重視のサイト、シンプルなWebアプリ
+| 観点 | Thymeleaf | React/Vue |
+|---|---|---|
+| レンダリング | サーバーサイド | クライアントサイド |
+| 初期表示速度 | 速い（HTMLが完成済み） | 遅い（JavaScriptが実行必要） |
+| SEO | 有利（クローラーがHTML取得） | 工夫が必要（SSR必須） |
+| リアルタイム性 | 不向き（ページリロード必要） | 得意（仮想DOM更新） |
+| 学習コスト | 低い（HTMLベース） | 高い（JSフレームワーク） |
+| 適用範囲 | 管理画面、フォーム中心 | SPA、リッチなUI |
 
 ---
 
-## 🏗️ 実装手順
+## 🚀 ステップ1: Thymeleafの依存関係追加
 
-### Step 1: Thymeleaf依存関係の追加
+### 1-1. pom.xmlにThymeleafを追加
 
-`pom.xml`に以下を追加:
+`pom.xml`に以下の依存関係を追加します:
 
 ```xml
 <dependencies>
-    <!-- 既存の依存関係 -->
+    <!-- 既存の依存関係... -->
     
     <!-- Thymeleaf -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-thymeleaf</artifactId>
     </dependency>
-    
-    <!-- Thymeleaf Layout Dialect（レイアウト機能） -->
-    <dependency>
-        <groupId>nz.net.ultraq.thymeleaf</groupId>
-        <artifactId>thymeleaf-layout-dialect</artifactId>
-    </dependency>
 </dependencies>
 ```
 
-### Step 2: application.ymlにThymeleaf設定を追加
+### 1-2. 依存関係の説明
 
-```yaml
-spring:
-  # 既存の設定...
-  
-  thymeleaf:
-    # テンプレートの場所
-    prefix: classpath:/templates/
-    suffix: .html
-    # 開発時はキャッシュ無効化（本番はtrue）
-    cache: false
-    # 文字エンコーディング
-    encoding: UTF-8
-    # テンプレートモード
-    mode: HTML
+#### `spring-boot-starter-thymeleaf`
+- Thymeleafテンプレートエンジンの自動設定を有効化
+- デフォルトで`src/main/resources/templates/`配下のHTMLをテンプレートとして認識
+- `.html`拡張子のファイルを自動的にThymeleafテンプレートとして処理
+
+---
+
+## 🚀 ステップ2: 最初のThymeleafテンプレート作成
+
+### 2-1. テンプレートディレクトリ作成
+
+```bash
+mkdir -p src/main/resources/templates
 ```
 
-**設定の意味**:
-- `prefix`: テンプレートファイルの配置場所
-- `suffix`: テンプレートファイルの拡張子
-- `cache: false`: 開発中は変更がすぐ反映されるように
+### 2-2. シンプルなHTMLテンプレート作成
 
-### Step 3: 最初のテンプレートを作成
-
-`src/main/resources/templates/hello.html`:
+`src/main/resources/templates/hello.html`を作成します:
 
 ```html
 <!DOCTYPE html>
@@ -110,117 +92,118 @@ spring:
 <head>
     <meta charset="UTF-8">
     <title>Hello Thymeleaf</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .greeting {
+            background-color: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .info {
+            color: #666;
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello, Thymeleaf!</h1>
-    <p th:text="${message}">デフォルトメッセージ</p>
+    <div class="greeting">
+        <h1>Hello, <span th:text="${name}">Guest</span>!</h1>
+        <p class="info">現在時刻: <span th:text="${currentTime}">2024-01-01 00:00:00</span></p>
+    </div>
 </body>
 </html>
 ```
 
-**ポイント**:
-- `xmlns:th`: Thymeleafの名前空間宣言
-- `th:text="${message}"`: サーバーから渡されたデータを表示
-- タグ内のテキストはプレビュー用（実行時は上書きされる）
+### 2-3. テンプレートの構造解説
 
-### Step 4: Controllerの作成
+#### `xmlns:th="http://www.thymeleaf.org"`
+- Thymeleaf名前空間の宣言
+- `th:*`属性を使用可能にする
+- IDEの補完機能を有効化
 
-`src/main/java/com/example/hellospringboot/controller/HelloController.java`:
+#### `th:text="${name}"`
+- **変数式**: `${...}`でModelに格納されたデータにアクセス
+- `th:text`属性で要素のテキストコンテンツを置換
+- デフォルト値（"Guest"）はThymeleafが処理しない場合に表示される
+
+---
+
+## 🚀 ステップ3: Controllerでテンプレートを返す
+
+### 3-1. ビューを返すController作成
+
+`src/main/java/com/example/hellospringboot/controllers/ViewController.java`を作成します:
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@Controller  // @RestControllerではない！
-public class HelloController {
-    
-    @GetMapping("/hello")
-    public String hello(Model model) {
-        // Modelにデータを追加
-        model.addAttribute("message", "Thymeleafへようこそ！");
-        
-        // テンプレート名を返す（templates/hello.html）
-        return "hello";
-    }
-    
-    @GetMapping("/greet")
-    public String greet(@RequestParam(defaultValue = "ゲスト") String name, Model model) {
-        model.addAttribute("message", "こんにちは、" + name + "さん！");
-        return "hello";
-    }
-}
-```
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-**重要な違い**:
-
-```java
-// REST API（JSONを返す）
-@RestController
-public class ApiController {
-    @GetMapping("/api/data")
-    public Map<String, String> getData() {
-        return Map.of("message", "Hello");  // JSON
-    }
-}
-
-// Thymeleaf（HTMLを返す）
 @Controller
 public class ViewController {
-    @GetMapping("/page")
-    public String getPage(Model model) {
-        model.addAttribute("message", "Hello");
-        return "page";  // HTMLテンプレート名
+    
+    @GetMapping("/hello")
+    public String hello(
+            @RequestParam(defaultValue = "World") String name,
+            Model model) {
+        
+        model.addAttribute("name", name);
+        model.addAttribute("currentTime", 
+            LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        
+        return "hello";  // templates/hello.html を返す
     }
 }
 ```
 
-### Step 5: 動作確認
+### 3-2. コードの解説
 
-アプリケーションを起動して、ブラウザでアクセス:
+#### `@Controller` vs `@RestController`
 
-```
-http://localhost:8080/hello
-```
+| アノテーション | 戻り値の扱い | 用途 |
+|---|---|---|
+| `@Controller` | ビュー名（文字列） → テンプレートレンダリング | HTML画面を返す |
+| `@RestController` | JSON/XMLにシリアライズ | REST API |
 
-**表示されるHTML**:
-```html
-<h1>Hello, Thymeleaf!</h1>
-<p>Thymeleafへようこそ！</p>
-```
+#### `Model model`
+- Spring MVCが提供するデータコンテナ
+- `addAttribute(key, value)`でテンプレートに渡すデータを格納
+- Thymeleafテンプレートで`${key}`として参照可能
 
-パラメータ付きでアクセス:
-```
-http://localhost:8080/greet?name=太郎
-```
-
-**表示**:
-```html
-<p>こんにちは、太郎さん！</p>
-```
+#### `return "hello"`
+- テンプレート名を返す（拡張子`.html`は省略可能）
+- `templates/hello.html`が自動的に選択される
+- `ViewResolver`がテンプレートパスを解決
 
 ---
 
-## 🎨 基本構文の学習
+## 🚀 ステップ4: ユーザー一覧画面の作成
 
-### Step 6: ユーザー一覧ページの作成
+### 4-1. ユーザー一覧テンプレート
 
-`src/main/resources/templates/users/list.html`:
+`src/main/resources/templates/users/list.html`を作成します:
 
 ```html
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ユーザー一覧</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 50px auto;
             padding: 20px;
         }
@@ -241,104 +224,135 @@ http://localhost:8080/greet?name=太郎
         tr:nth-child(even) {
             background-color: #f2f2f2;
         }
-        .info {
-            background-color: #e7f3fe;
-            padding: 10px;
-            border-left: 4px solid #2196F3;
-            margin-bottom: 20px;
+        .no-users {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        .actions a {
+            margin-right: 10px;
+            color: #4CAF50;
+            text-decoration: none;
         }
     </style>
 </head>
 <body>
     <h1>ユーザー一覧</h1>
     
-    <!-- th:if: 条件分岐 -->
-    <div class="info" th:if="${users.isEmpty()}">
-        <p>ユーザーが登録されていません。</p>
+    <div th:if="${users.empty}" class="no-users">
+        <p>ユーザーが登録されていません</p>
     </div>
     
-    <!-- th:unless: 条件分岐（反対） -->
-    <div th:unless="${users.isEmpty()}">
-        <p>登録ユーザー数: <span th:text="${users.size()}">0</span>人</p>
-        
-        <!-- th:each: ループ -->
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>名前</th>
-                    <th>メールアドレス</th>
-                    <th>登録日時</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr th:each="user : ${users}">
-                    <!-- th:text: テキスト表示 -->
-                    <td th:text="${user.id}">1</td>
-                    <td th:text="${user.name}">山田太郎</td>
-                    <td th:text="${user.email}">yamada@example.com</td>
-                    <!-- 日付フォーマット -->
-                    <td th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">
-                        2025-10-29 10:00
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    <table th:unless="${users.empty}">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>名前</th>
+                <th>メールアドレス</th>
+                <th>年齢</th>
+                <th>登録日時</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="user : ${users}">
+                <td th:text="${user.id}">1</td>
+                <td th:text="${user.name}">田中太郎</td>
+                <td th:text="${user.email}">tanaka@example.com</td>
+                <td th:text="${user.age}">25</td>
+                <td th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+            </tr>
+        </tbody>
+    </table>
     
-    <p style="margin-top: 30px;">
-        <a href="/">トップページへ戻る</a>
-    </p>
+    <p>合計: <span th:text="${users.size()}">0</span> 件</p>
 </body>
 </html>
 ```
 
-### Step 7: UserViewController の作成
+### 4-2. テンプレート構文の解説
 
-`src/main/java/com/example/hellospringboot/controller/UserViewController.java`:
+#### `th:if` と `th:unless`
+```html
+<div th:if="${users.empty}">ユーザーなし</div>
+<table th:unless="${users.empty}">...</table>
+```
+- `th:if`: 条件が真の場合に要素を表示
+- `th:unless`: 条件が偽の場合に表示（`th:if`の逆）
+- `${users.empty}`: Listの`isEmpty()`メソッドを呼び出し
+
+#### `th:each`ループ
+```html
+<tr th:each="user : ${users}">
+    <td th:text="${user.id}">1</td>
+</tr>
+```
+- `user : ${users}`: Javaの拡張for文と同じ構文
+- 各要素を`user`変数に格納して繰り返し処理
+- デフォルト値（"1"）はプレビュー時に表示される
+
+#### Thymeleaf式ユーティリティ `#temporals`
+```html
+th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}"
+```
+- `#temporals`: 日付・時刻処理のユーティリティオブジェクト
+- `format()`: LocalDateTimeをフォーマット
+- その他: `#strings`, `#numbers`, `#dates`, `#lists`, `#maps`など
+
+### 4-3. Controller実装
+
+`ViewController.java`に以下を追加します:
 
 ```java
-package com.example.hellospringboot.controller;
+package com.example.hellospringboot.controllers;
 
-import com.example.hellospringboot.entity.User;
-import com.example.hellospringboot.service.UserService;
+import com.example.hellospringboot.dto.UserResponse;
+import com.example.hellospringboot.services.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Controller
-@RequestMapping("/users")
+@RequestMapping("/views")
 @RequiredArgsConstructor
-public class UserViewController {
+public class ViewController {
     
     private final UserService userService;
     
-    // ユーザー一覧
-    @GetMapping
-    public String listUsers(Model model) {
-        List<User> users = userService.getAllUsers();
-        model.addAttribute("users", users);
-        return "users/list";  // templates/users/list.html
+    @GetMapping("/hello")
+    public String hello(
+            @RequestParam(defaultValue = "World") String name,
+            Model model) {
+        
+        model.addAttribute("name", name);
+        model.addAttribute("currentTime", 
+            LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        
+        return "hello";
     }
     
-    // ユーザー詳細
-    @GetMapping("/{id}")
-    public String userDetail(@PathVariable Long id, Model model) {
-        User user = userService.getUserById(id);
-        model.addAttribute("user", user);
-        return "users/detail";  // templates/users/detail.html
+    @GetMapping("/users")
+    public String listUsers(Model model) {
+        List<UserResponse> users = userService.findAll();
+        model.addAttribute("users", users);
+        return "users/list";
     }
 }
 ```
 
-### Step 8: ユーザー詳細ページ
+---
 
-`src/main/resources/templates/users/detail.html`:
+## 🚀 ステップ5: 詳細画面とリンク
+
+### 5-1. ユーザー詳細テンプレート
+
+`src/main/resources/templates/users/detail.html`を作成します:
 
 ```html
 <!DOCTYPE html>
@@ -349,22 +363,15 @@ public class UserViewController {
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 600px;
+            max-width: 800px;
             margin: 50px auto;
             padding: 20px;
         }
-        .user-card {
+        .card {
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
-            background-color: #f9f9f9;
-        }
-        .user-card h2 {
-            margin-top: 0;
-            color: #333;
-        }
-        .user-info {
-            margin: 15px 0;
+            margin-bottom: 20px;
         }
         .label {
             font-weight: bold;
@@ -375,403 +382,286 @@ public class UserViewController {
         .value {
             color: #333;
         }
-        .back-link {
-            display: inline-block;
-            margin-top: 20px;
-            color: #4CAF50;
-            text-decoration: none;
+        .row {
+            margin-bottom: 10px;
         }
-        .back-link:hover {
-            text-decoration: underline;
+        .actions {
+            margin-top: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <div class="user-card">
-        <!-- th:text="${user.name}" でデータを表示 -->
-        <h2 th:text="${user.name}">ユーザー名</h2>
-        
-        <div class="user-info">
+    <h1>ユーザー詳細</h1>
+    
+    <div class="card">
+        <div class="row">
             <span class="label">ID:</span>
             <span class="value" th:text="${user.id}">1</span>
         </div>
-        
-        <div class="user-info">
-            <span class="label">メール:</span>
-            <!-- th:href でリンクを動的生成 -->
-            <a th:href="'mailto:' + ${user.email}" 
-               th:text="${user.email}">
-                email@example.com
-            </a>
+        <div class="row">
+            <span class="label">名前:</span>
+            <span class="value" th:text="${user.name}">田中太郎</span>
         </div>
-        
-        <div class="user-info">
+        <div class="row">
+            <span class="label">メールアドレス:</span>
+            <span class="value" th:text="${user.email}">tanaka@example.com</span>
+        </div>
+        <div class="row">
+            <span class="label">年齢:</span>
+            <span class="value" th:text="${user.age}">25</span>
+        </div>
+        <div class="row">
             <span class="label">登録日時:</span>
-            <span class="value" 
-                  th:text="${#temporals.format(user.createdAt, 'yyyy年MM月dd日 HH:mm:ss')}">
-                2025-10-29 10:00:00
-            </span>
+            <span class="value" th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm:ss')}">2024-01-01 12:00:00</span>
         </div>
-        
-        <div class="user-info">
+        <div class="row">
             <span class="label">更新日時:</span>
-            <span class="value" 
-                  th:text="${#temporals.format(user.updatedAt, 'yyyy年MM月dd日 HH:mm:ss')}">
-                2025-10-29 10:00:00
-            </span>
+            <span class="value" th:text="${#temporals.format(user.updatedAt, 'yyyy-MM-dd HH:mm:ss')}">2024-01-01 12:00:00</span>
         </div>
     </div>
     
-    <!-- th:href="@{...}" でURLを生成 -->
-    <a th:href="@{/users}" class="back-link">← ユーザー一覧へ戻る</a>
+    <div class="actions">
+        <a th:href="@{/views/users}" class="btn">一覧に戻る</a>
+    </div>
 </body>
 </html>
 ```
 
----
+### 5-2. リンク式の解説
 
-## 🎯 主要な構文まとめ
+#### `th:href="@{...}"`
+```html
+<a th:href="@{/views/users}">一覧に戻る</a>
+<a th:href="@{/views/users/{id}(id=${user.id})}">詳細</a>
+```
+- `@{...}`: **リンク式**（URL構築）
+- コンテキストパスを自動的に付与
+- パスパラメータ: `{id}` でプレースホルダー、`(id=${user.id})`で値を渡す
+- クエリパラメータ: `@{/users(name=${name}, age=${age})}`
 
-### 1. テキスト表示
+### 5-3. 一覧画面にリンクを追加
+
+`users/list.html`の`<tr>`を以下のように修正します:
 
 ```html
-<!-- 基本 -->
-<p th:text="${message}">デフォルト</p>
-
-<!-- HTML エスケープなし（危険！XSS対策で通常は使わない） -->
-<p th:utext="${htmlContent}"></p>
-
-<!-- インライン記法 -->
-<p>こんにちは、[[${name}]]さん！</p>
+<tbody>
+    <tr th:each="user : ${users}">
+        <td th:text="${user.id}">1</td>
+        <td>
+            <a th:href="@{/views/users/{id}(id=${user.id})}" 
+               th:text="${user.name}">田中太郎</a>
+        </td>
+        <td th:text="${user.email}">tanaka@example.com</td>
+        <td th:text="${user.age}">25</td>
+        <td th:text="${#temporals.format(user.createdAt, 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+    </tr>
+</tbody>
 ```
 
-### 2. 属性の設定
+### 5-4. Controller実装
 
-```html
-<!-- href属性 -->
-<a th:href="@{/users/{id}(id=${user.id})}">詳細</a>
-<!-- 結果: <a href="/users/123">詳細</a> -->
+`ViewController.java`に詳細画面メソッドを追加します:
 
-<!-- src属性 -->
-<img th:src="@{/images/logo.png}" alt="ロゴ">
-
-<!-- class属性 -->
-<div th:class="${isActive} ? 'active' : 'inactive'">...</div>
-
-<!-- 複数の属性 -->
-<input type="text" th:value="${user.name}" th:readonly="${readOnly}">
-```
-
-### 3. 条件分岐
-
-```html
-<!-- th:if -->
-<p th:if="${user != null}">ユーザーが存在します</p>
-
-<!-- th:unless（ifの反対） -->
-<p th:unless="${users.isEmpty()}">ユーザーがいます</p>
-
-<!-- 三項演算子 -->
-<p th:text="${age >= 20} ? '成人' : '未成年'"></p>
-
-<!-- th:switch -->
-<div th:switch="${user.role}">
-    <p th:case="'ADMIN'">管理者</p>
-    <p th:case="'USER'">一般ユーザー</p>
-    <p th:case="*">その他</p>
-</div>
-```
-
-### 4. ループ
-
-```html
-<!-- 基本的なループ -->
-<tr th:each="user : ${users}">
-    <td th:text="${user.name}"></td>
-</tr>
-
-<!-- インデックス付き -->
-<tr th:each="user, stat : ${users}">
-    <td th:text="${stat.index}"></td>  <!-- 0から -->
-    <td th:text="${stat.count}"></td>  <!-- 1から -->
-    <td th:text="${user.name}"></td>
-    <td th:if="${stat.first}">最初</td>
-    <td th:if="${stat.last}">最後</td>
-    <td th:if="${stat.even}">偶数行</td>
-</tr>
-```
-
-### 5. URL生成
-
-```html
-<!-- 基本 -->
-<a th:href="@{/users}">ユーザー一覧</a>
-
-<!-- パスパラメータ -->
-<a th:href="@{/users/{id}(id=${user.id})}">詳細</a>
-<!-- 結果: /users/123 -->
-
-<!-- クエリパラメータ -->
-<a th:href="@{/search(keyword=${keyword}, page=1)}">検索</a>
-<!-- 結果: /search?keyword=test&page=1 -->
-
-<!-- 複合 -->
-<a th:href="@{/users/{id}/edit(id=${user.id}, mode='edit')}">編集</a>
-<!-- 結果: /users/123/edit?mode=edit -->
-```
-
-### 6. フォーム
-
-```html
-<form th:action="@{/users}" method="post">
-    <input type="text" name="name" th:value="${user.name}">
-    <button type="submit">送信</button>
-</form>
+```java
+@GetMapping("/users/{id}")
+public String userDetail(@PathVariable Long id, Model model) {
+    UserResponse user = userService.findById(id);
+    model.addAttribute("user", user);
+    return "users/detail";
+}
 ```
 
 ---
 
 ## ✅ 動作確認
 
-### 1. ユーザー一覧ページ
+### 1. アプリケーションの起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+### 2. Hello画面の確認
 
 ブラウザで以下にアクセス:
 ```
-http://localhost:8080/users
+http://localhost:8080/views/hello
+http://localhost:8080/views/hello?name=Taro
 ```
 
-### 2. ユーザー詳細ページ
+**期待される結果**:
+- デフォルト: "Hello, World!"
+- クエリパラメータ付き: "Hello, Taro!"
+- 現在時刻が表示される
+
+### 3. ユーザー一覧画面の確認
 
 ```
-http://localhost:8080/users/1
+http://localhost:8080/views/users
 ```
 
-### 3. デベロッパーツールで確認
+**期待される結果**:
+- データベースのユーザーが一覧表示される
+- 名前がクリック可能なリンクになっている
 
-ブラウザのデベロッパーツール（F12）で、以下を確認:
-- HTMLが正しく生成されているか
-- Thymeleaf属性（`th:*`）は削除されているか
-- データが正しく埋め込まれているか
+### 4. ユーザー詳細画面の確認
+
+一覧画面から任意のユーザー名をクリック:
+```
+http://localhost:8080/views/users/1
+```
+
+**期待される結果**:
+- 選択したユーザーの詳細情報が表示される
+- 日時がフォーマットされている
+- 「一覧に戻る」リンクで一覧画面に戻れる
 
 ---
 
-## 🔍 よくある間違い
+## 🎨 チャレンジ課題
 
-### ❌ 間違い1: @RestControllerを使用
+### チャレンジ 1: 検索フォーム追加
 
-```java
-@RestController  // ← これだとJSONが返る！
-public class UserController {
-    @GetMapping("/users")
-    public String listUsers(Model model) {
-        return "users/list";  // "users/list" という文字列が返る
-    }
-}
-```
+ユーザー一覧画面に名前検索フォームを追加してみましょう。
 
-### ✅ 正解: @Controllerを使用
-
-```java
-@Controller  // ← HTMLを返す
-public class UserController {
-    @GetMapping("/users")
-    public String listUsers(Model model) {
-        return "users/list";  // templates/users/list.html が返る
-    }
-}
-```
-
-### ❌ 間違い2: テンプレートの場所が違う
-
-```
-src/main/resources/static/users/list.html  ← 静的ファイル用（間違い）
-```
-
-### ✅ 正解: templatesディレクトリ
-
-```
-src/main/resources/templates/users/list.html  ← Thymeleaf用（正解）
-```
-
-### ❌ 間違い3: 名前空間の宣言忘れ
-
+**ヒント**:
 ```html
-<!DOCTYPE html>
-<html>  <!-- xmlns:th がない -->
-<body>
-    <p th:text="${message}">...</p>  <!-- IDEで警告が出る -->
-</body>
-</html>
+<form method="get" th:action="@{/views/users}">
+    <input type="text" name="name" placeholder="名前で検索">
+    <button type="submit">検索</button>
+</form>
 ```
 
-### ✅ 正解: 名前空間を宣言
+Controllerで`@RequestParam`を受け取り、ServiceのsearchByNameメソッドを呼び出します。
 
+### チャレンジ 2: 条件付きスタイル
+
+年齢が30歳以上のユーザーを別の色で表示してみましょう。
+
+**ヒント**:
 ```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<body>
-    <p th:text="${message}">...</p>
-</body>
-</html>
+<td th:text="${user.age}" 
+    th:classappend="${user.age >= 30} ? 'senior' : ''">25</td>
 ```
 
----
+### チャレンジ 3: ページネーション
 
-## 📝 理解度チェック
+ユーザーが多い場合にページネーションを実装してみましょう。
 
-1. **`@Controller`と`@RestController`の違いは何ですか？**
-2. **Modelオブジェクトの役割は何ですか？**
-3. **`th:text`と`th:utext`の違いは何ですか？**
-4. **`@{...}`記法は何のために使いますか？**
-5. **テンプレートファイルはどこに配置しますか？**
-
----
-
-## 💡 ベストプラクティス
-
-1. **セキュリティ**: `th:text`を使う（`th:utext`は避ける）
-2. **可読性**: HTMLは静的にも見やすくする
-3. **テンプレート名**: 階層構造を活用（users/list.html）
-4. **エラーハンドリング**: null チェックを忘れずに
-5. **キャッシュ**: 開発中は`cache: false`、本番は`true`
-
----
-
-## 📚 このステップで学んだこと
-
-このステップでは、Thymeleaf基礎について学びました：
-
-- ✅ Thymeleafの基本概念とSpring Bootでの統合
-- ✅ Thymeleafのテンプレート構文（th:text, th:attr等）
-- ✅ Controllerから@Modelでデータをビューに渡す
-- ✅ テンプレートファイルの配置場所（resources/templates）
-- ✅ 条件分岐（th:if）と繰り返し（th:each）
-- ✅ フォームとの連携（th:action, th:field）
+**ヒント**:
+- Spring Data JPAの`Pageable`を使用
+- Thymeleafで`th:each="i : ${#numbers.sequence(1, totalPages)}"`でページ番号生成
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "Error resolving template [users/list], template might not exist"
+### エラー: "Error resolving template"
 
-**原因**: テンプレートファイルが見つからない、またはパスが間違っている
+**原因**: テンプレートファイルが見つからない
 
 **解決策**:
-1. ファイルが`src/main/resources/templates/`以下にあるか確認
-2. Controllerの戻り値とファイル名が一致しているか確認
+1. ファイルが`src/main/resources/templates/`配下にあるか確認
+2. ファイル名の拡張子が`.html`か確認
+3. Controllerの返すビュー名とファイル名が一致しているか確認
+
 ```java
-// ❌ NG
-return "user/list";  // ファイル: templates/users/list.html
-
-// ✅ OK
-return "users/list";  // ファイル: templates/users/list.html
-```
-3. 拡張子`.html`はControllerの戻り値に含めない
-
-### エラー: "Exception evaluating SpringEL expression"
-
-**原因**: Thymeleaf式の構文エラー、またはnullオブジェクトへのアクセス
-
-**解決策**:
-```html
-<!-- ❌ NG: userがnullの場合エラー -->
-<p th:text="${user.name}"></p>
-
-<!-- ✅ OK: Safe Navigation Operator使用 -->
-<p th:text="${user?.name}"></p>
-
-<!-- ✅ OK: 条件分岐で回避 -->
-<p th:if="${user != null}" th:text="${user.name}"></p>
-
-<!-- ✅ OK: デフォルト値を設定 -->
-<p th:text="${user?.name ?: 'Unknown'}"></p>
+// NG: return "user"; → templates/user.html を探す
+// OK: return "users/list"; → templates/users/list.html を探す
 ```
 
-### エラー: ブラウザに`${user.name}`がそのまま表示される
+### エラー: "PropertyNotFoundException: Property 'name' not found"
 
-**原因**: Thymeleafが動作していない、またはテンプレートエンジンの設定ミス
+**原因**: Modelに`name`属性が追加されていない
 
 **解決策**:
-1. `spring-boot-starter-thymeleaf`の依存関係を確認
-2. `@Controller`を使う（`@RestController`では動作しない）
 ```java
-// ❌ NG: @RestControllerはJSON返却
-@RestController
-public class UserController {
-    @GetMapping("/users")
-    public String list() {
-        return "users/list";  // "users/list"という文字列が返る
-    }
-}
-
-// ✅ OK: @Controllerでビューを返す
-@Controller
-public class UserController {
-    @GetMapping("/users")
-    public String list() {
-        return "users/list";  // templates/users/list.htmlをレンダリング
-    }
+@GetMapping("/hello")
+public String hello(Model model) {
+    // 必ずModelに値を追加
+    model.addAttribute("name", "World");
+    return "hello";
 }
 ```
 
-### 問題: 変更したHTMLが反映されない
+### エラー: テンプレートが真っ白で表示されない
 
-**原因**: Thymeleafのキャッシュが有効になっている
+**原因**: `@RestController`を使用している（JSON化される）
 
 **解決策**:
-```yaml
-# application.yml（開発環境）
-spring:
-  thymeleaf:
-    cache: false  # キャッシュを無効化
+```java
+// NG: @RestController
+@Controller  // OK: ビューを返す場合は@Controller
+public class ViewController {
+    // ...
+}
 ```
 
-または、アプリケーションを再起動してブラウザのキャッシュをクリア（`Ctrl + Shift + R`）
+### 警告: Thymeleaf式の自動補完が効かない
 
-### 問題: CSSやJavaScriptが読み込まれない
-
-**原因**: 静的リソースのパスが間違っている
+**原因**: `xmlns:th`名前空間の宣言がない
 
 **解決策**:
 ```html
-<!-- ❌ NG: 絶対パス -->
-<link rel="stylesheet" href="/static/css/style.css">
-
-<!-- ✅ OK: Thymeleafのth:hrefを使用 -->
-<link rel="stylesheet" th:href="@{/css/style.css}">
-
-<!-- ✅ OK: Webjarsを使用 -->
-<link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}">
+<!-- 必ず<html>タグに追加 -->
+<html xmlns:th="http://www.thymeleaf.org">
 ```
 
-静的ファイルは`src/main/resources/static/`以下に配置
+### ページが404エラー
+
+**原因**: URLパスが間違っている
+
+**解決策**:
+1. Controllerの`@GetMapping`と一致しているか確認
+2. コンテキストパスを確認（`server.servlet.context-path`）
+3. 起動ログで"Mapped"を検索してマッピング確認
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 📚 このステップで学んだこと
 
-進捗を記録してレビューを受けましょう：
+- ✅ Thymeleafテンプレートエンジンの基本的な仕組み
+- ✅ `@Controller`でHTMLビューを返す方法
+- ✅ Modelを使ったデータ受け渡し
+- ✅ `th:text`変数式でデータバインディング
+- ✅ `th:if`/`th:unless`で条件分岐
+- ✅ `th:each`でリスト要素の繰り返し処理
+- ✅ `th:href`と`@{...}`でリンク生成
+- ✅ `#temporals`など式ユーティリティの使用
 
-```bash
-git add .
-git commit -m "Step 21: Thymeleafの基礎完了"
-git push origin main
+---
+
+## 💡 補足: Natural Templatesとは
+
+Thymeleafの大きな特徴が**Natural Templates**です:
+
+```html
+<td th:text="${user.name}">田中太郎</td>
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+この書き方により:
+1. **Thymeleaf処理後**: `${user.name}`の値が表示される（例: "山田花子"）
+2. **HTMLとして直接開く**: "田中太郎"が表示される（デザイン確認可能）
+
+他のテンプレートエンジン（JSPなど）では:
+```jsp
+<td><%= user.getName() %></td>  <!-- ブラウザで開くと何も表示されない -->
+```
+
+このため、Thymeleafは**デザイナーとの協業**や**プロトタイプ作成**に適しています。
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 22: フォーム送信とバリデーション](STEP_22.md)へ進みましょう！
+[Step 22: フォーム送信とバリデーション](STEP_22.md)へ進みましょう！
 
-次のStep 22では、**フォーム送信とバリデーション**を学びます:
-- `th:object`と`th:field`でフォームバインディング
-- バリデーションエラーの表示
-- POSTリクエストの処理
-- リダイレクトとフラッシュメッセージ
-
----
-
-お疲れ様でした！🎉 Thymeleafの基礎が理解できたら、次のステップに進みましょう。
+次のステップでは、Thymeleafを使ったフォーム作成、POST送信、バリデーションエラーの表示方法を学びます。

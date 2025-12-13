@@ -2,419 +2,512 @@
 
 ## 🎯 このステップの目標
 
-- Spring Data JPAのページネーション機能を理解する
-- `Pageable`と`Page`を使いこなす
-- ソート機能を実装する
-- カスタムページネーションを作成する
+- `Pageable`を使ってページネーションを実装できる
+- `Page<T>`レスポンスの構造を理解できる
+- ソート機能を追加できる
+- パフォーマンスの良いリストAPIを作成できる
+- フロントエンドと連携できるページネーションAPIを設計できる
 
-**所要時間**: 約1時間30分
-
+**所要時間**: 約40分
 
 ---
-
 
 ## 📋 事前準備
 
-- Step 30が完了していること
-- 複数の環境（開発・本番）の概念を理解していること
-
----
----
-
-## 💡 メール送信のユースケース
-
-- ✉️ ユーザー登録の確認メール
-- 🔑 パスワードリセット
-- 📧 お知らせメール
-- 📊 レポート送信
+- Step 30までの内容を完了していること
+- データベースにユーザーデータが複数件存在していること
+- Spring Data JPAの基本を理解していること
 
 ---
 
-## 🚀 ステップ1: 依存関係の追加
+## 🚀 ステップ1: ページネーションとは
 
-### 1-1. pom.xmlの更新
+### 1-1. ページネーションが必要な理由
 
-```xml
-<!-- Spring Boot Mail -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-mail</artifactId>
-</dependency>
-
-<!-- Thymeleaf（HTMLメールテンプレート用） -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-thymeleaf</artifactId>
-</dependency>
-```
-
----
-
-## 🚀 ステップ2: メール設定
-
-### 2-1. application.ymlの設定
-
-```yaml
-spring:
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: your-email@gmail.com
-    password: your-app-password
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
-
-# カスタム設定
-app:
-  mail:
-    from: noreply@example.com
-    from-name: Spring Boot App
-```
-
-> **注意**: Gmailの場合は「アプリパスワード」を使用してください。
-
----
-
-## 🚀 ステップ3: メールサービス
-
-### 3-1. EmailService
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/service/EmailService.java`
+**問題: すべてのデータを一度に取得すると...**
 
 ```java
-package com.example.hellospringboot.service;
-
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
-
-import java.util.Map;
-
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class EmailService {
-
-    private final JavaMailSender mailSender;
-    private final TemplateEngine templateEngine;
-
-    @Value("${app.mail.from}")
-    private String fromEmail;
-
-    @Value("${app.mail.from-name}")
-    private String fromName;
-
-    /**
-     * シンプルなテキストメールを送信
-     */
-    public void sendSimpleEmail(String to, String subject, String text) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(to);
-        message.setSubject(subject);
-        message.setText(text);
-
-        mailSender.send(message);
-        log.info("テキストメールを送信しました: {}", to);
-    }
-
-    /**
-     * HTMLメールを送信
-     */
-    public void sendHtmlEmail(String to, String subject, String htmlBody) throws MessagingException {
-        MimeMessage message = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-        helper.setFrom(fromEmail, fromName);
-        helper.setTo(to);
-        helper.setSubject(subject);
-        helper.setText(htmlBody, true);
-
-        mailSender.send(message);
-        log.info("HTMLメールを送信しました: {}", to);
-    }
-
-    /**
-     * テンプレートを使ったメール送信
-     */
-    public void sendTemplateEmail(String to, String subject, String templateName, Map<String, Object> variables) 
-            throws MessagingException {
-        Context context = new Context();
-        context.setVariables(variables);
-
-        String htmlBody = templateEngine.process(templateName, context);
-
-        sendHtmlEmail(to, subject, htmlBody);
-        log.info("テンプレートメールを送信しました: {} (template: {})", to, templateName);
-    }
-
-    /**
-     * 非同期でメール送信
-     */
-    @Async
-    public void sendEmailAsync(String to, String subject, String text) {
-        try {
-            sendSimpleEmail(to, subject, text);
-        } catch (Exception e) {
-            log.error("非同期メール送信エラー: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * ウェルカムメールを送信
-     */
-    public void sendWelcomeEmail(String to, String username) throws MessagingException {
-        Map<String, Object> variables = Map.of(
-                "username", username
-        );
-        sendTemplateEmail(to, "ようこそ！", "welcome-email", variables);
-    }
-
-    /**
-     * パスワードリセットメールを送信
-     */
-    public void sendPasswordResetEmail(String to, String resetToken) throws MessagingException {
-        Map<String, Object> variables = Map.of(
-                "resetToken", resetToken,
-                "resetUrl", "http://localhost:8080/reset-password?token=" + resetToken
-        );
-        sendTemplateEmail(to, "パスワードリセット", "password-reset-email", variables);
-    }
+// ❌ 10万件のユーザーを一度に取得
+@GetMapping("/users")
+public List<User> getAllUsers() {
+    return userRepository.findAll();  // メモリ不足、レスポンス遅延
 }
 ```
 
----
+**課題**:
+- メモリ使用量が膨大
+- レスポンスが遅い
+- ネットワーク帯域を圧迫
+- フロントエンドでの表示が困難
 
-## 🚀 ステップ4: メールテンプレート
-
-### 4-1. ウェルカムメールテンプレート
-
-**ファイルパス**: `src/main/resources/templates/welcome-email.html`
-
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ようこそ</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            background-color: #4CAF50;
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }
-        .content {
-            padding: 20px;
-            background-color: #f9f9f9;
-        }
-        .footer {
-            padding: 10px;
-            text-align: center;
-            font-size: 12px;
-            color: #777;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>ようこそ！</h1>
-    </div>
-    <div class="content">
-        <p>こんにちは、<strong th:text="${username}">ユーザー名</strong>さん</p>
-        <p>登録いただきありがとうございます。</p>
-        <p>これからよろしくお願いいたします。</p>
-    </div>
-    <div class="footer">
-        <p>&copy; 2025 Spring Boot App. All rights reserved.</p>
-    </div>
-</body>
-</html>
-```
-
-### 4-2. パスワードリセットメールテンプレート
-
-**ファイルパス**: `src/main/resources/templates/password-reset-email.html`
-
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>パスワードリセット</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            background-color: #2196F3;
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }
-        .content {
-            padding: 20px;
-            background-color: #f9f9f9;
-        }
-        .button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #2196F3;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        .footer {
-            padding: 10px;
-            text-align: center;
-            font-size: 12px;
-            color: #777;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>パスワードリセット</h1>
-    </div>
-    <div class="content">
-        <p>パスワードリセットのリクエストを受け付けました。</p>
-        <p>以下のリンクをクリックしてパスワードを再設定してください。</p>
-        <p>
-            <a th:href="${resetUrl}" class="button">パスワードをリセット</a>
-        </p>
-        <p>または、以下のトークンを使用してください：</p>
-        <p><code th:text="${resetToken}">トークン</code></p>
-        <p><small>このリンクは24時間有効です。</small></p>
-    </div>
-    <div class="footer">
-        <p>&copy; 2025 Spring Boot App. All rights reserved.</p>
-    </div>
-</body>
-</html>
-```
-
----
-
-## 🚀 ステップ5: EmailController
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/EmailController.java`
+**解決: ページネーション**
 
 ```java
-package com.example.hellospringboot.controller;
-
-import com.example.hellospringboot.dto.request.EmailRequest;
-import com.example.hellospringboot.service.EmailService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.mail.MessagingException;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-@RestController
-@RequestMapping("/api/emails")
-@RequiredArgsConstructor
-@Tag(name = "Email", description = "メール送信API")
-public class EmailController {
-
-    private final EmailService emailService;
-
-    @Operation(summary = "シンプルメール送信", description = "テキストメールを送信します")
-    @PostMapping("/send")
-    public ResponseEntity<String> sendEmail(@Valid @RequestBody EmailRequest request) {
-        emailService.sendSimpleEmail(request.getTo(), request.getSubject(), request.getText());
-        return ResponseEntity.ok("メールを送信しました");
-    }
-
-    @Operation(summary = "ウェルカムメール送信", description = "ウェルカムメールを送信します")
-    @PostMapping("/welcome")
-    public ResponseEntity<String> sendWelcomeEmail(
-            @RequestParam String to,
-            @RequestParam String username) throws MessagingException {
-        emailService.sendWelcomeEmail(to, username);
-        return ResponseEntity.ok("ウェルカムメールを送信しました");
-    }
-
-    @Operation(summary = "パスワードリセットメール送信", description = "パスワードリセットメールを送信します")
-    @PostMapping("/password-reset")
-    public ResponseEntity<String> sendPasswordResetEmail(
-            @RequestParam String to,
-            @RequestParam String resetToken) throws MessagingException {
-        emailService.sendPasswordResetEmail(to, resetToken);
-        return ResponseEntity.ok("パスワードリセットメールを送信しました");
-    }
+// ✅ 10件ずつ取得
+@GetMapping("/users")
+public Page<User> getAllUsers(Pageable pageable) {
+    return userRepository.findAll(pageable);  // 必要なデータだけ取得
 }
 ```
 
+**メリット**:
+- メモリ効率が良い
+- レスポンスが速い
+- ユーザー体験の向上
+
 ---
 
-## 🚀 ステップ6: EmailRequest DTO
+## 🚀 ステップ2: ページネーションの基本実装
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/request/EmailRequest.java`
+### 2-1. リポジトリの準備
+
+`UserRepository`は既にページネーションをサポートしています（`JpaRepository`が提供）：
 
 ```java
-package com.example.hellospringboot.dto.request;
+// src/main/java/com/example/hellospringboot/repositories/UserRepository.java
+package com.example.hellospringboot.repositories;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
+import com.example.hellospringboot.entities.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    
+    // JpaRepositoryが提供するページネーションメソッド:
+    // - Page<User> findAll(Pageable pageable)
+    // - Page<User> findByXxx(条件, Pageable pageable)
+}
+```
+
+### 2-2. ページネーション対応のDTOを作成
+
+`src/main/java/com/example/hellospringboot/dto/PageResponse.java`を作成：
+
+```java
+package com.example.hellospringboot.dto;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
+/**
+ * ページネーションレスポンス
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Schema(description = "メール送信リクエスト")
-public class EmailRequest {
+public class PageResponse<T> {
+    
+    /**
+     * コンテンツ（データ本体）
+     */
+    private List<T> content;
+    
+    /**
+     * 現在のページ番号（0始まり）
+     */
+    private int pageNumber;
+    
+    /**
+     * ページサイズ
+     */
+    private int pageSize;
+    
+    /**
+     * 総要素数
+     */
+    private long totalElements;
+    
+    /**
+     * 総ページ数
+     */
+    private int totalPages;
+    
+    /**
+     * 最初のページか
+     */
+    private boolean first;
+    
+    /**
+     * 最後のページか
+     */
+    private boolean last;
+    
+    /**
+     * 空のページか
+     */
+    private boolean empty;
+    
+    /**
+     * Spring DataのPageオブジェクトから変換
+     */
+    public static <T> PageResponse<T> of(org.springframework.data.domain.Page<T> page) {
+        return PageResponse.<T>builder()
+                .content(page.getContent())
+                .pageNumber(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .first(page.isFirst())
+                .last(page.isLast())
+                .empty(page.isEmpty())
+                .build();
+    }
+}
+```
 
-    @Schema(description = "送信先メールアドレス", example = "user@example.com", required = true)
-    @NotBlank(message = "送信先メールアドレスは必須です")
-    @Email(message = "メールアドレスの形式が正しくありません")
-    private String to;
+### 2-3. UserServiceにページネーション機能を追加
 
-    @Schema(description = "件名", example = "お知らせ", required = true)
-    @NotBlank(message = "件名は必須です")
-    private String subject;
+`src/main/java/com/example/hellospringboot/services/UserService.java`に以下のメソッドを追加：
 
-    @Schema(description = "本文", example = "これはテストメールです", required = true)
-    @NotBlank(message = "本文は必須です")
-    private String text;
+```java
+package com.example.hellospringboot.services;
+
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserResponse;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
+import com.example.hellospringboot.mappers.UserMapper;
+import com.example.hellospringboot.repositories.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserService {
+    
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    
+    /**
+     * 全ユーザー取得（ページネーションなし）
+     */
+    public List<UserResponse> getAllUsers() {
+        log.info("Fetching all users");
+        return userRepository.findAll().stream()
+                .map(UserMapper::toResponse)
+                .toList();
+    }
+    
+    /**
+     * 全ユーザー取得（ページネーションあり）
+     */
+    public Page<UserResponse> getAllUsersPaginated(Pageable pageable) {
+        log.info("Fetching users with pagination: page={}, size={}", 
+                pageable.getPageNumber(), pageable.getPageSize());
+        
+        Page<User> userPage = userRepository.findAll(pageable);
+        return userPage.map(UserMapper::toResponse);
+    }
+    
+    /**
+     * ID指定でユーザー取得
+     */
+    public UserResponse getUserById(Long id) {
+        log.info("Fetching user by id: {}", id);
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        return UserMapper.toResponse(user);
+    }
+    
+    /**
+     * ユーザー作成
+     */
+    @Transactional
+    public UserResponse createUser(UserCreateRequest request) {
+        log.info("Creating user: {}", request.getEmail());
+        
+        User user = User.builder()
+                .name(request.getName())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .build();
+        
+        User saved = userRepository.save(user);
+        return UserMapper.toResponse(saved);
+    }
+    
+    /**
+     * ユーザー更新
+     */
+    @Transactional
+    public UserResponse updateUser(Long id, UserUpdateRequest request) {
+        log.info("Updating user: id={}", id);
+        
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        
+        User updated = userRepository.save(user);
+        return UserMapper.toResponse(updated);
+    }
+    
+    /**
+     * ユーザー削除
+     */
+    @Transactional
+    public void deleteUser(Long id) {
+        log.info("Deleting user: id={}", id);
+        
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        
+        userRepository.delete(user);
+    }
+}
+```
+
+### 2-4. UserControllerにページネーションエンドポイントを追加
+
+`src/main/java/com/example/hellospringboot/controllers/UserController.java`に以下を追加：
+
+```java
+package com.example.hellospringboot.controllers;
+
+import com.example.hellospringboot.dto.PageResponse;
+import com.example.hellospringboot.dto.UserCreateRequest;
+import com.example.hellospringboot.dto.UserResponse;
+import com.example.hellospringboot.dto.UserUpdateRequest;
+import com.example.hellospringboot.services.UserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+@Slf4j
+public class UserController {
+    
+    private final UserService userService;
+    
+    /**
+     * 全ユーザー取得（ページネーションなし）
+     */
+    @GetMapping
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        List<UserResponse> users = userService.getAllUsers();
+        return ResponseEntity.ok(users);
+    }
+    
+    /**
+     * 全ユーザー取得（ページネーションあり）
+     */
+    @GetMapping("/paginated")
+    public ResponseEntity<PageResponse<UserResponse>> getAllUsersPaginated(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "ASC") String sortDirection) {
+        
+        // Sortオブジェクトを作成
+        Sort.Direction direction = Sort.Direction.fromString(sortDirection);
+        Sort sort = Sort.by(direction, sortBy);
+        
+        // Pageableオブジェクトを作成
+        Pageable pageable = PageRequest.of(page, size, sort);
+        
+        // ページネーション実行
+        Page<UserResponse> userPage = userService.getAllUsersPaginated(pageable);
+        
+        // カスタムレスポンスに変換
+        PageResponse<UserResponse> response = PageResponse.of(userPage);
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * ID指定でユーザー取得
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
+        UserResponse user = userService.getUserById(id);
+        return ResponseEntity.ok(user);
+    }
+    
+    /**
+     * ユーザー作成
+     */
+    @PostMapping
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserCreateRequest request) {
+        UserResponse created = userService.createUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+    
+    /**
+     * ユーザー更新
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable Long id,
+            @Valid @RequestBody UserUpdateRequest request) {
+        UserResponse updated = userService.updateUser(id, request);
+        return ResponseEntity.ok(updated);
+    }
+    
+    /**
+     * ユーザー削除
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+```
+
+### 2-5. コードの解説
+
+#### `Pageable`パラメータ
+```java
+public ResponseEntity<PageResponse<UserResponse>> getAllUsersPaginated(
+    @RequestParam(defaultValue = "0") int page,
+    @RequestParam(defaultValue = "10") int size,
+    @RequestParam(defaultValue = "id") String sortBy,
+    @RequestParam(defaultValue = "ASC") String sortDirection)
+```
+- **page**: ページ番号（0始まり）
+- **size**: 1ページあたりの件数
+- **sortBy**: ソート対象のフィールド名
+- **sortDirection**: ソート方向（ASC/DESC）
+
+#### `PageRequest.of()`
+```java
+Pageable pageable = PageRequest.of(page, size, sort);
+```
+- `Pageable`の実装クラス
+- ページ番号、サイズ、ソート条件を指定
+
+#### `Page<T>.map()`
+```java
+Page<User> userPage = userRepository.findAll(pageable);
+return userPage.map(UserMapper::toResponse);
+```
+- `Page`オブジェクトの各要素を変換
+- EntityからDTOへの変換に便利
+
+---
+
+## 🚀 ステップ3: カスタムクエリでのページネーション
+
+### 3-1. UserRepositoryにカスタムクエリを追加
+
+`src/main/java/com/example/hellospringboot/repositories/UserRepository.java`に以下を追加：
+
+```java
+package com.example.hellospringboot.repositories;
+
+import com.example.hellospringboot.entities.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    Optional<User> findByEmail(String email);
+    
+    /**
+     * 名前で検索（部分一致、ページネーションあり）
+     */
+    Page<User> findByNameContaining(String name, Pageable pageable);
+    
+    /**
+     * メールアドレスで検索（部分一致、ページネーションあり）
+     */
+    Page<User> findByEmailContaining(String email, Pageable pageable);
+    
+    /**
+     * JPQL: 名前またはメールアドレスで検索
+     */
+    @Query("SELECT u FROM User u WHERE u.name LIKE %:keyword% OR u.email LIKE %:keyword%")
+    Page<User> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+}
+```
+
+### 3-2. UserServiceに検索機能を追加
+
+`UserService`に以下のメソッドを追加：
+
+```java
+/**
+ * キーワード検索（ページネーションあり）
+ */
+public Page<UserResponse> searchUsers(String keyword, Pageable pageable) {
+    log.info("Searching users with keyword: {}, page={}, size={}", 
+            keyword, pageable.getPageNumber(), pageable.getPageSize());
+    
+    Page<User> userPage = userRepository.searchByKeyword(keyword, pageable);
+    return userPage.map(UserMapper::toResponse);
+}
+
+/**
+ * 名前で検索（ページネーションあり）
+ */
+public Page<UserResponse> findUsersByName(String name, Pageable pageable) {
+    log.info("Finding users by name: {}", name);
+    Page<User> userPage = userRepository.findByNameContaining(name, pageable);
+    return userPage.map(UserMapper::toResponse);
+}
+```
+
+### 3-3. UserControllerに検索エンドポイントを追加
+
+`UserController`に以下を追加：
+
+```java
+/**
+ * キーワード検索（名前またはメールアドレス）
+ */
+@GetMapping("/search")
+public ResponseEntity<PageResponse<UserResponse>> searchUsers(
+        @RequestParam String keyword,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(defaultValue = "id") String sortBy,
+        @RequestParam(defaultValue = "ASC") String sortDirection) {
+    
+    Sort.Direction direction = Sort.Direction.fromString(sortDirection);
+    Sort sort = Sort.by(direction, sortBy);
+    Pageable pageable = PageRequest.of(page, size, sort);
+    
+    Page<UserResponse> userPage = userService.searchUsers(keyword, pageable);
+    PageResponse<UserResponse> response = PageResponse.of(userPage);
+    
+    return ResponseEntity.ok(response);
 }
 ```
 
@@ -422,564 +515,420 @@ public class EmailRequest {
 
 ## ✅ 動作確認
 
-### シンプルメール送信
+### 1. テストデータを準備
+
+まず、複数のユーザーを作成します：
 
 ```bash
-curl -X POST http://localhost:8080/api/emails/send \
+# ユーザー1
+curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "test@example.com",
-    "subject": "テストメール",
-    "text": "これはテストメールです"
+    "name": "Alice Johnson",
+    "email": "alice@example.com",
+    "password": "password123"
   }'
+
+# ユーザー2
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Bob Smith",
+    "email": "bob@example.com",
+    "password": "password123"
+  }'
+
+# ユーザー3
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Charlie Brown",
+    "email": "charlie@example.com",
+    "password": "password123"
+  }'
+
+# ... 合計15人くらい作成
 ```
 
-### ウェルカムメール送信
+### 2. ページネーション（デフォルト設定）
 
 ```bash
-curl -X POST "http://localhost:8080/api/emails/welcome?to=test@example.com&username=山田太郎"
+# 1ページ目（デフォルト: 10件、IDの昇順）
+curl "http://localhost:8080/api/users/paginated"
 ```
 
----
-
-## 💡 補足: Thymeleafテンプレートエンジンの活用
-
-Phase 5でThymeleafの基礎を学習しました。メール送信では、**HTMLメールテンプレート**としてThymeleafが非常に有効です。
-
-### Thymeleafをメールに使うメリット
-
-1. **再利用性**: テンプレートを使い回せる
-2. **保守性**: HTMLとロジックを分離
-3. **デザイン性**: プロフェッショナルなHTMLメール
-4. **変数バインディング**: 動的なコンテンツ生成
-
-### テンプレート設計のベストプラクティス
-
-#### 1. レイアウトの共通化
-
-**ファイルパス**: `src/main/resources/templates/email/layout.html`
-
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${subject}">メール</title>
-    <style>
-        /* 共通スタイル */
-        body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 0;
-            background-color: #f4f4f4;
-        }
-        .email-container {
-            background-color: white;
-            margin: 20px;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        .content {
-            padding: 30px 20px;
-        }
-        .button {
-            display: inline-block;
-            padding: 12px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white !important;
-            text-decoration: none;
-            border-radius: 5px;
-            margin: 20px 0;
-            font-weight: bold;
-        }
-        .footer {
-            padding: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #777;
-            background-color: #f9f9f9;
-        }
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="email-container">
-        <div class="header">
-            <h1 th:text="${headerTitle}">タイトル</h1>
-        </div>
-        <div class="content" th:insert="~{::content}">
-            <!-- 個別コンテンツがここに挿入される -->
-        </div>
-        <div class="footer">
-            <p>&copy; <span th:text="${#dates.year(#dates.createNow())}">2025</span> Spring Boot App. All rights reserved.</p>
-            <p>
-                <a href="#">利用規約</a> | 
-                <a href="#">プライバシーポリシー</a> | 
-                <a href="#">お問い合わせ</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-```
-
-#### 2. コンポーネント化されたテンプレート
-
-**ファイルパス**: `src/main/resources/templates/email/user-activation.html`
-
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>アカウント有効化</title>
-    <style th:replace="~{email/layout :: style}"></style>
-</head>
-<body>
-    <div class="email-container">
-        <div class="header">
-            <h1>🎉 アカウント有効化</h1>
-        </div>
-        <div class="content">
-            <p>こんにちは、<strong th:text="${username}">ユーザー名</strong>さん</p>
-            
-            <p>アカウント登録ありがとうございます！<br>
-            以下のボタンをクリックしてアカウントを有効化してください。</p>
-            
-            <div style="text-align: center;">
-                <a th:href="${activationUrl}" class="button">
-                    アカウントを有効化する
-                </a>
-            </div>
-            
-            <p style="margin-top: 30px;">
-                <small>ボタンが機能しない場合は、以下のURLをコピーしてブラウザに貼り付けてください：<br>
-                <code th:text="${activationUrl}" style="word-break: break-all;">URL</code></small>
-            </p>
-            
-            <p style="margin-top: 30px; padding: 15px; background-color: #fff3cd; border-left: 4px solid #ffc107;">
-                ⚠️ このリンクは<strong th:text="${expirationHours}">24</strong>時間有効です。<br>
-                心当たりがない場合は、このメールを無視してください。
-            </p>
-        </div>
-        <div class="footer">
-            <p>&copy; 2025 Spring Boot App. All rights reserved.</p>
-        </div>
-    </div>
-</body>
-</html>
-```
-
-#### 3. 条件分岐とループ
-
-**ファイルパス**: `src/main/resources/templates/email/order-confirmation.html`
-
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>ご注文確認</title>
-</head>
-<body>
-    <div class="email-container">
-        <div class="header">
-            <h1>📦 ご注文確認</h1>
-        </div>
-        <div class="content">
-            <p>こんにちは、<strong th:text="${customerName}">お客様名</strong>さん</p>
-            
-            <p>ご注文ありがとうございます。注文番号: <strong th:text="${orderNumber}">ORDER-001</strong></p>
-            
-            <h3>注文内容</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background-color: #f9f9f9;">
-                        <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">商品名</th>
-                        <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">数量</th>
-                        <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">金額</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr th:each="item : ${orderItems}">
-                        <td style="padding: 10px; border-bottom: 1px solid #eee;" th:text="${item.productName}">商品名</td>
-                        <td style="padding: 10px; text-align: center; border-bottom: 1px solid #eee;" th:text="${item.quantity}">1</td>
-                        <td style="padding: 10px; text-align: right; border-bottom: 1px solid #eee;">
-                            ¥<span th:text="${#numbers.formatInteger(item.price, 0, 'COMMA')}">1,000</span>
-                        </td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr th:if="${shippingFee > 0}">
-                        <td colspan="2" style="padding: 10px; text-align: right;">送料:</td>
-                        <td style="padding: 10px; text-align: right;">
-                            ¥<span th:text="${#numbers.formatInteger(shippingFee, 0, 'COMMA')}">500</span>
-                        </td>
-                    </tr>
-                    <tr style="font-weight: bold; font-size: 16px;">
-                        <td colspan="2" style="padding: 10px; text-align: right; border-top: 2px solid #ddd;">合計:</td>
-                        <td style="padding: 10px; text-align: right; border-top: 2px solid #ddd;">
-                            ¥<span th:text="${#numbers.formatInteger(totalAmount, 0, 'COMMA')}">10,500</span>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-            
-            <div style="margin-top: 30px; padding: 15px; background-color: #e8f5e9; border-radius: 5px;">
-                <p style="margin: 0;"><strong>配送先住所:</strong></p>
-                <p style="margin: 5px 0 0 0;" th:text="${shippingAddress}">住所</p>
-            </div>
-            
-            <p style="margin-top: 30px;">発送完了後、追跡番号をお送りいたします。</p>
-        </div>
-        <div class="footer">
-            <p>&copy; 2025 Spring Boot App. All rights reserved.</p>
-        </div>
-    </div>
-</body>
-</html>
-```
-
-### EmailServiceの拡張
-
-```java
-@Service
-@RequiredArgsConstructor
-public class EmailService {
-
-    private final JavaMailSender mailSender;
-    private final TemplateEngine templateEngine;
-
-    /**
-     * アカウント有効化メール送信
-     */
-    public void sendActivationEmail(String to, String username, String activationToken) 
-            throws MessagingException {
-        Map<String, Object> variables = Map.of(
-                "username", username,
-                "activationUrl", "http://localhost:8080/activate?token=" + activationToken,
-                "expirationHours", 24
-        );
-        sendTemplateEmail(to, "アカウント有効化のお願い", "email/user-activation", variables);
+**期待される結果**:
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "name": "Alice Johnson",
+      "email": "alice@example.com"
+    },
+    {
+      "id": 2,
+      "name": "Bob Smith",
+      "email": "bob@example.com"
     }
-
-    /**
-     * 注文確認メール送信
-     */
-    public void sendOrderConfirmationEmail(String to, String customerName, 
-                                          String orderNumber, 
-                                          List<OrderItem> orderItems,
-                                          int shippingFee,
-                                          int totalAmount,
-                                          String shippingAddress) throws MessagingException {
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("customerName", customerName);
-        variables.put("orderNumber", orderNumber);
-        variables.put("orderItems", orderItems);
-        variables.put("shippingFee", shippingFee);
-        variables.put("totalAmount", totalAmount);
-        variables.put("shippingAddress", shippingAddress);
-        
-        sendTemplateEmail(to, "ご注文確認 - " + orderNumber, "email/order-confirmation", variables);
-    }
-
-    /**
-     * テンプレートメール送信（共通メソッド）
-     */
-    private void sendTemplateEmail(String to, String subject, 
-                                  String templateName, 
-                                  Map<String, Object> variables) throws MessagingException {
-        Context context = new Context();
-        context.setVariables(variables);
-
-        String htmlBody = templateEngine.process(templateName, context);
-
-        MimeMessage message = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-        helper.setFrom("noreply@example.com", "Spring Boot App");
-        helper.setTo(to);
-        helper.setSubject(subject);
-        helper.setText(htmlBody, true);
-
-        mailSender.send(message);
-        log.info("テンプレートメールを送信: {} (template: {})", to, templateName);
-    }
+    // ... 最大10件
+  ],
+  "pageNumber": 0,
+  "pageSize": 10,
+  "totalElements": 15,
+  "totalPages": 2,
+  "first": true,
+  "last": false,
+  "empty": false
 }
 ```
 
-### テンプレートテストのベストプラクティス
+### 3. ページ番号とサイズを指定
 
-```java
-@SpringBootTest
-class EmailTemplateTest {
+```bash
+# 2ページ目、1ページあたり5件
+curl "http://localhost:8080/api/users/paginated?page=1&size=5"
+```
 
-    @Autowired
-    private TemplateEngine templateEngine;
-
-    @Test
-    void testWelcomeEmailTemplate() {
-        Context context = new Context();
-        context.setVariable("username", "山田太郎");
-        
-        String html = templateEngine.process("welcome-email", context);
-        
-        assertThat(html).contains("山田太郎");
-        assertThat(html).contains("ようこそ");
+**期待される結果**:
+```json
+{
+  "content": [
+    {
+      "id": 6,
+      "name": "Frank Wilson",
+      "email": "frank@example.com"
     }
-
-    @Test
-    void testActivationEmailTemplate() {
-        Context context = new Context();
-        context.setVariable("username", "田中花子");
-        context.setVariable("activationUrl", "http://localhost:8080/activate?token=abc123");
-        context.setVariable("expirationHours", 24);
-        
-        String html = templateEngine.process("email/user-activation", context);
-        
-        assertThat(html).contains("田中花子");
-        assertThat(html).contains("abc123");
-        assertThat(html).contains("24時間");
-    }
+    // ... 5件
+  ],
+  "pageNumber": 1,
+  "pageSize": 5,
+  "totalElements": 15,
+  "totalPages": 3,
+  "first": false,
+  "last": false,
+  "empty": false
 }
 ```
 
-> **💡 Phase 5の復習**: Thymeleafテンプレートの基本構文（`th:text`, `th:each`, `th:if`など）は[STEP_21](../../phase5/STEP_21.md)で学習しました。メールテンプレートでも同じ構文が使えます！
+### 4. ソート条件を指定
+
+```bash
+# 名前の昇順
+curl "http://localhost:8080/api/users/paginated?sortBy=name&sortDirection=ASC"
+
+# 名前の降順
+curl "http://localhost:8080/api/users/paginated?sortBy=name&sortDirection=DESC"
+
+# メールアドレスの昇順
+curl "http://localhost:8080/api/users/paginated?sortBy=email&sortDirection=ASC"
+```
+
+### 5. 複数条件を組み合わせ
+
+```bash
+# 2ページ目、3件ずつ、名前の降順
+curl "http://localhost:8080/api/users/paginated?page=1&size=3&sortBy=name&sortDirection=DESC"
+```
+
+### 6. キーワード検索
+
+```bash
+# "john"を含むユーザーを検索
+curl "http://localhost:8080/api/users/search?keyword=john&page=0&size=10"
+```
+
+**期待される結果**:
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "name": "Alice Johnson",
+      "email": "alice@example.com"
+    },
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com"
+    }
+  ],
+  "pageNumber": 0,
+  "pageSize": 10,
+  "totalElements": 2,
+  "totalPages": 1,
+  "first": true,
+  "last": true,
+  "empty": false
+}
+```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: 添付ファイル送信
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-MimeMessageHelperを使って添付ファイル付きメールを送信してください。
+### チャレンジ 1: 複数フィールドでのソート
 
-### チャレンジ 2: メール送信履歴
+**目標**: 名前の昇順、同じ名前の場合はメールアドレスの昇順でソート
 
-EmailHistoryエンティティを作成して送信履歴を保存してください。
+**ヒント**:
+```java
+// 複数のソート条件を組み合わせ
+Sort sort = Sort.by(
+    Sort.Order.asc("name"),
+    Sort.Order.asc("email")
+);
+Pageable pageable = PageRequest.of(page, size, sort);
+```
 
-### チャレンジ 3: SendGridの使用
+### チャレンジ 2: 動的なフィルタリング
 
-SendGridを使ったメール送信を実装してください。
+**目標**: 複数の条件を動的に組み合わせて検索
 
----
+**ヒント**:
+```java
+// Specificationを使った動的クエリ
+public interface UserRepository extends JpaRepository<User, Long>, 
+                                        JpaSpecificationExecutor<User> {
+}
 
-## 📚 このステップで学んだこと
+// 動的条件の構築
+Specification<User> spec = (root, query, cb) -> {
+    List<Predicate> predicates = new ArrayList<>();
+    
+    if (name != null) {
+        predicates.add(cb.like(root.get("name"), "%" + name + "%"));
+    }
+    if (email != null) {
+        predicates.add(cb.like(root.get("email"), "%" + email + "%"));
+    }
+    
+    return cb.and(predicates.toArray(new Predicate[0]));
+};
 
-- ✅ Spring Boot Mailの使用
-- ✅ JavaMailSenderによるメール送信
-- ✅ Thymeleafテンプレートエンジン
-- ✅ HTMLメール作成
-- ✅ 非同期メール送信
+Page<User> result = userRepository.findAll(spec, pageable);
+```
+
+### チャレンジ 3: カーソルベースのページネーション
+
+**目標**: オフセットベースではなく、カーソル（ID）ベースのページネーション
+
+**ヒント**:
+```java
+@Query("SELECT u FROM User u WHERE u.id > :cursor ORDER BY u.id ASC")
+List<User> findAfterCursor(@Param("cursor") Long cursor, Pageable pageable);
+
+// 使用例
+List<User> users = userRepository.findAfterCursor(lastSeenId, PageRequest.of(0, 10));
+```
+
+**メリット**:
+- データ追加時にページがズレない
+- 大規模データで高速
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "Page index must not be less than zero"
+### エラー: "No property 'xxx' found for type User"
 
-**原因**: ページ番号が0未満になっている
-
-**解決策**:
-```java
-// ❌ NG: ユーザー入力をそのまま使用
-@GetMapping("/users")
-public String list(@RequestParam(defaultValue = "1") int page, Model model) {
-    Page<User> users = userService.findAll(PageRequest.of(page, 10));  // page=0でもエラー
-}
-
-// ✅ OK: ページ番号を調整（1始まり→0始まり）
-@GetMapping("/users")
-public String list(@RequestParam(defaultValue = "1") int page, Model model) {
-    int pageIndex = Math.max(0, page - 1);  // 1ページ目 → インデックス0
-    Page<User> users = userService.findAll(PageRequest.of(pageIndex, 10));
-    model.addAttribute("currentPage", page);  // ビューには1始まりで渡す
-}
-```
-
-### エラー: ページネーションリンクが正しく動作しない
-
-**原因**: URLパラメータが正しく生成されていない
-
-**解決策**:
-```html
-<!-- ❌ NG: page番号だけ -->
-<a th:href="@{/users(page=${page.number})}">次へ</a>
-
-<!-- ✅ OK: 他のパラメータも保持 -->
-<a th:href="@{/users(
-    page=${page.number + 1},
-    size=${page.size},
-    sort=${sortParam}
-)}">次へ</a>
-
-<!-- ✅ OK: 1始まりに変換 -->
-<a th:href="@{/users(page=${page.number + 2})}">次へ</a>
-<!-- page.numberは0始まりなので、次ページは+2 -->
-```
-
-### 問題: ソート機能が効かない
-
-**原因**: ソートパラメータの形式が間違っている
+**原因**: ソート対象のフィールド名が間違っている
 
 **解決策**:
 ```java
-// ❌ NG: 文字列のソート指定
-@GetMapping("/users")
-public String list(@RequestParam(defaultValue = "id") String sort) {
-    Sort sortBy = Sort.by(sort);  // 昇順のみ
-}
+// ❌ フィールド名が間違っている
+Sort.by("userName")  // UserエンティティにはuserNameフィールドがない
 
-// ✅ OK: 昇順・降順を指定
-@GetMapping("/users")
-public String list(
-    @RequestParam(defaultValue = "id") String sort,
-    @RequestParam(defaultValue = "asc") String direction) {
-    
-    Sort.Direction dir = "desc".equalsIgnoreCase(direction) 
-        ? Sort.Direction.DESC 
-        : Sort.Direction.ASC;
-    Sort sortBy = Sort.by(dir, sort);
-    
-    Pageable pageable = PageRequest.of(page, size, sortBy);
-}
+// ✅ 正しいフィールド名
+Sort.by("name")  // Userエンティティのnameフィールド
 ```
 
-### 問題: 大量データでページネーションが遅い
+### ページ番号が範囲外でも200 OKが返る
 
-**原因**: COUNT クエリが重い、またはインデックスがない
+**原因**: Spring Data JPAの仕様（エラーにならない）
 
-**解決策**:
-
-**1. インデックスを追加**
-```sql
-CREATE INDEX idx_users_created_at ON users(created_at);
-CREATE INDEX idx_users_name ON users(name);
-```
-
-**2. COUNTクエリを最適化**
+**対応**:
 ```java
-// MyBatisの場合
-@Select("SELECT * FROM users ORDER BY id LIMIT #{offset}, #{limit}")
-List<User> findWithOffset(@Param("offset") int offset, @Param("limit") int limit);
+Page<User> userPage = userRepository.findAll(pageable);
 
-// 総件数はキャッシュ
-@Cacheable("userCount")
-@Select("SELECT COUNT(*) FROM users")
-long count();
-```
-
-**3. Cursorベースのページネーション（無限スクロール）**
-```java
-@GetMapping("/api/users")
-public List<User> list(@RequestParam(required = false) Long cursor, 
-                       @RequestParam(defaultValue = "20") int size) {
-    if (cursor == null) {
-        return userRepository.findTop(size);
-    } else {
-        return userRepository.findByIdGreaterThan(cursor, PageRequest.of(0, size));
-    }
+if (userPage.isEmpty() && pageable.getPageNumber() > 0) {
+    throw new IllegalArgumentException("Page number out of range");
 }
 ```
 
-### 問題: Thymeleafテンプレートでページネーション情報が取得できない
+### 総件数（totalElements）が遅い
 
-**原因**: Pageオブジェクトをそのまま渡していない
+**原因**: `COUNT(*)`クエリが発行されるため、大規模データでは遅い
 
 **解決策**:
 ```java
-// ✅ PageオブジェクトをModelに追加
-@GetMapping("/users")
-public String list(Pageable pageable, Model model) {
-    Page<User> page = userService.findAll(pageable);
-    model.addAttribute("page", page);  // Pageオブジェクト全体
-    model.addAttribute("users", page.getContent());  // リストのみ
-    return "users/list";
-}
+// Slice<T>を使う（totalElementsを計算しない）
+Slice<User> userSlice = userRepository.findAll(pageable);
+
+// または、カウントクエリを最適化
+@Query(value = "SELECT u FROM User u",
+       countQuery = "SELECT COUNT(u.id) FROM User u")  // 最適化されたCOUNT
+Page<User> findAllOptimized(Pageable pageable);
 ```
 
-```html
-<!-- Thymeleafで利用可能なプロパティ -->
-<p>全 <span th:text="${page.totalElements}"></span> 件</p>
-<p>ページ <span th:text="${page.number + 1}"></span> / <span th:text="${page.totalPages}"></span></p>
+### ソート方向の大文字小文字エラー
 
-<!-- 前へ/次へボタン -->
-<a th:if="${!page.first}" th:href="@{/users(page=${page.number})}">前へ</a>
-<a th:if="${!page.last}" th:href="@{/users(page=${page.number + 2})}">次へ</a>
-```
-
-### 問題: REST APIでページネーションのメタ情報を返したい
-
-**原因**: Contentのみ返している
+**原因**: `Sort.Direction.fromString()`は大文字小文字を区別
 
 **解決策**:
 ```java
-// ❌ NG: リストのみ返す
-@GetMapping("/api/users")
-public List<User> list(Pageable pageable) {
-    return userService.findAll(pageable).getContent();  // メタ情報がない
-}
+// ❌ エラー
+Sort.Direction.fromString("asc")  // 小文字はNG
 
-// ✅ OK: Pageオブジェクトをそのまま返す
-@GetMapping("/api/users")
-public Page<User> list(Pageable pageable) {
-    return userService.findAll(pageable);  // メタ情報も含まれる
-}
+// ✅ 正しい
+Sort.Direction.fromString(sortDirection.toUpperCase())
 
-// ✅ OK: カスタムレスポンスDTOで返す
-@GetMapping("/api/users")
-public PageResponse<UserDto> list(Pageable pageable) {
-    Page<User> page = userService.findAll(pageable);
-    return new PageResponse<>(
-        page.getContent().stream().map(this::toDto).toList(),
-        page.getNumber(),
-        page.getSize(),
-        page.getTotalElements(),
-        page.getTotalPages()
-    );
-}
+// または
+Sort.Direction direction = sortDirection.equalsIgnoreCase("DESC") 
+    ? Sort.Direction.DESC 
+    : Sort.Direction.ASC;
 ```
 
 ---
 
-## 🔄 Gitへのコミットとレビュー依頼
+## 📚 このステップで学んだこと
 
-```bash
-git add .
-git commit -m "Step 31: ページネーション完了"
-git push origin main
+- ✅ `Pageable`インターフェースの使い方
+- ✅ `PageRequest`でページ番号、サイズ、ソートを指定
+- ✅ `Page<T>`レスポンスの構造（content, totalElements, totalPagesなど）
+- ✅ `Page<T>.map()`でEntityからDTOへ変換
+- ✅ カスタムクエリでのページネーション実装
+- ✅ 複数のソート条件の指定
+- ✅ キーワード検索とページネーションの組み合わせ
+- ✅ `@RequestParam`でのデフォルト値設定
+- ✅ カスタムPageResponseの設計
+- ✅ パフォーマンスを考慮したリストAPI設計
+
+---
+
+## 💡 補足: ページネーションのベストプラクティス
+
+### 1. オフセットベース vs カーソルベース
+
+| 種類 | メリット | デメリット | 使用例 |
+|---|---|---|---|
+| **オフセットベース** | シンプル、ページ番号ジャンプ可能 | 大規模データで遅い、データ挿入でズレる | 管理画面、検索結果 |
+| **カーソルベース** | 高速、データ追加に強い | ページ番号ジャンプ不可 | SNSフィード、無限スクロール |
+
+**オフセットベース（Pageable）**:
+```sql
+-- page=2, size=10の場合
+SELECT * FROM users ORDER BY id LIMIT 10 OFFSET 20
 ```
 
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+**カーソルベース**:
+```sql
+-- cursor=100の場合
+SELECT * FROM users WHERE id > 100 ORDER BY id LIMIT 10
+```
+
+### 2. デフォルト値の設定
+
+**推奨設定**:
+```java
+@RequestParam(defaultValue = "0") int page       // 最初のページ
+@RequestParam(defaultValue = "10") int size      // 適度なサイズ
+@RequestParam(defaultValue = "id") String sortBy // 主キーでソート
+```
+
+**サイズの上限を設定**:
+```java
+if (size > 100) {
+    size = 100;  // 最大100件まで
+}
+```
+
+### 3. フロントエンドとの連携
+
+**React例**:
+```javascript
+const fetchUsers = async (page = 0, size = 10) => {
+  const response = await fetch(
+    `http://localhost:8080/api/users/paginated?page=${page}&size=${size}`
+  );
+  const data = await response.json();
+  
+  return {
+    users: data.content,
+    currentPage: data.pageNumber,
+    totalPages: data.totalPages,
+    hasNext: !data.last,
+    hasPrev: !data.first
+  };
+};
+```
+
+### 4. ページネーションレスポンスの標準化
+
+**一貫したレスポンス構造**:
+```json
+{
+  "content": [...],          // データ本体
+  "pageNumber": 0,           // 現在のページ
+  "pageSize": 10,            // ページサイズ
+  "totalElements": 100,      // 総件数
+  "totalPages": 10,          // 総ページ数
+  "first": true,             // 最初のページか
+  "last": false,             // 最後のページか
+  "empty": false             // 空か
+}
+```
+
+### 5. パフォーマンス最適化
+
+**インデックスの作成**:
+```sql
+-- ソート対象のカラムにインデックス
+CREATE INDEX idx_user_name ON users(name);
+CREATE INDEX idx_user_email ON users(email);
+CREATE INDEX idx_user_created_at ON users(created_at);
+```
+
+**N+1問題の回避**:
+```java
+// ❌ N+1問題
+@GetMapping("/users/posts")
+public Page<UserResponse> getUsersWithPosts(Pageable pageable) {
+    Page<User> users = userRepository.findAll(pageable);
+    // 各ユーザーのPostを取得 → N回のクエリ発生
+}
+
+// ✅ フェッチジョイン
+@Query("SELECT u FROM User u LEFT JOIN FETCH u.posts")
+Page<User> findAllWithPosts(Pageable pageable);
+```
+
+### 6. ソートのセキュリティ
+
+**ホワイトリスト方式**:
+```java
+private static final Set<String> ALLOWED_SORT_FIELDS = 
+    Set.of("id", "name", "email", "createdAt");
+
+public Pageable createPageable(int page, int size, String sortBy, String sortDirection) {
+    // ソートフィールドのバリデーション
+    if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+        throw new IllegalArgumentException("Invalid sort field: " + sortBy);
+    }
+    
+    Sort.Direction direction = Sort.Direction.fromString(sortDirection);
+    Sort sort = Sort.by(direction, sortBy);
+    
+    return PageRequest.of(page, size, sort);
+}
+```
 
 ---
 
 ## ➡️ 次のステップ
 
-次は[Step 32: キャッシュ](STEP_32.md)へ進みましょう！
+[Step 32: キャッシュ](STEP_32.md)へ進みましょう！
 
-Spring Cacheを使ったパフォーマンス最適化の基礎を学びます。
-
----
-
-お疲れさまでした！ 🎉
-
-ページネーション機能を習得しました！
+次のステップでは、Spring Cacheを使ってアプリケーションのパフォーマンスを向上させる方法を学びます。`@Cacheable`、`@CacheEvict`などのアノテーションを使って、効率的なキャッシング戦略を実装しましょう。
