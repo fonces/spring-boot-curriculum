@@ -229,6 +229,9 @@ Expected output
 - **ビルドツール**: Maven（Gradleは扱いません）
 - **IDE**: VSCode
 - **JDK**: OpenJDK 21
+- **データベース環境**: Docker Compose（Phase 2以降）
+  - MySQLは**Docker Composeで構築**します
+  - ローカルインストールは使用しません
 
 **Mavenに関する記述の注意点**:
 - Mavenの基本的な使い方（pom.xml、依存関係管理など）は**カリキュラム内で必要に応じて説明**します
@@ -320,6 +323,13 @@ public class HelloController {  // クラス定義
     }
 }
 ```
+
+**ルール**:
+- **ディレクトリ階層**: レイヤー化アーキテクチャを採用する場合（Phase 4以降）は、`controllers/`, `services/`, `repositories/`などのディレクトリで分ける。Phase 3までの基礎学習では、すべてのクラスを`com.example.hellospringboot`直下に配置してシンプルに保つ
+- **パッケージ構成の例**:
+  - Phase 1-3（基礎）: `com.example.hellospringboot.HelloController`
+  - Phase 4-8（実践）: `com.example.hellospringboot.controllers.HelloController`
+
 
 ### 段階的な追加
 

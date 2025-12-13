@@ -12,6 +12,10 @@
 - **Windows環境**: WSL2（Windows Subsystem for Linux 2）上で完結するように記述
   - PowerShellは使用しない
   - 基本的なコマンド例はUnix系（bash）を前提とする
+- **データベース環境**: Docker Composeを使用
+  - MySQL環境は**Docker Composeで構築**する
+  - ローカルインストール（brew install mysql、apt install mysql-serverなど）は**使用しない**
+  - Phase 2のPREPARE.mdでDockerとDocker Composeのセットアップ手順を記載
 - 複数ステップを作成する際は**サブエージェント活用**を推奨
 
 ### コマンド例の記載ルール
@@ -111,7 +115,7 @@ spring-boot-curriculum/
 
 **記載例**:
 - `phase1/PREPARE.md`: Java、Maven、VSCode環境構築
-- `phase2/PREPARE.md`: MySQL環境構築準備
+- `phase2/PREPARE.md`: Docker ComposeによるMySQL環境構築（DockerとDocker Composeのインストール、docker-compose.ymlの作成、コンテナ起動手順）
 - `phase8/PREPARE.md`: 総合演習用のプロジェクト初期設定
 
 各ステップ（STEP_X.md）の「事前準備」セクションでは、必要に応じて該当Phase のPREPARE.mdへのリンクを記載します。
