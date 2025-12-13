@@ -627,7 +627,7 @@ public class ReportController {
 ### 1. ordersテーブルを作成
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot
 ```
 
 ```sql

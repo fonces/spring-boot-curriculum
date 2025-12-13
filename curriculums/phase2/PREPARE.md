@@ -355,16 +355,16 @@ SHOW DATABASES;
 +--------------------+
 | information_schema |
 | performance_schema |
-| spring_boot_db     |
+| hello_spring_boot     |
 +--------------------+
 ```
 
-`spring_boot_db`が作成されていればOKです。
+`hello_spring_boot`が作成されていればOKです。
 
 ### 4-3. データベースを使用
 
 ```sql
-USE spring_boot_db;
+USE hello_spring_boot;
 ```
 
 **期待される結果**:
@@ -455,7 +455,7 @@ docker compose logs -f mysql
   - Port: `3306`
   - Username: `springuser`
   - Password: `springpass`
-  - Default Schema: `spring_boot_db`
+  - Default Schema: `hello_spring_boot`
 
 ### オプション2: DBeaver
 
@@ -483,7 +483,7 @@ VSCode内でMySQLを操作できます。
    - Port: `3306`
    - Username: `springuser`
    - Password: `springpass`
-   - Database: `spring_boot_db`
+   - Database: `hello_spring_boot`
 
 ---
 
@@ -632,10 +632,10 @@ docker compose up -d
 
 ```bash
 # ダンプを作成
-docker compose exec mysql mysqldump -u springuser -pspringpass spring_boot_db > backup.sql
+docker compose exec mysql mysqldump -u springuser -pspringpass hello_spring_boot > backup.sql
 
 # リストア
-docker compose exec -T mysql mysql -u springuser -pspringpass spring_boot_db < backup.sql
+docker compose exec -T mysql mysql -u springuser -pspringpass hello_spring_boot < backup.sql
 ```
 
 ---
@@ -709,7 +709,7 @@ Docker Composeは開発環境向けです。本番環境では以下を検討し
 - [ ] `docker-compose.yml`を作成した
 - [ ] MySQLコンテナが起動している（`docker compose ps`で確認）
 - [ ] `docker compose exec mysql mysql -u springuser -p`でログインできる
-- [ ] データベース`spring_boot_db`が存在する（`SHOW DATABASES;`で確認）
+- [ ] データベース`hello_spring_boot`が存在する（`SHOW DATABASES;`で確認）
 - [ ] `docker compose stop`と`docker compose start`でコンテナを制御できる
 
 ---

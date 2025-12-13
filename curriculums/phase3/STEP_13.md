@@ -71,32 +71,37 @@ List<User> searchByName(@Param("name") String name);
 
 複雑な検索条件を扱うため、専用のDTOを作成します。
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/UserSearchCriteria.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderSearchCriteria.java`
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.mybatis;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserSearchCriteria {
+public class OrderSearchCriteria {
     
-    private String name;
-    private String email;
-    private Integer minAge;
-    private Integer maxAge;
-    private String sortBy;  // "name", "age", "createdAt"など
+    private Long userId;
+    private String status;
+    private BigDecimal minAmount;
+    private BigDecimal maxAmount;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
+    private String sortBy;  // "orderDate", "totalAmount"など
     private String sortOrder;  // "ASC" or "DESC"
 }
 ```
 
-### 1-2. UserMapper.xmlに動的検索クエリを追加
+### 1-2. OrderMapper.xmlに動的検索クエリを追加
 
-**ファイルパス**: `src/main/resources/mapper/UserMapper.xml`
+**ファイルパス**: `src/main/resources/mapper/OrderMapper.xml`
 
 既存のXMLファイルに以下のクエリを追加します：
 
@@ -105,56 +110,60 @@ public class UserSearchCriteria {
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.example.hellospringboot.UserMapper">
+<mapper namespace="com.example.hellospringboot.mybatis.OrderMapper">
 
     <!-- 既存のresultMapとクエリはそのまま -->
-    <resultMap id="UserResultMap" type="User">
+    <resultMap id="OrderResultMap" type="Order">
         <id property="id" column="id"/>
-        <result property="name" column="name"/>
-        <result property="email" column="email"/>
-        <result property="age" column="age"/>
+        <result property="userId" column="user_id"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="status" column="status"/>
+        <result property="orderDate" column="order_date"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <select id="searchByName" resultMap="UserResultMap">
-        SELECT * FROM users
-        WHERE name LIKE CONCAT('%', #{name}, '%')
-        ORDER BY id
+    <select id="findByUserId" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE user_id = #{userId}
+        ORDER BY order_date DESC
     </select>
 
-    <select id="findByAgeGreaterThan" resultMap="UserResultMap">
-        SELECT * FROM users
-        WHERE age &gt; #{age}
-        ORDER BY age DESC
+    <select id="findByStatus" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE status = #{status}
+        ORDER BY order_date DESC
     </select>
 
     <!-- 🆕 動的検索クエリ -->
-    <select id="searchUsers" resultMap="UserResultMap">
-        SELECT * FROM users
+    <select id="searchOrders" resultMap="OrderResultMap">
+        SELECT * FROM orders
         <where>
-            <if test="name != null and name != ''">
-                AND name LIKE CONCAT('%', #{name}, '%')
+            <if test="userId != null">
+                AND user_id = #{userId}
             </if>
-            <if test="email != null and email != ''">
-                AND email LIKE CONCAT('%', #{email}, '%')
+            <if test="status != null and status != ''">
+                AND status = #{status}
             </if>
-            <if test="minAge != null">
-                AND age &gt;= #{minAge}
+            <if test="minAmount != null">
+                AND total_amount &gt;= #{minAmount}
             </if>
-            <if test="maxAge != null">
-                AND age &lt;= #{maxAge}
+            <if test="maxAmount != null">
+                AND total_amount &lt;= #{maxAmount}
+            </if>
+            <if test="startDate != null">
+                AND order_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND order_date &lt;= #{endDate}
             </if>
         </where>
         <choose>
-            <when test="sortBy != null and sortBy == 'name'">
-                ORDER BY name
+            <when test="sortBy != null and sortBy == 'totalAmount'">
+                ORDER BY total_amount
             </when>
-            <when test="sortBy != null and sortBy == 'age'">
-                ORDER BY age
-            </when>
-            <when test="sortBy != null and sortBy == 'createdAt'">
-                ORDER BY created_at
+            <when test="sortBy != null and sortBy == 'orderDate'">
+                ORDER BY order_date
             </when>
             <otherwise>
                 ORDER BY id
@@ -173,15 +182,15 @@ public class UserSearchCriteria {
 #### `<where>` 要素
 ```xml
 <where>
-    <if test="name != null and name != ''">
-        AND name LIKE CONCAT('%', #{name}, '%')
+    <if test="userId != null">
+        AND user_id = #{userId}
     </if>
 </where>
 ```
 
 **役割**:
 - 自動的に`WHERE`句を生成
-- 最初の`AND`を自動削除（`WHERE AND name`→`WHERE name`に）
+- 最初の`AND`を自動削除（`WHERE AND user_id`→`WHERE user_id`に）
 - すべての`<if>`がfalseなら`WHERE`句自体を削除
 
 **なぜ必要か**:
@@ -189,14 +198,14 @@ public class UserSearchCriteria {
 
 #### `<if>` 要素
 ```xml
-<if test="name != null and name != ''">
-    AND name LIKE CONCAT('%', #{name}, '%')
+<if test="status != null and status != ''">
+    AND status = #{status}
 </if>
 ```
 
 **test属性の条件式**:
-- `name != null`: nameがnullでない
-- `name != ''`: nameが空文字でない
+- `status != null`: statusがnullでない
+- `status != ''`: statusが空文字でない
 - `and`: 両方の条件を満たす場合のみ
 
 **動作**:
@@ -206,8 +215,8 @@ public class UserSearchCriteria {
 #### `<choose>`, `<when>`, `<otherwise>`
 ```xml
 <choose>
-    <when test="sortBy == 'name'">
-        ORDER BY name
+    <when test="sortBy == 'totalAmount'">
+        ORDER BY total_amount
     </when>
     <when test="sortBy == 'age'">
         ORDER BY age
@@ -460,7 +469,7 @@ public class Post {
 MySQLコンテナに接続してテーブルを作成します：
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot
 ```
 
 ```sql

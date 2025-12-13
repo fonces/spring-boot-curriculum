@@ -1197,7 +1197,7 @@ curl http://localhost:8080/api/categories/1
 ### 5-5. MySQLで確認
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db -e "SELECT * FROM products;"
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM products;"
 ```
 
 `category_id`カラムが追加され、値が設定されていることを確認してください。

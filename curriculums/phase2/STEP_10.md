@@ -465,7 +465,7 @@ List<Product> method(@Param("minPrice") Integer minPrice);
 **確認**:
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db -e "SHOW VARIABLES LIKE 'character%';"
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SHOW VARIABLES LIKE 'character%';"
 ```
 
 **解決策**: docker-compose.ymlで文字コードを設定（既に設定済みのはず）

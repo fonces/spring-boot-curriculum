@@ -233,7 +233,7 @@ curl http://localhost:8080/api/products/1
 ### 3-5. MySQLで確認
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db \
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot \
   -e "SELECT * FROM products WHERE id = 1;"
 ```
 

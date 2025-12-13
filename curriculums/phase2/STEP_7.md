@@ -366,7 +366,7 @@ Content-Length: 0
 別のターミナルで、データベースを直接確認します：
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db -e "SELECT * FROM products;"
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM products;"
 ```
 
 **期待される結果**:
@@ -646,7 +646,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 MySQLで確認：
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot
 ```
 
 ```sql

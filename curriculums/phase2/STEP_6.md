@@ -411,7 +411,7 @@ docker compose exec mysql mysql -u springuser -p
 **パスワード**: `springpass`
 
 ```sql
-USE spring_boot_db;
+USE hello_spring_boot;
 
 SHOW TABLES;
 ```
@@ -420,7 +420,7 @@ SHOW TABLES;
 
 ```
 +---------------------------+
-| Tables_in_spring_boot_db  |
+| Tables_in_hello_spring_boot  |
 +---------------------------+
 | products                  |
 +---------------------------+
@@ -478,7 +478,7 @@ docker compose exec mysql mysql -u springuser -p
 ```
 
 ```sql
-USE spring_boot_db;
+USE hello_spring_boot;
 
 INSERT INTO products (name, description, price, created_at, updated_at)
 VALUES ('ノートPC', '高性能なノートパソコン', 150000, NOW(), NOW());
@@ -510,7 +510,7 @@ EXIT;
 MySQLで再度確認:
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db -e "SELECT * FROM products;"
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM products;"
 ```
 
 データが保持されていれば成功です！
@@ -567,10 +567,10 @@ docker compose exec mysql mysql -u root -p
 ```
 
 ```sql
-CREATE DATABASE spring_boot_db_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE spring_boot_db_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT ALL PRIVILEGES ON spring_boot_db_dev.* TO 'springuser'@'%';
-GRANT ALL PRIVILEGES ON spring_boot_db_prod.* TO 'springuser'@'%';
+CREATE DATABASE hello_spring_boot_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE hello_spring_boot_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON hello_spring_boot_dev.* TO 'springuser'@'%';
+GRANT ALL PRIVILEGES ON hello_spring_boot_prod.* TO 'springuser'@'%';
 FLUSH PRIVILEGES;
 EXIT;
 ```
@@ -580,7 +580,7 @@ EXIT;
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db_dev
+    url: jdbc:mysql://localhost:3306/hello_spring_boot_dev
 ```
 
 3. `application-prod.yml`を作成:
@@ -588,7 +588,7 @@ spring:
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db_prod
+    url: jdbc:mysql://localhost:3306/hello_spring_boot_prod
   jpa:
     hibernate:
       ddl-auto: validate  # 本番環境では自動作成しない
@@ -642,7 +642,7 @@ JDBC URLに`allowPublicKeyRetrieval=true`を追加:
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Tokyo
+    url: jdbc:mysql://localhost:3306/hello_spring_boot?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Tokyo
 ```
 
 **セキュリティに関する注意**:
@@ -677,7 +677,7 @@ docker compose logs mysql
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db  # ポート番号が正しいか
+    url: jdbc:mysql://localhost:3306/hello_spring_boot  # ポート番号が正しいか
     username: springuser  # ユーザー名が正しいか
     password: springpass  # パスワードが正しいか
 ```
@@ -709,11 +709,11 @@ SHOW GRANTS FOR 'springuser'@'%';
 権限がなければ付与:
 
 ```sql
-GRANT ALL PRIVILEGES ON spring_boot_db.* TO 'springuser'@'%';
+GRANT ALL PRIVILEGES ON hello_spring_boot.* TO 'springuser'@'%';
 FLUSH PRIVILEGES;
 ```
 
-### エラー: "Unknown database 'spring_boot_db'"
+### エラー: "Unknown database 'hello_spring_boot'"
 
 **原因**: データベースが存在しない
 
@@ -723,7 +723,7 @@ docker-compose.ymlの`MYSQL_DATABASE`を確認:
 
 ```yaml
 environment:
-  MYSQL_DATABASE: spring_boot_db
+  MYSQL_DATABASE: hello_spring_boot
 ```
 
 コンテナを再作成:
@@ -740,7 +740,7 @@ docker compose exec mysql mysql -u root -prootpassword
 ```
 
 ```sql
-CREATE DATABASE spring_boot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE hello_spring_boot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 **注意**: Docker Composeで環境変数`MYSQL_DATABASE`を設定していても、コンテナの再作成時にデータベースが作成されないことがあります。その場合は手動で作成してください。
@@ -750,7 +750,7 @@ CREATE DATABASE spring_boot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 **エラーメッセージ**:
 
 ```
-Access denied for user 'springuser'@'%' to database 'spring_boot_db'
+Access denied for user 'springuser'@'%' to database 'hello_spring_boot'
 ```
 
 **原因**: ユーザーにデータベースへのアクセス権限が付与されていない
@@ -761,13 +761,13 @@ MySQLコンテナに接続して権限を付与:
 
 ```bash
 docker exec -it spring-boot-mysql mysql -uroot -prootpassword \
-  -e "GRANT ALL PRIVILEGES ON spring_boot_db.* TO 'springuser'@'%'; FLUSH PRIVILEGES;"
+  -e "GRANT ALL PRIVILEGES ON hello_spring_boot.* TO 'springuser'@'%'; FLUSH PRIVILEGES;"
 ```
 
 または、MySQLコンソールで:
 
 ```sql
-GRANT ALL PRIVILEGES ON spring_boot_db.* TO 'springuser'@'%';
+GRANT ALL PRIVILEGES ON hello_spring_boot.* TO 'springuser'@'%';
 FLUSH PRIVILEGES;
 ```
 
@@ -781,10 +781,10 @@ SHOW GRANTS FOR 'springuser'@'%';
 
 ```
 GRANT USAGE ON *.* TO `springuser`@`%`
-GRANT ALL PRIVILEGES ON `spring_boot_db`.* TO `springuser`@`%`
+GRANT ALL PRIVILEGES ON `hello_spring_boot`.* TO `springuser`@`%`
 ```
 
-### エラー: "Table 'spring_boot_db.products' doesn't exist"
+### エラー: "Table 'hello_spring_boot.products' doesn't exist"
 
 **原因**: テーブルが自動作成されていない
 

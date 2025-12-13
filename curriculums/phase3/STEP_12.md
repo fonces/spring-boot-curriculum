@@ -126,7 +126,7 @@ spring:
     name: hello-spring-boot
 
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=UTF-8
+    url: jdbc:mysql://localhost:3306/hello_spring_boot?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
     username: springuser
     password: springpass
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -191,34 +191,40 @@ Javaクラスの型エイリアスを自動設定します。
 
 ---
 
-## 🚀 ステップ3: Userエンティティの作成
+## 🚀 ステップ3: Orderエンティティの作成
 
-### 3-1. Userエンティティ
+### 3-1. Orderエンティティ
 
-MyBatis用の`User`クラスを作成します（JPAアノテーションは不要）。
+MyBatis用の`Order`クラスを作成します（JPAアノテーションは不要）。
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/Order.java`
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.mybatis;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class User {
+public class Order {
     
     private Long id;
-    private String name;
-    private String email;
-    private Integer age;
+    private Long userId;
+    private BigDecimal totalAmount;
+    private String status;  // PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
+    private LocalDateTime orderDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    
+    // 検索結果用の追加フィールド（JOINで取得）
+    private String userName;
+    private String userEmail;
 }
 ```
 
@@ -237,45 +243,45 @@ MyBatisはSQLを直接記述するため、ORマッピングのアノテーシ�
 
 ---
 
-## 🚀 ステップ4: UserMapperインターフェースの作成
+## 🚀 ステップ4: OrderMapperインターフェースの作成
 
 ### 4-1. Mapperインターフェース
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/UserMapper.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderMapper.java`
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.mybatis;
 
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
 @Mapper
-public interface UserMapper {
+public interface OrderMapper {
     
     // アノテーションベースのクエリ
-    @Select("SELECT * FROM users WHERE id = #{id}")
-    User findById(Long id);
+    @Select("SELECT * FROM orders WHERE id = #{id}")
+    Order findById(Long id);
     
-    @Select("SELECT * FROM users")
-    List<User> findAll();
+    @Select("SELECT * FROM orders ORDER BY order_date DESC")
+    List<Order> findAll();
     
-    @Insert("INSERT INTO users (name, email, age, created_at, updated_at) " +
-            "VALUES (#{name}, #{email}, #{age}, NOW(), NOW())")
+    @Insert("INSERT INTO orders (user_id, total_amount, status, order_date, created_at, updated_at) " +
+            "VALUES (#{userId}, #{totalAmount}, #{status}, #{orderDate}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
-    void insert(User user);
+    void insert(Order order);
     
-    @Update("UPDATE users SET name = #{name}, email = #{email}, age = #{age}, " +
-            "updated_at = NOW() WHERE id = #{id}")
-    void update(User user);
+    @Update("UPDATE orders SET user_id = #{userId}, total_amount = #{totalAmount}, " +
+            "status = #{status}, order_date = #{orderDate}, updated_at = NOW() WHERE id = #{id}")
+    void update(Order order);
     
-    @Delete("DELETE FROM users WHERE id = #{id}")
+    @Delete("DELETE FROM orders WHERE id = #{id}")
     void delete(Long id);
     
     // XMLマッパーで定義（次のステップ）
-    List<User> searchByName(String name);
+    List<Order> findByUserId(Long userId);
     
-    List<User> findByAgeGreaterThan(Integer age);
+    List<Order> findByStatus(String status);
 }
 ```
 
@@ -318,7 +324,7 @@ src/main/resources/
 
 ### 5-2. UserMapper.xmlの作成
 
-**ファイルパス**: `src/main/resources/mapper/UserMapper.xml`
+**ファイルパス**: `src/main/resources/mapper/OrderMapper.xml`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -326,29 +332,31 @@ src/main/resources/
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.example.hellospringboot.UserMapper">
+<mapper namespace="com.example.hellospringboot.mybatis.OrderMapper">
 
     <!-- ResultMap定義 -->
-    <resultMap id="userResultMap" type="User">
+    <resultMap id="OrderResultMap" type="Order">
         <id property="id" column="id"/>
-        <result property="name" column="name"/>
-        <result property="email" column="email"/>
-        <result property="age" column="age"/>
+        <result property="userId" column="user_id"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="status" column="status"/>
+        <result property="orderDate" column="order_date"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <!-- 名前で検索 -->
-    <select id="searchByName" resultMap="userResultMap">
-        SELECT * FROM users
-        WHERE name LIKE CONCAT('%', #{name}, '%')
+    <!-- ユーザーIDで検索 -->
+    <select id="findByUserId" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE user_id = #{userId}
+        ORDER BY order_date DESC
     </select>
 
-    <!-- 年齢で絞り込み -->
-    <select id="findByAgeGreaterThan" resultMap="userResultMap">
-        SELECT * FROM users
-        WHERE age &gt; #{age}
-        ORDER BY age ASC
+    <!-- ステータスで検索 -->
+    <select id="findByStatus" resultMap="OrderResultMap">
+        SELECT * FROM orders
+        WHERE status = #{status}
+        ORDER BY order_date DESC
     </select>
 
 </mapper>
@@ -365,20 +373,23 @@ Mapperインターフェースの完全修飾名を指定します。
 DBカラムとJavaオブジェクトのプロパティをマッピングします。
 
 ```xml
-<resultMap id="userResultMap" type="User">
-    <id property="id" column="id"/>           <!-- 主キー -->
-    <result property="name" column="name"/>   <!-- 通常カラム -->
+<resultMap id="OrderResultMap" type="Order">
+    <id property="id" column="id"/>                     <!-- 主キー -->
+    <result property="userId" column="user_id"/>        <!-- 通常カラム -->
+    <result property="totalAmount" column="total_amount"/>
 </resultMap>
 ```
 
 **`map-underscore-to-camel-case`が有効なら省略可能**:
+- `user_id` → `userId` は自動変換される
+- `total_amount` → `totalAmount` は自動変換される
 - `created_at` → `createdAt` は自動変換される
 
-#### `<select id="searchByName">`
+#### `<select id="findByUserId">`
 
 - `id`: Mapperインターフェースのメソッド名
 - `resultMap`: 使用するResultMap
-- `#{name}`: パラメータバインディング
+- `#{userId}`: パラメータバインディング
 
 #### XML内でのエスケープ
 
@@ -395,16 +406,17 @@ WHERE age &gt; #{age}  <!-- age > #{age} -->
 
 ---
 
-## 🚀 ステップ6: UserServiceとControllerの作成
+## 🚀 ステップ6: OrderServiceとControllerの作成
 
-### 6-1. UserService
+### 6-1. OrderService
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/UserService.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderService.java`
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.mybatis;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -412,68 +424,77 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class UserService {
+@Slf4j
+public class OrderService {
     
-    private final UserMapper userMapper;
+    private final OrderMapper orderMapper;
     
     @Transactional(readOnly = true)
-    public User findById(Long id) {
-        return userMapper.findById(id);
+    public Order findById(Long id) {
+        log.info("Finding order by id: {}", id);
+        return orderMapper.findById(id);
     }
     
     @Transactional(readOnly = true)
-    public List<User> findAll() {
-        return userMapper.findAll();
+    public List<Order> findAll() {
+        log.info("Finding all orders");
+        return orderMapper.findAll();
     }
     
     @Transactional
-    public User create(User user) {
-        userMapper.insert(user);
-        return user;  // IDが自動セットされている
+    public Order create(Order order) {
+        log.info("Creating order: {}", order);
+        orderMapper.insert(order);
+        return order;  // IDが自動セットされている
     }
     
     @Transactional
-    public User update(Long id, User userDetails) {
-        User user = userMapper.findById(id);
-        if (user == null) {
-            throw new RuntimeException("User not found");
+    public Order update(Long id, Order orderDetails) {
+        log.info("Updating order id: {}", id);
+        Order order = orderMapper.findById(id);
+        if (order == null) {
+            throw new RuntimeException("Order not found with id: " + id);
         }
         
-        user.setName(userDetails.getName());
-        user.setEmail(userDetails.getEmail());
-        user.setAge(userDetails.getAge());
+        order.setUserId(orderDetails.getUserId());
+        order.setTotalAmount(orderDetails.getTotalAmount());
+        order.setStatus(orderDetails.getStatus());
+        order.setOrderDate(orderDetails.getOrderDate());
         
-        userMapper.update(user);
-        return user;
+        orderMapper.update(order);
+        return order;
     }
     
     @Transactional
     public void delete(Long id) {
-        User user = userMapper.findById(id);
-        if (user == null) {
-            throw new RuntimeException("User not found");
+        log.info("Deleting order id: {}", id);
+        Order order = orderMapper.findById(id);
+        if (order == null) {
+            throw new RuntimeException("Order not found with id: " + id);
         }
-        userMapper.delete(id);
+        orderMapper.delete(id);
     }
     
     @Transactional(readOnly = true)
-    public List<User> searchByName(String name) {
-        return userMapper.searchByName(name);
+    public List<Order> findByUserId(Long userId) {
+        log.info("Finding orders by userId: {}", userId);
+        return orderMapper.findByUserId(userId);
     }
     
     @Transactional(readOnly = true)
-    public List<User> findByAgeGreaterThan(Integer age) {
-        return userMapper.findByAgeGreaterThan(age);
+    public List<Order> findByStatus(String status) {
+        log.info("Finding orders by status: {}", status);
+        return orderMapper.findByStatus(status);
     }
 }
 ```
 
-### 6-2. UserController
+### 6-2. OrderController
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/UserController.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/mybatis/OrderController.java`
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.mybatis;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -483,38 +504,38 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/orders")
 @RequiredArgsConstructor
-public class UserController {
+public class OrderController {
     
-    private final UserService userService;
+    private final OrderService orderService;
     
     @GetMapping
-    public List<User> getAllUsers() {
-        return userService.findAll();
+    public List<Order> getAllOrders() {
+        return orderService.findAll();
     }
     
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
-        User user = userService.findById(id);
-        if (user == null) {
+    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
+        Order order = orderService.findById(id);
+        if (order == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(order);
     }
     
     @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        User created = userService.create(user);
+    public ResponseEntity<Order> createOrder(@RequestBody Order order) {
+        Order created = orderService.create(order);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
     @PutMapping("/{id}")
-    public ResponseEntity<User> updateUser(
+    public ResponseEntity<Order> updateOrder(
             @PathVariable Long id,
-            @RequestBody User userDetails) {
+            @RequestBody Order orderDetails) {
         try {
-            User updated = userService.update(id, userDetails);
+            Order updated = orderService.update(id, orderDetails);
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -522,23 +543,23 @@ public class UserController {
     }
     
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
         try {
-            userService.delete(id);
+            orderService.delete(id);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
     }
     
-    @GetMapping("/search")
-    public List<User> searchUsers(@RequestParam String name) {
-        return userService.searchByName(name);
+    @GetMapping("/user/{userId}")
+    public List<Order> getOrdersByUserId(@PathVariable Long userId) {
+        return orderService.findByUserId(userId);
     }
     
-    @GetMapping("/age-greater-than")
-    public List<User> findByAge(@RequestParam Integer age) {
-        return userService.findByAgeGreaterThan(age);
+    @GetMapping("/status/{status}")
+    public List<Order> getOrdersByStatus(@PathVariable String status) {
+        return orderService.findByStatus(status);
     }
 }
 ```
@@ -547,18 +568,21 @@ public class UserController {
 
 ## ✅ ステップ7: 動作確認
 
-### 7-1. usersテーブルを作成
+### 7-1. ordersテーブルを作成
 
 ```bash
-docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db -e "
-CREATE TABLE IF NOT EXISTS users (
+docker exec -it hello-spring-boot-mysql mysql -uroot -prootpassword -e "
+USE hello_spring_boot;
+CREATE TABLE IF NOT EXISTS orders (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    age INT,
+    user_id BIGINT NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    order_date DATETIME NOT NULL,
     created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 "
 ```
 
@@ -568,15 +592,16 @@ CREATE TABLE IF NOT EXISTS users (
 ./mvnw spring-boot:run
 ```
 
-### 7-3. ユーザーを作成
+### 7-3. 注文を作成
 
 ```bash
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8080/api/orders \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "田中太郎",
-    "email": "tanaka@example.com",
-    "age": 30
+    "userId": 1,
+    "totalAmount": 15000.00,
+    "status": "PENDING",
+    "orderDate": "2025-12-13T10:00:00"
   }'
 ```
 
@@ -585,30 +610,31 @@ curl -X POST http://localhost:8080/api/users \
 ```json
 {
   "id": 1,
-  "name": "田中太郎",
-  "email": "tanaka@example.com",
-  "age": 30,
-  "createdAt": "2025-12-13T15:00:00",
-  "updatedAt": "2025-12-13T15:00:00"
+  "userId": 1,
+  "totalAmount": 15000.00,
+  "status": "PENDING",
+  "orderDate": "2025-12-13T10:00:00",
+  "createdAt": "2025-12-13T17:16:33",
+  "updatedAt": "2025-12-13T17:16:33"
 }
 ```
 
-### 7-4. 全ユーザーを取得
+### 7-4. 全注文を取得
 
 ```bash
-curl http://localhost:8080/api/users
+curl http://localhost:8080/api/orders
 ```
 
-### 7-5. 名前で検索
+### 7-5. ユーザーIDで検索
 
 ```bash
-curl "http://localhost:8080/api/users/search?name=田中"
+curl "http://localhost:8080/api/orders/user/1"
 ```
 
-### 7-6. 年齢で絞り込み
+### 7-6. ステータスで検索
 
 ```bash
-curl "http://localhost:8080/api/users/age-greater-than?age=25"
+curl "http://localhost:8080/api/orders/status/PENDING"
 ```
 
 ---
@@ -617,25 +643,25 @@ curl "http://localhost:8080/api/users/age-greater-than?age=25"
 
 ### チャレンジ 1: 動的SQLで複数条件検索
 
-名前、メール、年齢の範囲で検索できるメソッドを実装してください。
+ユーザーID、ステータス、金額範囲で検索できるメソッドを実装してください（Step 13で詳しく学びます）。
 
 **ヒント**: `<where>`と`<if>`を使います。
 
 ```xml
-<select id="searchUsers" resultMap="userResultMap">
-    SELECT * FROM users
+<select id="searchOrders" resultMap="OrderResultMap">
+    SELECT * FROM orders
     <where>
-        <if test="name != null">
-            AND name LIKE CONCAT('%', #{name}, '%')
+        <if test="userId != null">
+            AND user_id = #{userId}
         </if>
-        <if test="email != null">
-            AND email LIKE CONCAT('%', #{email}, '%')
+        <if test="status != null and status != ''">
+            AND status = #{status}
         </if>
-        <if test="minAge != null">
-            AND age &gt;= #{minAge}
+        <if test="minAmount != null">
+            AND total_amount &gt;= #{minAmount}
         </if>
-        <if test="maxAge != null">
-            AND age &lt;= #{maxAge}
+        <if test="maxAmount != null">
+            AND total_amount &lt;= #{maxAmount}
         </if>
     </where>
 </select>
@@ -643,16 +669,16 @@ curl "http://localhost:8080/api/users/age-greater-than?age=25"
 
 ### チャレンジ 2: 一括INSERT
 
-複数のユーザーを一度に登録するメソッドを実装してください。
+複数の注文を一度に登録するメソッドを実装してください。
 
 **ヒント**: `<foreach>`を使います。
 
 ```xml
 <insert id="insertBatch">
-    INSERT INTO users (name, email, age, created_at, updated_at)
+    INSERT INTO orders (user_id, total_amount, status, order_date, created_at, updated_at)
     VALUES
-    <foreach collection="users" item="user" separator=",">
-        (#{user.name}, #{user.email}, #{user.age}, NOW(), NOW())
+    <foreach collection="orders" item="order" separator=",">
+        (#{order.userId}, #{order.totalAmount}, #{order.status}, #{order.orderDate}, NOW(), NOW())
     </foreach>
 </insert>
 ```
@@ -662,8 +688,8 @@ curl "http://localhost:8080/api/users/age-greater-than?age=25"
 `LIMIT`と`OFFSET`を使ってページネーションを実装してください。
 
 ```java
-@Select("SELECT * FROM users ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
-List<User> findWithPagination(@Param("limit") int limit, @Param("offset") int offset);
+@Select("SELECT * FROM orders ORDER BY order_date DESC LIMIT #{limit} OFFSET #{offset}")
+List<Order> findWithPagination(@Param("limit") int limit, @Param("offset") int offset);
 ```
 
 ---
@@ -693,10 +719,10 @@ mybatis:
 
 ```java
 // ❌ 悪い例
-List<User> searchByNameAndAge(String name, Integer age);
+List<Order> searchByUserIdAndStatus(Long userId, String status);
 
 // ✅ 良い例
-List<User> searchByNameAndAge(@Param("name") String name, @Param("age") Integer age);
+List<Order> searchByUserIdAndStatus(@Param("userId") Long userId, @Param("status") String status);
 ```
 
 ### エラー: "There is no getter for property named 'XXX'"
@@ -707,10 +733,10 @@ List<User> searchByNameAndAge(@Param("name") String name, @Param("age") Integer 
 
 ```xml
 <!-- ❌ 悪い例 -->
-<result property="userName" column="name"/>  <!-- UserクラスにuserNameフィールドが存在しない -->
+<result property="amount" column="total_amount"/>  <!-- Orderクラスにamountフィールドが存在しない -->
 
 <!-- ✅ 良い例 -->
-<result property="name" column="name"/>
+<result property="totalAmount" column="total_amount"/>
 ```
 
 ### SQLがログに出ない
@@ -722,7 +748,25 @@ List<User> searchByNameAndAge(@Param("name") String name, @Param("age") Integer 
 ```yaml
 logging:
   level:
-    com.example.hellospringboot: DEBUG
+    com.example.hellospringboot.mybatis: DEBUG
+```
+
+### エラー: "Foreign key constraint fails"
+
+**原因**: 存在しないユーザーIDで注文を作成しようとしている
+
+**解決策**: 先にユーザーを作成してから注文を作成する
+
+```bash
+# まずユーザーを作成（JPA）
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "田中太郎", "email": "tanaka@example.com", "age": 30}'
+
+# 次に注文を作成（MyBatis）
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 1, "totalAmount": 15000.00, "status": "PENDING", "orderDate": "2025-12-13T10:00:00"}'
 ```
 
 ---
@@ -746,9 +790,9 @@ logging:
 
 Spring BootではMyBatisとJPAを同時に使用できます。
 
-**推奨パターン**:
-- **JPA**: シンプルなCRUD（Product, Category）
-- **MyBatis**: 複雑な検索、レポート、集計（User）
+**このプロジェクトでの実装例**:
+- **JPA**: Product, User, Post（Phase 2で実装）
+- **MyBatis**: Order（Phase 3で実装）
 
 ### トランザクション管理
 
@@ -756,18 +800,32 @@ MyBatisとJPAは同じSpringのトランザクション管理を使用します�
 
 ```java
 @Service
-public class OrderService {
+public class SomeService {
     private final ProductRepository productRepository;  // JPA
-    private final UserMapper userMapper;                // MyBatis
+    private final UserRepository userRepository;        // JPA
+    private final OrderMapper orderMapper;              // MyBatis
     
     @Transactional  // 両方を同じトランザクションで管理
-    public void createOrder(Long userId, Long productId) {
-        User user = userMapper.findById(userId);
+    public void createOrderWithProduct(Long userId, Long productId, BigDecimal amount) {
+        // JPAでユーザーと商品を取得
+        User user = userRepository.findById(userId).orElseThrow();
         Product product = productRepository.findById(productId).orElseThrow();
-        // 処理
+        
+        // MyBatisで注文を作成
+        Order order = new Order();
+        order.setUserId(userId);
+        order.setTotalAmount(amount);
+        order.setStatus("PENDING");
+        order.setOrderDate(LocalDateTime.now());
+        orderMapper.insert(order);
     }
 }
 ```
+
+**利点**:
+- シンプルなCRUDはJPAで簡潔に記述
+- 複雑な検索・集計はMyBatisで柔軟に実装
+- 両方を同じトランザクション内で安全に使用可能
 
 ---
 
