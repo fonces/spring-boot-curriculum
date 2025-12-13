@@ -1,4 +1,4 @@
-# Spring Boot 3.5.7 カリキュラム
+# Spring Boot 3.5.X カリキュラム
 
 ## 対象者
 - Javaの基礎研修を修了した方

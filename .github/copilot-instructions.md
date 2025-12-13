@@ -1,6 +1,35 @@
 # Spring Boot カリキュラム ドキュメント作成ルール
 
-このドキュメントは、Spring Boot 3.5.7カリキュラムのステップガイドを作成する際の統一ルールを定義します。
+このドキュメントは、Spring Boot 3.5.8カリキュラムのステップガイドを作成する際の統一ルールを定義します。
+
+---
+
+## 🖥️ 対象プラットフォーム
+
+### 基本方針
+
+- **主要対象**: macOS
+- **Windows環境**: WSL2（Windows Subsystem for Linux 2）上で完結するように記述
+  - PowerShellは使用しない
+  - 基本的なコマンド例はUnix系（bash）を前提とする
+- 複数ステップを作成する際は**サブエージェント活用**を推奨
+
+### コマンド例の記載ルール
+
+**基本形**（macOS/Linux/WSL2共通）:
+```bash
+./mvnw spring-boot:run
+```
+
+**Windows固有の補足が必要な場合**:
+```bash
+# macOS/Linux/WSL2
+curl http://localhost:8080/api/users
+```
+
+> **💡 Windows利用者への配慮**: 
+> - 基本的にWSL2環境での実行を推奨
+> - どうしてもWindowsネイティブで実行する必要がある場合のみPowerShell例を併記
 
 ---
 
@@ -67,8 +96,53 @@ spring-boot-curriculum/
 ### ファイル命名規則
 
 - **ステップガイド**: `curriculums/phaseX/STEP_Y.md` （XはPhase番号、YはStep番号）
+- **事前準備ガイド**: `curriculums/phaseX/PREPARE.md` （Phaseの開始前に必要な環境構築や設定手順）
 - **サンプルコード**: `examples/phaseX/step-y-brief-description/` （小文字、ハイフン区切り）
 - **Phase内のステップ番号**: 全体通しの番号を使用（Phase 1は1-5、Phase 2は6-11など）
+
+### 事前準備ガイド（PREPARE.md）の作成
+
+各Phaseで特別な環境構築や事前設定が必要な場合は、`phaseX/PREPARE.md` に手順を記載します。
+
+**PREPARE.mdが必要なケース**:
+- 新しいツールやミドルウェアのインストール（例: MySQL, Docker）
+- 開発環境の設定変更（例: IDE設定、拡張機能）
+- Phase全体で使用する共通設定（例: データベース初期化）
+
+**記載例**:
+- `phase1/PREPARE.md`: Java、Maven、VSCode環境構築
+- `phase2/PREPARE.md`: MySQL環境構築準備
+- `phase8/PREPARE.md`: 総合演習用のプロジェクト初期設定
+
+各ステップ（STEP_X.md）の「事前準備」セクションでは、必要に応じて該当Phase のPREPARE.mdへのリンクを記載します。
+
+---
+
+## 🎯 カリキュラム設計の基本方針
+
+### 手戻りを最小限にする段階的構成
+
+学習者が後のステップで「前のステップに戻って修正が必要」という状況を可能な限り避けるため、以下の原則に従います：
+
+**基本原則**:
+1. **最初から拡張可能な設計**: 後のステップで機能追加する際に、既存コードの大幅な書き換えが不要な構成
+2. **段階的な機能追加**: 各ステップで新しい概念を1つずつ追加し、既存の実装を活かす
+3. **後方互換性の維持**: 新しいステップで学ぶ内容が、前のステップの実装を無効化しない
+
+**具体的な実践例**:
+- ✅ **良い例**: Step 8でUserエンティティを作成 → Step 19でDTO（UserCreateRequest, UserResponse）を追加し、Controllerでのみ使用
+- ❌ **悪い例**: Step 8でUserを直接使用 → Step 19で「Userを使っている箇所をすべて書き換え」
+
+**ステップ作成時のチェックポイント**:
+- [ ] 前のステップで作成したコードを再利用できるか
+- [ ] 新しい概念を追加する際、既存のファイルの修正は最小限か
+- [ ] 後のステップで使う可能性がある部分を考慮した設計か
+- [ ] 「Step Xに戻って○○を修正してください」という指示が不要か
+
+**例外的に手戻りが許容されるケース**:
+- リファクタリングを学ぶステップ（明示的に「改善」が目的の場合）
+- Phase間の移行（Phase 2→Phase 4でアーキテクチャを整理するなど）
+- セキュリティやテストの追加（既存機能への影響を最小限に）
 
 ---
 
@@ -87,11 +161,68 @@ spring-boot-curriculum/
 
 ---
 
+## 🛠️ カリキュラム実装の検証ルール
+
+### Copilotによる実装検証
+
+カリキュラムの内容が正確で実行可能であることを保証するため、以下のルールに従って実装検証を行います：
+
+**基本方針**:
+1. **実装場所**: `workspace/*` ディレクトリにプロジェクトを配置
+2. **検証フロー**: カリキュラム読み取り → 実装 → ビルド → 実行 → 動作確認
+3. **完全性の確保**: ドキュメントに記載されたすべてのコードが動作することを確認
+
+**実装検証の手順**:
+
+1. **カリキュラムの読み込み**
+   - 対象ステップ（STEP_X.md）の内容を完全に読み取る
+   - 事前準備セクションで必要な前提条件を確認
+
+2. **プロジェクトの作成/更新**
+   - `workspace/hello-spring-boot/` などの適切なディレクトリにプロジェクトを配置
+   - 前のステップからの継続の場合は既存コードを利用
+
+3. **コードの実装**
+   - ステップガイドに記載されたコードをそのまま実装
+   - ファイルパスを正確に再現
+
+4. **ビルドと実行**
+   ```bash
+   cd workspace/hello-spring-boot
+   ./mvnw clean install
+   ./mvnw spring-boot:run
+   ```
+
+5. **動作確認**
+   - ステップガイドの「動作確認」セクションに記載されたコマンドを実行
+   - 期待される結果と一致することを確認
+
+6. **エラーの修正**
+   - ビルドエラーや実行エラーが発生した場合、ステップガイドの内容を修正
+   - 修正内容をコミットメッセージに記録
+
+**検証時のチェックポイント**:
+- [ ] すべてのコードがコンパイルエラーなく動作するか
+- [ ] curlコマンドなどの動作確認が成功するか
+- [ ] 前のステップからの継続性が保たれているか
+- [ ] 環境依存の問題がないか（macOS/WSL2で動作するか）
+
+**workspace構成例**:
+```
+workspace/
+├── hello-spring-boot/          # Phase 1-4の基本実装
+├── hello-spring-boot-thymeleaf/ # Phase 5のThymeleaf実装
+├── hello-spring-boot-security/  # Phase 6のセキュリティ実装
+└── final-project/              # Phase 8の総合演習
+```
+
+---
+
 ## 📚 参考リソース
 
 ### 公式ドキュメント
 
-- [Spring Boot Reference Documentation](https://spring.pleiades.io/spring-boot/)
+- [Spring Boot Reference Documentation](https://docs.spring.io/spring-boot/reference/3.5.8/)
 - [Spring Framework API](https://docs.spring.io/spring-framework/docs/current/javadoc-api/)
 - [MyBatis 3 Documentation](https://mybatis.org/mybatis-3/ja/)
 - [MyBatis-Spring Documentation](https://mybatis.org/spring/ja/)
@@ -119,5 +250,5 @@ spring-boot-curriculum/
 
 ---
 
-**最終更新**: 2025-10-27
-**対象バージョン**: Spring Boot 3.5.7
+**最終更新**: 2025-12-13
+**対象バージョン**: Spring Boot 3.5.8

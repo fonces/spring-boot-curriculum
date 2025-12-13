@@ -5,7 +5,8 @@ description: 'Generate Markdown specification for Step Guide creation for Spring
 
 # Spring Boot カリキュラム ステップガイド作成プロンプト
 
-このプロンプトは、Spring Boot 3.5.7カリキュラムの各ステップガイド（STEP_X.md）を作成するためのガイドラインです。
+このプロンプトは、Spring Boot 3.5.Xカリキュラムの各ステップガイド（STEP_X.md）を作成するためのガイドラインです。
+以下のルールとフォーマットに従って、各ステップガイドを作成してください。
 
 ---
 
@@ -297,10 +298,12 @@ Expected output
 ### コードの完全性
 
 - **動作するコード** を記載（コンパイルエラーがないこと）
-- **省略しない**: `// ... 省略` は避け、完全なコードを記載
-- **インポート文**: 初出時は含める、以降は省略可
+- **ファイルパスを明記** する
+- **基本的に過去ステップのコードを利用**する
 
 ### コード例の構成
+
+以下のコードを`src/main/java/com/example/hellospringboot/HelloController.java`に作成します：
 
 ```java
 package com.example.hellospringboot;  // パッケージ宣言
@@ -320,22 +323,54 @@ public class HelloController {  // クラス定義
 
 ### 段階的な追加
 
-同じファイルに複数のメソッドを追加する場合：
+以下のメソッドを`src/main/java/com/example/hellospringboot/HelloController.java`に**追加**します：
 
-```markdown
-以下のメソッドを`HelloController.java`に**追加**します：
+```java
+package com.example.hellospringboot;
 
-​```java
-@GetMapping("/goodbye")
-public String goodbye() {
-    return "Goodbye!";
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HelloController {
+
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, World!";
+    }
+
+    // ここに新しいメソッドを追加
+    @GetMapping("/goodbye")
+    public String goodbye() {
+        return "Goodbye!";
+    }
 }
-​```
 ```
 
 **ルール**:
 - 「追加」を明記
-- 既存コードを再掲しない（混乱を避ける）
+- 既存コードを再掲し、新しい部分を示す
+
+## 段階的な変更
+以下の`src/main/java/com/example/hellospringboot/HelloController.java`の`hello`メソッドを**修正**します：
+
+```java
+package com.example.hellospringboot;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+@RestController
+public class HelloController {
+    @GetMapping("/hello")
+    public String hello() {
+        // 変更前: return "Hello, World!";
+        return "Hello, Spring Boot!";  // 変更後
+    }
+}
+```
+
+**ルール**:
+- 「修正」を明記
+- 変更前と変更後をコメントで示す
 
 ---
 
@@ -378,9 +413,9 @@ public String goodbye() {
 
 ---
 
-## 🌟 良い例: Step 16の構成
+## 🌟 良い例
 
-Step 16（DI/IoCコンテナの深掘り）は、このカリキュラムの理想的な構成を示す良い例です。
+以下は、このカリキュラムの理想的な構成を示す良い例です。
 
 ### 優れている点
 
@@ -708,4 +743,4 @@ public class ServiceB {
 ---
 
 **最終更新**: 2025-10-31
-**対象バージョン**: Spring Boot 3.5.7
+**対象バージョン**: Spring Boot 3.5.X
