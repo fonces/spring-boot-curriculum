@@ -116,7 +116,7 @@ public class UserForm {
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>ユーザー登録</title>
+    <title th:text="${isEdit ? 'ユーザー編集' : 'ユーザー新規登録'}">ユーザー登録</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -172,9 +172,11 @@ public class UserForm {
     </style>
 </head>
 <body>
-    <h1>ユーザー登録</h1>
+    <h1 th:text="${isEdit ? 'ユーザー編集' : 'ユーザー新規登録'}">ユーザー登録</h1>
     
-    <form th:action="@{/views/users}" th:object="${userForm}" method="post">
+    <form th:action="${isEdit ? '/views/users/' + userId : '/views/users'}" 
+          th:object="${userForm}" 
+          method="post">
         
         <div class="form-group">
             <label for="name">名前</label>
@@ -213,7 +215,7 @@ public class UserForm {
         </div>
         
         <div class="actions">
-            <button type="submit" class="btn">登録</button>
+            <button type="submit" class="btn" th:text="${isEdit ? '更新' : '登録'}">登録</button>
             <a th:href="@{/views/users}" class="btn btn-secondary">キャンセル</a>
         </div>
     </form>
@@ -222,6 +224,17 @@ public class UserForm {
 ```
 
 ### 2-2. フォーム構文の解説
+
+#### `th:action`（動的なフォーム送信先）
+```html
+<form th:action="${isEdit ? '/views/users/' + userId : '/views/users'}" 
+      th:object="${userForm}" 
+      method="post">
+```
+- **三項演算子**で新規登録と編集を切り替え
+- `isEdit=false`: `/views/users` に POST（新規登録）
+- `isEdit=true`: `/views/users/{userId}` に POST（更新）
+- `th:action="@{...}"`も使えるが、今回は条件分岐のため直接パスを指定
 
 #### `th:object="${userForm}"`
 ```html
@@ -301,6 +314,7 @@ public class ViewController {
     @GetMapping("/users/new")
     public String newUserForm(Model model) {
         model.addAttribute("userForm", new UserForm());
+        model.addAttribute("isEdit", false);  // 新規登録モード
         return "users/form";
     }
     
@@ -438,114 +452,28 @@ public String editUserForm(@PathVariable Long id, Model model) {
     
     model.addAttribute("userForm", userForm);
     model.addAttribute("userId", id);  // 更新用にIDを保持
+    model.addAttribute("isEdit", true);  // 編集モード
     
-    return "users/edit";
+    return "users/form";  // form.htmlを再利用
 }
 ```
 
-### 5-2. 編集フォームテンプレート
+### 5-2. フォームの再利用
 
-`src/main/resources/templates/users/edit.html`を作成:
+**重要**: 新規登録と編集で同じ`users/form.html`を使用します。
 
-```html
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>ユーザー編集</title>
-    <style>
-        /* form.htmlと同じスタイル */
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
-            padding: 20px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        input[type="text"],
-        input[type="email"],
-        input[type="number"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        .error {
-            color: #d32f2f;
-            font-size: 14px;
-            margin-top: 5px;
-        }
-        .error-border {
-            border-color: #d32f2f !important;
-        }
-        .btn {
-            padding: 10px 20px;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .btn-primary {
-            background-color: #4CAF50;
-        }
-        .btn-secondary {
-            background-color: #999;
-            margin-left: 10px;
-        }
-    </style>
-</head>
-<body>
-    <h1>ユーザー編集</h1>
-    
-    <form th:action="@{/views/users/{id}(id=${userId})}" 
-          th:object="${userForm}" 
-          method="post">
-        
-        <div class="form-group">
-            <label for="name">名前</label>
-            <input type="text" 
-                   id="name" 
-                   th:field="*{name}"
-                   th:errorclass="error-border">
-            <div class="error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></div>
-        </div>
-        
-        <div class="form-group">
-            <label for="email">メールアドレス</label>
-            <input type="email" 
-                   id="email" 
-                   th:field="*{email}"
-                   th:errorclass="error-border">
-            <div class="error" th:if="${#fields.hasErrors('email')}" th:errors="*{email}"></div>
-        </div>
-        
-        <div class="form-group">
-            <label for="age">年齢</label>
-            <input type="number" 
-                   id="age" 
-                   th:field="*{age}"
-                   th:errorclass="error-border">
-            <div class="error" th:if="${#fields.hasErrors('age')}" th:errors="*{age}"></div>
-        </div>
-        
-        <div class="actions">
-            <button type="submit" class="btn btn-primary">更新</button>
-            <a th:href="@{/views/users/{id}(id=${userId})}" class="btn btn-secondary">キャンセル</a>
-        </div>
-    </form>
-</body>
-</html>
-```
+`form.html`は既に以下のように条件分岐で対応しています:
+
+- **タイトル**: `${isEdit ? 'ユーザー編集' : 'ユーザー新規登録'}`
+- **送信先**: `${isEdit ? '/views/users/' + userId : '/views/users'}`
+- **ボタンテキスト**: `${isEdit ? '更新' : '登録'}`
+
+このように、`isEdit`フラグと三項演算子を使うことで、1つのテンプレートで新規登録と編集の両方に対応できます。
+
+**メリット**:
+- コードの重複を削減
+- 一貫性のあるUI
+- メンテナンスが容易
 
 ### 5-3. 更新処理
 
@@ -754,6 +682,34 @@ return "redirect:users/" + id;  // NG: /views/users/users/1 になる
 
 // 絶対パス（/から始まる）を使用
 return "redirect:/views/users/" + id;  // OK
+```
+
+### エラー: "cannot convert from null to boolean"
+
+**原因**: テンプレートで`${isEdit}`を参照しているが、Controllerで設定していない
+
+**エラー例**:
+```
+Exception evaluating SpringEL expression: "isEdit ? 'ユーザー編集' : 'ユーザー新規登録'"
+org.springframework.expression.spel.SpelEvaluationException: EL1001E: Type conversion problem, cannot convert from null to boolean
+```
+
+**解決策**:
+Controllerで必ず`isEdit`をModelに追加する:
+```java
+@GetMapping("/users/new")
+public String newUserForm(Model model) {
+    model.addAttribute("userForm", new UserForm());
+    model.addAttribute("isEdit", false);  // ← 必須
+    return "users/form";
+}
+
+@GetMapping("/users/{id}/edit")
+public String editUserForm(@PathVariable Long id, Model model) {
+    // ...
+    model.addAttribute("isEdit", true);  // ← 必須
+    return "users/form";
+}
 ```
 
 ---
