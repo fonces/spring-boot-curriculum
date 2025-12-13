@@ -110,6 +110,8 @@ package com.example.hellospringboot.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
@@ -119,6 +121,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+
+import com.example.hellospringboot.dto.ErrorResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Spring Securityの設定クラス
@@ -146,7 +153,39 @@ public class SecurityConfig {
             )
             
             // HTTP Basic認証を有効化
-            .httpBasic(basic -> {});
+            .httpBasic(basic -> {})
+            
+            // カスタムエラーハンドリング
+            .exceptionHandling(exception -> exception
+                // 401 Unauthorized
+                .authenticationEntryPoint((request, response, authException) -> {
+                    ErrorResponse error = new ErrorResponse(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "Unauthorized",
+                        "認証が必要です。正しい認証情報を提供してください。",
+                        request.getRequestURI()
+                    );
+                    
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write(objectMapper.writeValueAsString(error));
+                })
+                // 403 Forbidden
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    ErrorResponse error = new ErrorResponse(
+                        HttpStatus.FORBIDDEN.value(),
+                        "Forbidden",
+                        "このリソースへのアクセス権限がありません。",
+                        request.getRequestURI()
+                    );
+                    
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write(objectMapper.writeValueAsString(error));
+                })
+            );
 
         return http.build();
     }
@@ -235,30 +274,54 @@ curl http://localhost:8080/api/users
 **期待される結果**: 401 Unauthorized
 ```json
 {
-  "timestamp": "2025-10-27T10:30:00.000+00:00",
-  "status": 401,
-  "error": "Unauthorized",
-  "path": "/api/users"
+    "timestamp": "2025-12-07T15:19:14.9269179",
+    "status": 401,
+    "error": "Unauthorized",
+    "message": "認証が必要です。正しい認証情報を提供してください。",
+    "path": "/error"
 }
 ```
 
 ### 3-2. Basic認証でアクセス（成功）
 
+**Bash/Linux/Mac**:
 ```bash
 curl -u user:user123 http://localhost:8080/api/users
 ```
 
-**または**:
+**または（curlコマンドを使う場合）**:
 ```bash
 curl -H "Authorization: Basic dXNlcjp1c2VyMTIz" http://localhost:8080/api/users
+```
+
+**PowerShell**:
+```powershell
+$headers = @{
+    Authorization = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("user:user123"))
+}
+Invoke-RestMethod -Uri http://localhost:8080/api/users -Headers $headers
 ```
 
 **期待される結果**: 200 OK
 
 ### 3-3. 管理者でアクセス
 
+**Bash/Linux/Mac**:
 ```bash
 curl -u admin:admin123 http://localhost:8080/api/users
+```
+
+**または（curlコマンドを使う場合）**:
+```bash
+curl -H "Authorization: Basic YWRtaW46YWRtaW4xMjM=" http://localhost:8080/api/users
+```
+
+**PowerShell**:
+```powershell
+$headers = @{
+    Authorization = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:admin123"))
+}
+Invoke-RestMethod -Uri http://localhost:8080/api/users -Headers $headers
 ```
 
 ### 3-4. 公開エンドポイント
@@ -307,9 +370,7 @@ public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Excepti
             
             .anyRequest().authenticated()
         )
-        .httpBasic(basic -> {});
-
-    return http.build();
+    ...
 }
 ```
 
@@ -418,6 +479,9 @@ public class UserService {
 ### 6-1. Controllerで現在のユーザー取得
 
 ```java
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {

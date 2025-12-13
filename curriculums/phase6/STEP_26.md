@@ -13,10 +13,259 @@
 
 ## 📋 事前準備
 
-- Step 19のSpring Security基礎が理解できていること
+- Step 25のSpring Security基礎が理解できていること
 - 認証と認可の違いを理解していること
 
-**Step 19をまだ完了していない場合**: [Step 19: Spring Security基礎](STEP_19.md)を先に進めてください。
+**Step 25をまだ完了していない場合**: [Step 25: Spring Security基礎](STEP_25.md)を先に進めてください。
+
+---
+
+## 🚀 ステップ0: データベース認証の準備（重要）
+
+### 0-1. Userエンティティにパスワードとロールを追加
+
+JWT認証を実装する前に、`User`エンティティに**パスワード**と**ロール**フィールドを追加する必要があります。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/entity/User.java`
+
+```java
+package com.example.hellospringboot.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    private Integer age;
+
+    // パスワード追加（JWT認証用）
+    @Column(nullable = false)
+    private String password;
+
+    // ロール追加（USER, ADMIN）
+    @Column(nullable = false)
+    private String role = "USER";
+}
+```
+
+### 0-2. UserRepositoryにfindByEmailメソッド追加
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/repository/UserRepository.java`
+
+```java
+package com.example.hellospringboot.repository;
+
+import com.example.hellospringboot.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    /**
+     * メールアドレスでユーザーを検索（JWT認証用）
+     */
+    Optional<User> findByEmail(String email);
+}
+```
+
+### 0-3. データベーステーブルの更新
+
+**既存のテーブルに列を追加する場合**（本番環境ではマイグレーションツールを使用）:
+
+```sql
+-- パスワード列を追加
+ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '';
+
+-- ロール列を追加
+ALTER TABLE users ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'USER';
+
+-- email列にユニーク制約を追加（まだの場合）
+ALTER TABLE users ADD UNIQUE (email);
+```
+
+### 0-4. ユーザー登録用のエンドポイント追加
+
+パスワードは**BCryptでハッシュ化**して保存する必要があります。UserServiceに登録メソッドを追加しましょう。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/service/UserService.java`
+
+```java
+package com.example.hellospringboot.service;
+
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.entity.User;
+import com.example.hellospringboot.exception.UserNotFoundException;
+import com.example.hellospringboot.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;  // パスワードエンコーダーを注入
+
+    // 既存のメソッド...
+
+    /**
+     * 新規ユーザー作成（パスワードをハッシュ化）
+     */
+    @Transactional
+    public User createUserWithPassword(UserCreateRequest request, String role) {
+        log.info("Creating user with email: {}", request.getEmail());
+
+        // パスワードをBCryptでハッシュ化
+        String hashedPassword = passwordEncoder.encode(request.getPassword());
+        User user = User.builder()
+                .name(request.getName())
+                .email(request.getEmail())
+                .age(request.getAge())
+                .password(hashedPassword)
+                .role(role != null ? role : "USER")  // デフォルトはUSER
+                .build();
+
+        User savedUser = userRepository.save(user);
+        log.info("User created with ID: {}", savedUser.getId());
+
+        return savedUser;
+    }
+}
+```
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/api/PublicController.java`
+
+```java
+package com.example.hellospringboot.controller;
+
+import com.example.hellospringboot.dto.request.UserCreateRequest;
+import com.example.hellospringboot.dto.response.UserResponse;
+import com.example.hellospringboot.service.UserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * 公開エンドポイント用コントローラー
+ */
+@RestController
+@RequestMapping("/api/public")
+@RequiredArgsConstructor
+public class PublicController {
+
+    private final UserService userService;
+
+    /**
+     * ヘルスチェック
+     * GET /api/public/health
+     */
+    @GetMapping("/health")
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("OK");
+    }
+
+    /**
+     * ユーザー登録（認証不要）
+     * POST /api/public/register
+     */
+    @PostMapping("/register")
+    public ResponseEntity<UserResponse> registerUser(
+            @Valid @RequestBody UserCreateRequest request,
+            @RequestParam(defaultValue = "USER") String role) {
+        
+        UserResponse response = userService.createUserWithPassword(request, role);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+}
+```
+
+**テストユーザー作成例**:
+
+**Bash/Linux/Mac**:
+```bash
+# 一般ユーザー作成
+curl -X POST "http://localhost:8080/api/public/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "user",
+    "email": "user@example.com",
+    "password": "user123",
+    "age": 18
+  }'
+
+# 管理者ユーザー作成
+curl -X POST "http://localhost:8080/api/public/register?role=ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "admin",
+    "email": "admin@example.com",
+    "password": "admin123",
+    "age": 25
+  }'
+```
+
+**PowerShell**:
+```powershell
+# 一般ユーザー作成
+$body = @{
+    name = "user"
+    email = "user@example.com"
+    password = "user123"
+    age = 25
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/public/register" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body $body
+
+# 管理者ユーザー作成
+$body = @{
+    name = "admin"
+    email = "admin@example.com"
+    password = "admin123"
+    age = 30
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/public/register?role=ADMIN" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+> **💡 ヒント**: Step 8以降でデータベース認証を使う場合、このステップ0の準備が必須です。
+> インメモリ認証のみでテストする場合（ステップ1〜7）は、このステップ0をスキップしても構いません。
 
 ---
 
@@ -514,7 +763,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -563,9 +812,6 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             
-            // 認証プロバイダー
-            .authenticationProvider(authenticationProvider())
-            
             // JWTフィルターを追加
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -578,81 +824,19 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
+    public AuthenticationManager authenticationManager() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) 
-            throws Exception {
-        return config.getAuthenticationManager();
+        return new ProviderManager(authProvider);
     }
 }
 ```
 
 ---
 
-## ✅ ステップ7: 動作確認
+## 🚀 ステップ7: データベースユーザー認証への移行
 
-### 7-1. ログイン
-
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "user",
-    "password": "user123"
-  }'
-```
-
-**期待されるレスポンス**:
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJhdXRob3JpdGllcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9VU0VSIn1dLCJzdWIiOiJ1c2VyIiwiaWF0IjoxNjk4NDEyMzAwLCJleHAiOjE2OTg0OTg3MDB9.xxx",
-  "type": "Bearer",
-  "username": "user",
-  "role": "ROLE_USER"
-}
-```
-
-### 7-2. トークンを使ってAPIアクセス
-
-```bash
-# トークンを変数に保存
-TOKEN="eyJhbGciOiJIUzI1NiJ9.xxx..."
-
-# APIリクエスト
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/users
-```
-
-**期待される結果**: 200 OK
-
-### 7-3. 無効なトークンでアクセス
-
-```bash
-curl -H "Authorization: Bearer invalid-token" \
-  http://localhost:8080/api/users
-```
-
-**期待される結果**: 401 Unauthorized
-
-### 7-4. トークンなしでアクセス
-
-```bash
-curl http://localhost:8080/api/users
-```
-
-**期待される結果**: 401 Unauthorized
-
----
-
-## 🚀 ステップ8: データベースユーザー認証への移行
-
-### 8-1. UserDetailsServiceの実装（JPA版）
+### 7-1. UserDetailsServiceの実装（JPA版）
 
 **ファイルパス**: `src/main/java/com/example/hellospringboot/security/CustomUserDetailsService.java`
 
@@ -697,7 +881,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 }
 ```
 
-### 8-2. MyBatisを使う場合のUserDetailsService
+### 7-2. MyBatisを使う場合のUserDetailsService
 
 **Phase 3でMyBatisを学習した場合**、MyBatis Mapperを使ったUserDetailsServiceも実装できます。
 
@@ -741,34 +925,95 @@ public class CustomUserDetailsService implements UserDetailsService {
 > - **複雑な認証ロジック**: MyBatisで柔軟にクエリを記述
 > - **大規模システム**: 両方を併用（認証はMyBatis、CRUD はJPAなど）
 
-### 8-3. Userエンティティの更新
+### 7-3. SecurityConfigでCustomUserDetailsServiceを使用
+
+**ステップ0**で準備したUserエンティティと、**ステップ8-1**で作成したCustomUserDetailsServiceを使うように、SecurityConfigを確認してください。
+
+`@RequiredArgsConstructor`により、`UserDetailsService`が自動的に`CustomUserDetailsService`に注入されます。
 
 ```java
-@Entity
-@Table(name = "users")
-@Data
-public class User {
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String name;
-
-    @Column(unique = true)
-    private String email;
-
-    private Integer age;
-
-    // パスワード追加
-    @Column(nullable = false)
-    private String password;
-
-    // ロール追加（USER, ADMIN）
-    @Column(nullable = false)
-    private String role = "USER";
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final UserDetailsService userDetailsService;  // CustomUserDetailsServiceが注入される
+    
+    // ... 残りの設定
 }
 ```
+
+
+---
+
+## ✅ ステップ8: 動作確認
+
+### 8-1. ログイン
+
+**Bash/Linux/Mac**:
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user@example.com",
+    "password": "user123"
+  }'
+```
+
+**PowerShell**:
+```powershell
+$body = @{
+    username = "user@example.com"
+    password = "user123"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://localhost:8080/api/auth/login `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+**期待されるレスポンス**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.eyJhdXRob3JpdGllcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9VU0VSIn1dLCJzdWIiOiJ1c2VyIiwiaWF0IjoxNjk4NDEyMzAwLCJleHAiOjE2OTg0OTg3MDB9.xxx",
+  "type": "Bearer",
+  "username": "user",
+  "role": "ROLE_USER"
+}
+```
+
+### 9-2. トークンを使ってAPIアクセス
+
+```bash
+# トークンを変数に保存
+TOKEN="eyJhbGciOiJIUzI1NiJ9.xxx..."
+
+# APIリクエスト
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/users
+```
+
+**期待される結果**: 200 OK
+
+### 9-3. 無効なトークンでアクセス
+
+```bash
+curl -H "Authorization: Bearer invalid-token" \
+  http://localhost:8080/api/users
+```
+
+**期待される結果**: 401 Unauthorized
+
+### 9-4. トークンなしでアクセス
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+**期待される結果**: 401 Unauthorized
 
 ---
 

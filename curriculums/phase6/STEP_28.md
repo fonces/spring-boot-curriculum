@@ -23,6 +23,24 @@
 
 ### 1-1. UserControllerIntegrationTest
 
+> **💡 前提**: このテストは以下のステップで実装した機能をテストします:
+> - [Step 8: CRUD操作の完成](../phase2/STEP_8.md) - UserControllerの基本的なCRUD操作
+>   - `POST /api/users` - ユーザー作成
+>   - `GET /api/users` - 全ユーザー取得
+>   - `GET /api/users/{id}` - IDでユーザー取得
+>   - `PUT /api/users/{id}` - ユーザー更新
+>   - `DELETE /api/users/{id}` - ユーザー削除
+> - [Step 19: DTOとEntityの分離](../phase4/STEP_19.md) - リクエスト/レスポンス用のDTOクラス
+>   - `UserCreateRequest` - ユーザー作成リクエスト用DTO
+>   - `UserUpdateRequest` - ユーザー更新リクエスト用DTO
+>   - `UserResponse` - ユーザーレスポンス用DTO
+> - [Step 18: バリデーション](../phase4/STEP_18.md) - リクエストデータのバリデーション
+>   - `@Valid`を使ったリクエストボディの検証
+>   - `UserCreateRequest`や`UserUpdateRequest`への`@NotBlank`, `@Email`, `@Min`, `@Max`などのアノテーション
+>   - バリデーションエラー時の400 Bad Requestレスポンス
+> - [Step 17: 例外ハンドリング](../phase4/STEP_17.md) - グローバル例外ハンドラー（オプション）
+>   - `@RestControllerAdvice`によるバリデーションエラーのレスポンス整形
+
 **ファイルパス**: `src/test/java/com/example/hellospringboot/controller/UserControllerIntegrationTest.java`
 
 ```java
@@ -249,6 +267,12 @@ logging:
 ## 🚀 ステップ3: 認証付きAPIテスト
 
 ### 3-1. AuthControllerIntegrationTest
+
+> **💡 前提**: このテストは [Step 26: JWTトークン認証](STEP_26.md) で実装したAuthControllerをテストします。
+> 以下の機能が実装されている必要があります:
+> - `POST /api/auth/login` - ログインしてJWTトークンを取得
+> - Step 26のStep 0でデータベース認証の準備（User entity、UserRepository.findByEmail()、ユーザー登録API）
+> - Step 26のStep 6-2でCustomUserDetailsServiceの実装
 
 **ファイルパス**: `src/test/java/com/example/hellospringboot/controller/AuthControllerIntegrationTest.java`
 
