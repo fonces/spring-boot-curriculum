@@ -572,12 +572,30 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/articles", "/api/articles/**").permitAll()
-                        .requestMatchers("/api/tags", "/api/tags/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .requestMatchers("/error").permitAll()
+                        // 公開パス
+                        .requestMatchers("/", "/login", "/signup", 
+                                "/css/**", "/js/**", "/images/**", "/error",
+                                "/api/files/**").permitAll()
+                        // 記事詳細とタグ、ユーザープロフィールは公開
+                        .requestMatchers(HttpMethod.GET, "/articles/{id:[0-9]+}", "/tags", "/tags/**", 
+                                "/users/{username}").permitAll()
+                        // 記事作成・編集・削除、コメント投稿などは認証必須
+                        .requestMatchers("/articles/new", "/articles/*/edit", "/articles/*/delete",
+                                "/profile", "/articles/*/comments", "/comments/*/delete").authenticated()
+                        // その他すべて認証必須
                         .anyRequest().authenticated()
+                )
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .loginProcessingUrl("/login")
+                        .defaultSuccessUrl("/", true)
+                        .failureUrl("/login?error=true")
+                        .permitAll()
+                )
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl("/?logout")
+                        .permitAll()
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

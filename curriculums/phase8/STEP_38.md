@@ -1148,11 +1148,13 @@ public String deleteArticle(
                     <!-- タグ -->
                     <div class="mb-3">
                         <label for="tags" class="form-label">タグ</label>
-                        <input type="text" 
+                        <input type="text"
                                th:field="*{tags}" 
                                class="form-control" 
                                id="tags" 
-                               placeholder="Java, Spring Boot, Tutorial（カンマ区切り）">
+                               placeholder="Java, Spring Boot, Tutorial（カンマ区切り）"
+                               th:value="${articleRequest.tags != null and !articleRequest.tags.isEmpty() ? #strings.listJoin(articleRequest.tags, ', ') : ''}">
+                        <input type="hidden" th:field="*{tags}" id="tagsHidden">
                         <small class="form-text text-muted">
                             <i class="fas fa-info-circle"></i> カンマ（,）で区切って複数のタグを入力できます
                         </small>

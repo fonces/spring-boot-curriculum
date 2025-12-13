@@ -39,31 +39,32 @@ spring:
     name: bloghub
   
   datasource:
-    url: jdbc:mysql://localhost:3306/bloghub
+    url: jdbc:mysql://localhost:3307/bloghub?useSSL=false&serverTimezone=Asia/Tokyo&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
     username: bloghub_user
-    password: bloghub_pass
+    password: bloghub_password
     driver-class-name: com.mysql.cj.jdbc.Driver
   
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
   
   servlet:
     multipart:
-      enabled: true
-      max-file-size: 5MB
-      max-request-size: 5MB
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 jwt:
-  secret: your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+  secret: 3f8b2c7e9a1d5f4e6b8c2a9d7e5f3b1c8e6a4d2f9b7e5c3a1d8f6b4e2c9a7d5f3b
   expiration: 86400000
 
 file:
-  upload-dir: uploads/
+  upload-dir: uploads
+  max-file-size: 5MB
 
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
@@ -322,8 +323,11 @@ package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -334,6 +338,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class User {
     
     @Id
@@ -349,34 +354,24 @@ public class User {
     @Column(nullable = false)
     private String password;
     
-    @Column(length = 200)
-    private String bio;
-    
     @Column(name = "profile_image")
     private String profileImage;
     
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
     
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
     
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<Article> articles = new ArrayList<>();
     
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<Comment> comments = new ArrayList<>();
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-    
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
 }
 ```
 
@@ -413,7 +408,7 @@ public class UserService {
     @Transactional
     public UserResponse uploadProfileImage(String username, MultipartFile file) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+                .orElseThrow(() -> new ResourceNotFoundException("ユーザーが見つかりません"));
         
         // 既存のプロフィール画像を削除
         if (user.getProfileImage() != null) {
@@ -433,7 +428,7 @@ public class UserService {
      */
     public UserResponse getUser(String username) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+                .orElseThrow(() -> new ResourceNotFoundException("ユーザーが見つかりません"));
         return convertToResponse(user);
     }
     
@@ -443,11 +438,7 @@ public class UserService {
     @Transactional
     public UserResponse updateUser(String username, UserUpdateRequest request) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
-        
-        if (request.getBio() != null) {
-            user.setBio(request.getBio());
-        }
+                .orElseThrow(() -> new ResourceNotFoundException("ユーザーが見つかりません"));
         
         User savedUser = userRepository.save(user);
         return convertToResponse(savedUser);
@@ -458,7 +449,6 @@ public class UserService {
         response.setId(user.getId());
         response.setUsername(user.getUsername());
         response.setEmail(user.getEmail());
-        response.setBio(user.getBio());
         response.setProfileImage(user.getProfileImage());
         response.setCreatedAt(user.getCreatedAt());
         return response;
@@ -479,7 +469,6 @@ import lombok.Data;
 
 @Data
 public class UserUpdateRequest {
-    private String bio;
 }
 ```
 
@@ -497,7 +486,6 @@ public class UserResponse {
     private Long id;
     private String username;
     private String email;
-    private String bio;
     private String profileImage;
     private LocalDateTime createdAt;
 }
@@ -950,7 +938,7 @@ cd workspace/bloghub
 
 ```bash
 # ユーザー登録
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:8080/api/auth/signup \
   -H "Content-Type: application/json" \
   -d '{
     "username": "alice",
@@ -970,8 +958,9 @@ curl -X POST http://localhost:8080/api/auth/login \
 **レスポンス例**:
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiJ9...",
-  "username": "alice"
+  "token": "eyJhbGciOiJIUzM4NCJ9...",
+  "username": "alice",
+  "email": "alice@example.com"
 }
 ```
 
@@ -1000,7 +989,6 @@ curl -X POST http://localhost:8080/api/users/profile-image \
   "id": 1,
   "username": "alice",
   "email": "alice@example.com",
-  "bio": null,
   "profileImage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
   "createdAt": "2025-12-13T10:00:00"
 }
@@ -1020,7 +1008,6 @@ curl http://localhost:8080/api/users/alice
   "id": 1,
   "username": "alice",
   "email": "alice@example.com",
-  "bio": null,
   "profileImage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
   "createdAt": "2025-12-13T10:00:00"
 }
