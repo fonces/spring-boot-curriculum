@@ -879,143 +879,91 @@ public class CacheService {
 
 ## 🔧 実践: UserServiceの完全なリファクタリング
 
-### Before（Phase 3までの実装）
+### Before（Phase 2までの実装）
+
+Phase 2では、ServiceがRepositoryを直接使用していました：
 
 ```java
-package com.example.hellospringboot;
+package com.example.hellospringboot.services;
 
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-
-@Mapper
-public interface UserMapper {
-    List<User> findAll();
-    User findById(@Param("id") Long id);
-    void insert(User user);
-}
-```
-
-```java
-package com.example.hellospringboot;
-
+import com.example.hellospringboot.entities.User;
+import com.example.hellospringboot.repositories.UserRepository;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class UserService {
-    private final UserMapper userMapper;
+    private final UserRepository userRepository;
     
-    public UserService(UserMapper userMapper) {
-        this.userMapper = userMapper;
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
     }
     
     public List<User> findAll() {
-        return userMapper.findAll();
+        return userRepository.findAll();
     }
     
     public User findById(Long id) {
-        return userMapper.findById(id);
+        Optional<User> user = userRepository.findById(id);
+        return user.orElseThrow(() -> new RuntimeException("User not found"));
     }
     
-    public void createUser(User user) {
-        userMapper.insert(user);
+    public User createUser(User user) {
+        return userRepository.save(user);
     }
 }
 ```
+
+> **🔍 Phase 2の時点でも依存性注入は使われていた**:
+> コンストラクタで`UserRepository`を受け取っているので、すでにDIの基本は使っています。
+> このステップではさらに**Lombok**や**Optionalの活用**などでコードを改善します。
 
 ---
 
 ### After（レイヤー化 + DI最適化）
 
-**1. UserRepositoryインターフェース**:
+> **💡 このステップでのRepository実装について**: 
+> このステップではDI（依存性注入）の概念を学ぶため、UserRepositoryはすでに**Phase 2のSTEP 7で作成済み**です。
+> Phase 2ではJPA（Spring Data JPA）を使用してUserRepositoryを実装しました。
+> もしPhase 3でMyBatisを学んだ場合は、MyBatis版のRepositoryに置き換えることもできますが、このステップではJPA版のままで問題ありません。
 
-以下のファイルを`src/main/java/com/example/hellospringboot/repositories/UserRepository.java`に作成します：
+**1. UserRepository（JPA版）**:
 
-```java
-package com.example.hellospringboot.repositories;
-
-import com.example.hellospringboot.entities.User;
-import java.util.List;
-import java.util.Optional;
-
-public interface UserRepository {
-    List<User> findAll();
-    Optional<User> findById(Long id);
-    void save(User user);
-    void deleteById(Long id);
-}
-```
-
-**2. UserMapperインターフェース（MyBatis実装）**:
-
-以下のファイルを`src/main/java/com/example/hellospringboot/mappers/UserMapper.java`に作成します：
-
-```java
-package com.example.hellospringboot.mappers;
-
-import com.example.hellospringboot.entities.User;
-import org.apache.ibatis.annotations.*;
-
-import java.util.List;
-
-@Mapper
-public interface UserMapper {
-    @Select("SELECT id, name, email, age FROM users")
-    List<User> findAll();
-    
-    @Select("SELECT id, name, email, age FROM users WHERE id = #{id}")
-    User findById(@Param("id") Long id);
-    
-    @Insert("INSERT INTO users (name, email, age) VALUES (#{name}, #{email}, #{age})")
-    @Options(useGeneratedKeys = true, keyProperty = "id")
-    void insert(User user);
-    
-    @Delete("DELETE FROM users WHERE id = #{id}")
-    void deleteById(@Param("id") Long id);
-}
-```
-
-**3. UserRepositoryImpl（MyBatis実装クラス）**:
-
-以下のファイルを`src/main/java/com/example/hellospringboot/repositories/UserRepositoryImpl.java`に作成します：
+Phase 2のSTEP 7で作成した`UserRepository`を使用します：
 
 ```java
 package com.example.hellospringboot.repositories;
 
 import com.example.hellospringboot.entities.User;
-import com.example.hellospringboot.mappers.UserMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-@RequiredArgsConstructor
-public class UserRepositoryImpl implements UserRepository {
-    private final UserMapper userMapper;
+public interface UserRepository extends JpaRepository<User, Long> {
+    // メールアドレスでユーザーを検索
+    Optional<User> findByEmail(String email);
     
-    @Override
-    public List<User> findAll() {
-        return userMapper.findAll();
-    }
+    // 名前に指定された文字列が含まれるユーザーを検索
+    List<User> findByNameContaining(String name);
     
-    @Override
-    public Optional<User> findById(Long id) {
-        return Optional.ofNullable(userMapper.findById(id));
-    }
+    // 年齢範囲でユーザーを検索
+    @Query("SELECT u FROM User u WHERE u.age >= :minAge AND u.age <= :maxAge")
+    List<User> findByAgeRange(@Param("minAge") Integer minAge, @Param("maxAge") Integer maxAge);
     
-    @Override
-    public void save(User user) {
-        userMapper.insert(user);
-    }
-    
-    @Override
-    public void deleteById(Long id) {
-        userMapper.deleteById(id);
-    }
+    // メールアドレスの存在確認
+    boolean existsByEmail(String email);
 }
 ```
+
+> **🔍 JpaRepositoryの自動実装**:
+> Spring Data JPAを使用すると、`JpaRepository`を継承するだけで`findAll()`, `findById()`, `save()`, `deleteById()`などの基本メソッドが**自動的に実装**されます。
+> MyBatisのように実装クラスを書く必要はありません。
 
 **4. UserService（ビジネスロジック層）**:
 
@@ -1372,12 +1320,24 @@ No qualifying bean of type 'com.example.hellospringboot.repositories.UserReposit
 
 **原因**: `UserRepository`インターフェースの実装クラスに`@Repository`がない
 
-**解決策**:
+> **💡 JPA使用時の注意**:
+> Spring Data JPAを使用している場合、`UserRepository`は`JpaRepository`を継承するインターフェースなので、**実装クラスは不要**です。
+> この問題は**MyBatis版**で独自の実装クラスを作成した場合に発生します。
+
+**解決策（MyBatis版の場合）**:
 ```java
 @Repository  // これを忘れずに！
 @RequiredArgsConstructor
 public class UserRepositoryImpl implements UserRepository {
     private final UserMapper userMapper;
+}
+```
+
+**JPA版の場合**:
+```java
+@Repository  // JPA版でもRepositoryアノテーションを付けることを推奨
+public interface UserRepository extends JpaRepository<User, Long> {
+    // 実装クラスは不要（Spring Data JPAが自動生成）
 }
 ```
 
