@@ -528,6 +528,153 @@ docker compose up -d
 
 ---
 
+## 🚀 ステップ5: Userエンティティの作成（演習）
+
+これまで学んだ内容を踏まえて、`User`エンティティとリポジトリを作成してみましょう。
+
+### 5-1. Userエンティティの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
+
+```java
+package com.example.hellospringboot;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
+    
+    @Column
+    private Integer age;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+```
+
+**ポイント**:
+- `Product`と同じ構成のエンティティ
+- `email`フィールドに`unique = true`を指定（重複を防ぐ）
+- `age`はオプション（nullを許可）
+
+---
+
+### 5-2. UserRepositoryの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserRepository.java`
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    // メールアドレスでユーザーを検索
+    Optional<User> findByEmail(String email);
+    
+    // 名前の一部でユーザーを検索
+    List<User> findByNameContaining(String name);
+    
+    // 年齢範囲でユーザーを検索（カスタムクエリ）
+    @Query("SELECT u FROM User u WHERE u.age >= :minAge AND u.age <= :maxAge")
+    List<User> findByAgeRange(@Param("minAge") Integer minAge, @Param("maxAge") Integer maxAge);
+    
+    // メールアドレスの存在確認
+    boolean existsByEmail(String email);
+}
+```
+
+**ポイント**:
+- `findByEmail()`: Spring Data JPAのメソッド名規則で自動生成
+- `findByNameContaining()`: 部分一致検索（`LIKE %name%`）
+- `@Query`: JPQLで複雑なクエリを記述
+- `existsByEmail()`: 存在確認（boolean型を返す）
+
+---
+
+### 5-3. テーブルの自動作成確認
+
+アプリケーションを起動すると、`users`テーブルが自動作成されます。
+
+```bash
+./mvnw spring-boot:run
+```
+
+MySQLで確認：
+
+```bash
+docker compose exec mysql mysql -u springuser -pspringpass spring_boot_db
+```
+
+```sql
+DESC users;
+```
+
+**期待される結果**:
+
+```
++------------+--------------+------+-----+---------+----------------+
+| Field      | Type         | Null | Key | Default | Extra          |
++------------+--------------+------+-----+---------+----------------+
+| id         | bigint       | NO   | PRI | NULL    | auto_increment |
+| name       | varchar(100) | NO   |     | NULL    |                |
+| email      | varchar(100) | NO   | UNI | NULL    |                |
+| age        | int          | YES  |     | NULL    |                |
+| created_at | datetime(6)  | NO   |     | NULL    |                |
+| updated_at | datetime(6)  | NO   |     | NULL    |                |
++------------+--------------+------+-----+---------+----------------+
+```
+
+**確認ポイント**:
+- ✅ `email`に`UNI`（UNIQUE制約）が付いている
+- ✅ `age`が`NULL`許可（YES）になっている
+- ✅ `created_at`と`updated_at`が`datetime(6)`型（マイクロ秒まで記録）
+
+---
+
 ## 📚 このステップで学んだこと
 
 - ✅ `JpaRepository`インターフェースの役割を理解した
@@ -538,6 +685,9 @@ docker compose up -d
 - ✅ `Optional`型と`ResponseEntity`を使ってエラーハンドリングを実装した
 - ✅ curlコマンドでPOSTリクエストとGETリクエストをテストした
 - ✅ MySQLで実際にデータが保存されていることを確認した
+- ✅ `User`エンティティと`UserRepository`を作成した
+- ✅ カスタムクエリメソッド（`findByEmail`, `findByNameContaining`など）を実装した
+- ✅ `@Query`アノテーションでJPQLを記述できるようになった
 
 ---
 

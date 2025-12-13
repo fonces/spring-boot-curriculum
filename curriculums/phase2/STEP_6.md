@@ -133,7 +133,7 @@ spring:
   
   # データソース設定
   datasource:
-    url: jdbc:mysql://localhost:3306/spring_boot_db
+    url: jdbc:mysql://localhost:3306/hello_spring_boot?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
     username: springuser
     password: springpass
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -154,7 +154,10 @@ server:
 
 # カスタム設定（Phase 1から継続）
 app:
-  message: "Hello from YAML!"
+  name: Hello Spring Boot Application
+  version: 1.0.0
+  welcome-message: Welcome to Spring Boot Configuration Management!
+  description: This is a demo application for learning Spring Boot configuration.
 ```
 
 ### 2-2. 設定の解説
@@ -163,13 +166,20 @@ app:
 
 | 設定 | 説明 |
 |---|---|
-| `url` | JDBC接続URL（`jdbc:mysql://ホスト:ポート/データベース名`） |
+| `url` | JDBC接続URL（`jdbc:mysql://ホスト:ポート/データベース名?オプション`） |
 | `username` | データベースユーザー名（docker-compose.ymlで設定） |
 | `password` | データベースパスワード（docker-compose.ymlで設定） |
 | `driver-class-name` | JDBCドライバのクラス名 |
 
+**接続URLのオプション**:
+- `useSSL=false`: SSL接続を無効化（開発環境のみ）
+- `serverTimezone=Asia/Tokyo`: タイムゾーン指定
+- `characterEncoding=UTF-8`: 文字エンコーディング
+- `allowPublicKeyRetrieval=true`: MySQL 8.0の認証対応
+
 **ポイント**:
 - `localhost:3306`は、docker-compose.ymlで公開したポート
+- データベース名は`hello_spring_boot`（アンダースコア区切り）
 - ユーザー名とパスワードは、docker-compose.ymlの`environment`で設定した値
 
 #### `spring.jpa.hibernate.ddl-auto`
@@ -213,6 +223,7 @@ package com.example.hellospringboot;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -223,6 +234,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Product {
     
     @Id
@@ -232,7 +244,7 @@ public class Product {
     @Column(nullable = false, length = 100)
     private String name;
     
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 500)
     private String description;
     
     @Column(nullable = false)
@@ -268,6 +280,25 @@ public class Product {
 - テーブル名を明示的に指定
 - 省略した場合、クラス名を小文字にした`product`がデフォルト
 - 複数形にすることで可読性が向上
+
+#### `@Data`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`
+
+Lombokアノテーションで、ボイラープレートコードを削減します：
+
+- `@Data`: getter、setter、`toString()`、`equals()`、`hashCode()`を自動生成
+- `@NoArgsConstructor`: 引数なしのコンストラクタを生成（JPAで必須）
+- `@AllArgsConstructor`: 全フィールドを引数に持つコンストラクタを生成
+- `@Builder`: ビルダーパターンでオブジェクトを生成できるようにする
+
+**Builderの使用例**:
+
+```java
+Product product = Product.builder()
+    .name("ノートPC")
+    .description("高性能なノートパソコン")
+    .price(150000)
+    .build();
+```
 
 #### `@Id`
 
@@ -594,6 +625,30 @@ private ProductStatus status = ProductStatus.AVAILABLE;
 
 ## 🐛 トラブルシューティング
 
+### エラー: "Public Key Retrieval is not allowed"
+
+**エラーメッセージ**:
+
+```
+Caused by: com.mysql.cj.exceptions.UnableToConnectException: Public Key Retrieval is not allowed
+```
+
+**原因**: MySQL 8.0のデフォルト認証プラグイン（`caching_sha2_password`）を使用する際、公開鍵の取得が必要だが許可されていない
+
+**解決策**:
+
+JDBC URLに`allowPublicKeyRetrieval=true`を追加:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/spring_boot_db?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Tokyo
+```
+
+**セキュリティに関する注意**:
+- 開発環境では問題ありませんが、本番環境では適切なSSL設定を行うことを推奨します
+- `useSSL=false`は開発環境でのみ使用し、本番では`useSSL=true`と適切な証明書設定を行ってください
+
 ### エラー: "Communications link failure"
 
 **エラーメッセージ**:
@@ -686,6 +741,47 @@ docker compose exec mysql mysql -u root -prootpassword
 
 ```sql
 CREATE DATABASE spring_boot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**注意**: Docker Composeで環境変数`MYSQL_DATABASE`を設定していても、コンテナの再作成時にデータベースが作成されないことがあります。その場合は手動で作成してください。
+
+### エラー: "Access denied for user 'springuser'@'%' to database"
+
+**エラーメッセージ**:
+
+```
+Access denied for user 'springuser'@'%' to database 'spring_boot_db'
+```
+
+**原因**: ユーザーにデータベースへのアクセス権限が付与されていない
+
+**解決策**:
+
+MySQLコンテナに接続して権限を付与:
+
+```bash
+docker exec -it spring-boot-mysql mysql -uroot -prootpassword \
+  -e "GRANT ALL PRIVILEGES ON spring_boot_db.* TO 'springuser'@'%'; FLUSH PRIVILEGES;"
+```
+
+または、MySQLコンソールで:
+
+```sql
+GRANT ALL PRIVILEGES ON spring_boot_db.* TO 'springuser'@'%';
+FLUSH PRIVILEGES;
+```
+
+**確認**:
+
+```sql
+SHOW GRANTS FOR 'springuser'@'%';
+```
+
+**期待される結果**:
+
+```
+GRANT USAGE ON *.* TO `springuser`@`%`
+GRANT ALL PRIVILEGES ON `spring_boot_db`.* TO `springuser`@`%`
 ```
 
 ### エラー: "Table 'spring_boot_db.products' doesn't exist"

@@ -145,17 +145,23 @@ version: '3.8'
 services:
   mysql:
     image: mysql:8.0
-    container_name: spring-boot-mysql
+    container_name: hello-spring-boot-mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: spring_boot_db
+      MYSQL_DATABASE: hello_spring_boot
       MYSQL_USER: springuser
       MYSQL_PASSWORD: springpass
+      TZ: 'Asia/Tokyo'
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mysql_data:
@@ -178,7 +184,7 @@ Docker Composeファイルのバージョンです。`3.8`は広くサポート�
 - `mysql`: 公式MySQLイメージ
 - `8.0`: バージョンタグ（最新の8.0系を使用）
 
-#### `container_name: spring-boot-mysql`
+#### `container_name: hello-spring-boot-mysql`
 
 コンテナに付ける名前です。これによりコマンドで特定しやすくなります。
 
@@ -189,9 +195,10 @@ Docker Composeファイルのバージョンです。`3.8`は広くサポート�
 | 環境変数 | 説明 | 値 |
 |---|---|---|
 | `MYSQL_ROOT_PASSWORD` | rootユーザーのパスワード | `rootpassword` |
-| `MYSQL_DATABASE` | 初回起動時に作成するデータベース | `spring_boot_db` |
+| `MYSQL_DATABASE` | 初回起動時に作成するデータベース | `hello_spring_boot` |
 | `MYSQL_USER` | 作成するユーザー名 | `springuser` |
 | `MYSQL_PASSWORD` | 作成するユーザーのパスワード | `springpass` |
+| `TZ` | タイムゾーン | `Asia/Tokyo` |
 
 #### `ports:`
 
@@ -225,11 +232,30 @@ volumes:
 
 MySQLサーバーの起動オプションを指定します。
 
-- `--character-set-server=utf8mb4`: デフォルト文字セット
-- `--collation-server=utf8mb4_unicode_ci`: デフォルト照合順序
+- `--default-authentication-plugin=mysql_native_password`: 認証プラグインを従来の方式に設定
 
 **理由**:
-絵文字や多言語対応のため、`utf8mb4`を使用します。
+MySQL 8.0のデフォルト認証プラグイン（`caching_sha2_password`）ではなく、従来の`mysql_native_password`を使用することで、接続時のトラブルを回避します。
+
+#### `healthcheck:`
+
+コンテナの健全性を定期的にチェックします。
+
+```yaml
+healthcheck:
+  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+```
+
+- `test`: 健全性チェックコマンド（MySQLが応答するかを確認）
+- `interval`: チェックの間隔
+- `timeout`: タイムアウト時間
+- `retries`: 失敗時のリトライ回数
+
+**ポイント**:
+`docker compose ps`で`STATUS`が`healthy`になっていれば、MySQLが正常に起動しています。
 
 ---
 

@@ -51,11 +51,194 @@
 
 このステップでは、最も一般的な**1対多**を実装します。
 
+**実装例**:
+- **カテゴリと商品**: 1つのカテゴリに複数の商品
+- **ユーザーと投稿**: 1人のユーザーが複数の投稿を作成
+
 ---
 
-## 🚀 ステップ1: Categoryエンティティの作成
+## 🚀 ステップ1: UserエンティティをJPAエンティティに変更
 
-### 1-1. エンティティクラスを作成
+Phase 1で作成した`User`クラスをJPAエンティティに変更し、`Post`との1対多のリレーションシップを実装します。
+
+### 1-1. UserエンティティをJPAエンティティに変更
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
+
+```java
+package com.example.hellospringboot;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, unique = true, length = 255)
+    private String email;
+    
+    private Integer age;
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore  // JSONシリアライズ時に無限ループを防ぐ
+    @Builder.Default
+    private List<Post> posts = new ArrayList<>();
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    // ヘルパーメソッド：投稿を追加
+    public void addPost(Post post) {
+        posts.add(post);
+        post.setUser(this);
+    }
+    
+    // ヘルパーメソッド：投稿を削除
+    public void removePost(Post post) {
+        posts.remove(post);
+        post.setUser(null);
+    }
+}
+```
+
+### 1-2. Postエンティティの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/Post.java`
+
+```java
+package com.example.hellospringboot;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "posts")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Post {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 200)
+    private String title;
+    
+    @Column(columnDefinition = "TEXT")
+    private String content;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "posts"})
+    private User user;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+```
+
+### 1-3. コードの解説
+
+#### `@Builder.Default`（Userエンティティ）
+
+Lombokの`@Builder`使用時に、初期化式を保持するために必要です。
+
+```java
+@Builder.Default
+private List<Post> posts = new ArrayList<>();
+```
+
+**注意**: これがないと、Builderで生成したオブジェクトの`posts`が`null`になります。
+
+#### `@JsonIgnore`（Userエンティティ）
+
+User→Postsの無限ループを防ぎます。
+
+```java
+@JsonIgnore
+private List<Post> posts;
+```
+
+これにより、`GET /api/users`でユーザー情報を取得する際に、投稿リストは含まれません。
+
+#### `@JsonIgnoreProperties`（Postエンティティ）
+
+Post→Userのシリアライズ時に以下を無視します：
+
+- `hibernateLazyInitializer`: Hibernateの遅延ロードプロキシ
+- `handler`: Hibernateのハンドラー
+- `posts`: User側の投稿リスト（循環参照防止）
+
+```java
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "posts"})
+private User user;
+```
+
+これにより、`GET /api/posts`で投稿を取得する際に、投稿に紐づくユーザー情報は含まれますが、そのユーザーの投稿リストは含まれません（無限ループ防止）。
+
+---
+
+## 🚀 ステップ2: Categoryエンティティの作成（オプション）
+
+商品のカテゴリ管理も実装する場合は、以下のエンティティを作成します。
+
+### 2-1. エンティティクラスを作成
 
 **ファイルパス**: `src/main/java/com/example/hellospringboot/Category.java`
 
@@ -280,9 +463,268 @@ Category → products → category → products → ... (無限ループ)
 
 ---
 
-## 🚀 ステップ3: CategoryRepositoryとServiceの作成
+## 🚀 ステップ3: UserRepositoryとPostRepositoryの作成
 
-### 3-1. CategoryRepositoryの作成
+### 3-1. UserRepositoryの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserRepository.java`
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+import java.util.List;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    // メールアドレスでユーザーを検索
+    Optional<User> findByEmail(String email);
+    
+    // 名前で検索（部分一致）
+    List<User> findByNameContaining(String keyword);
+}
+```
+
+### 3-2. PostRepositoryの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/PostRepository.java`
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface PostRepository extends JpaRepository<Post, Long> {
+    
+    // ユーザーIDで投稿を取得
+    List<Post> findByUserId(Long userId);
+    
+    // タイトルで検索
+    List<Post> findByTitleContaining(String keyword);
+}
+```
+
+---
+
+## 🚀 ステップ4: UserControllerとPostControllerの作成
+
+### 4-1. UserControllerの更新
+
+Phase 1で作成した`UserController`をJPAリポジトリを使うように更新します。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserController.java`
+
+```java
+package com.example.hellospringboot;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    
+    private final UserRepository userRepository;
+    private final PostRepository postRepository;
+
+    // CREATE - ユーザーを登録
+    @PostMapping
+    public ResponseEntity<User> createUser(@RequestBody User user) {
+        User saved = userRepository.save(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    // READ - 全ユーザーを取得
+    @GetMapping
+    public ResponseEntity<List<User>> getAllUsers() {
+        List<User> users = userRepository.findAll();
+        return ResponseEntity.ok(users);
+    }
+
+    // READ - IDでユーザーを取得
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+        return userRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    // READ - ユーザーの投稿一覧を取得（リレーション）
+    @GetMapping("/{id}/posts")
+    public ResponseEntity<List<Post>> getUserPosts(@PathVariable Long id) {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        List<Post> posts = postRepository.findByUserId(id);
+        return ResponseEntity.ok(posts);
+    }
+
+    // UPDATE - ユーザーを更新
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(
+            @PathVariable Long id,
+            @RequestBody User userDetails) {
+        return userRepository.findById(id)
+                .map(user -> {
+                    user.setName(userDetails.getName());
+                    user.setEmail(userDetails.getEmail());
+                    user.setAge(userDetails.getAge());
+                    User updated = userRepository.save(user);
+                    return ResponseEntity.ok(updated);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // DELETE - ユーザーを削除
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        userRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+    
+    // SEARCH - 名前で検索
+    @GetMapping("/search")
+    public ResponseEntity<List<User>> searchUsers(@RequestParam String keyword) {
+        List<User> users = userRepository.findByNameContaining(keyword);
+        return ResponseEntity.ok(users);
+    }
+}
+```
+
+### 4-2. PostControllerの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/PostController.java`
+
+```java
+package com.example.hellospringboot;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/posts")
+@RequiredArgsConstructor
+public class PostController {
+    
+    private final PostRepository postRepository;
+    private final UserRepository userRepository;
+    
+    // CREATE - 投稿を作成
+    @PostMapping
+    public ResponseEntity<Post> createPost(@RequestBody PostRequest request) {
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + request.getUserId()));
+        
+        Post post = Post.builder()
+                .title(request.getTitle())
+                .content(request.getContent())
+                .user(user)
+                .build();
+        
+        Post saved = postRepository.save(post);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+    
+    // READ - 全投稿を取得
+    @GetMapping
+    public ResponseEntity<List<Post>> getAllPosts() {
+        List<Post> posts = postRepository.findAll();
+        return ResponseEntity.ok(posts);
+    }
+    
+    // READ - IDで投稿を取得
+    @GetMapping("/{id}")
+    public ResponseEntity<Post> getPostById(@PathVariable Long id) {
+        return postRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    // READ - ユーザーの投稿一覧を取得
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<Post>> getPostsByUserId(@PathVariable Long userId) {
+        List<Post> posts = postRepository.findByUserId(userId);
+        return ResponseEntity.ok(posts);
+    }
+    
+    // UPDATE - 投稿を更新
+    @PutMapping("/{id}")
+    public ResponseEntity<Post> updatePost(
+            @PathVariable Long id,
+            @RequestBody PostRequest request) {
+        return postRepository.findById(id)
+                .map(post -> {
+                    post.setTitle(request.getTitle());
+                    post.setContent(request.getContent());
+                    Post updated = postRepository.save(post);
+                    return ResponseEntity.ok(updated);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    // DELETE - 投稿を削除
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePost(@PathVariable Long id) {
+        if (!postRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        postRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+    
+    // SEARCH - タイトルで検索
+    @GetMapping("/search")
+    public ResponseEntity<List<Post>> searchPosts(@RequestParam String keyword) {
+        List<Post> posts = postRepository.findByTitleContaining(keyword);
+        return ResponseEntity.ok(posts);
+    }
+}
+```
+
+### 4-3. PostRequestの作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/PostRequest.java`
+
+```java
+package com.example.hellospringboot;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class PostRequest {
+    private Long userId;
+    private String title;
+    private String content;
+}
+```
+
+---
+
+## 🚀 ステップ5: CategoryRepositoryとServiceの作成（オプション）
 
 **ファイルパス**: `src/main/java/com/example/hellospringboot/CategoryRepository.java`
 
@@ -464,16 +906,193 @@ public ResponseEntity<Product> createProduct(
 
 ---
 
-## ✅ ステップ5: 動作確認
+## ✅ ステップ6: 動作確認
 
-### 5-1. アプリケーションの再起動
+### 6-1. アプリケーションの再起動
 
 ```bash
 ./mvnw clean install
 ./mvnw spring-boot:run
 ```
 
-### 5-2. カテゴリを作成
+### 6-2. ユーザーを作成
+
+```bash
+# ユーザー1: 田中太郎
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "田中太郎",
+    "email": "tanaka@example.com",
+    "age": 30
+  }'
+
+# ユーザー2: 佐藤花子
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "佐藤花子",
+    "email": "sato@example.com",
+    "age": 25
+  }'
+```
+
+**期待される結果**（ユーザー1）:
+
+```json
+{
+  "id": 1,
+  "name": "田中太郎",
+  "email": "tanaka@example.com",
+  "age": 30,
+  "createdAt": "2025-12-13T12:00:00.123456",
+  "updatedAt": "2025-12-13T12:00:00.123456"
+}
+```
+
+**返却されたIDをメモ**してください（以下の例では`id=1`と`id=2`とします）。
+
+### 6-3. 投稿を作成
+
+```bash
+# ユーザー1の投稿1
+curl -X POST http://localhost:8080/api/posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 1,
+    "title": "Spring Bootの学習",
+    "content": "Spring Bootの学習を始めました。とても楽しいです。"
+  }'
+
+# ユーザー1の投稿2
+curl -X POST http://localhost:8080/api/posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 1,
+    "title": "データベース連携",
+    "content": "MySQLとの連携ができました！"
+  }'
+
+# ユーザー2の投稿
+curl -X POST http://localhost:8080/api/posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 2,
+    "title": "JPAのリレーション",
+    "content": "1対多のリレーションシップを実装しました。"
+  }'
+```
+
+**期待される結果**（投稿1）:
+
+```json
+{
+  "id": 1,
+  "title": "Spring Bootの学習",
+  "content": "Spring Bootの学習を始めました。とても楽しいです。",
+  "user": {
+    "id": 1,
+    "name": "田中太郎",
+    "email": "tanaka@example.com",
+    "age": 30,
+    "createdAt": "2025-12-13T12:00:00.123456",
+    "updatedAt": "2025-12-13T12:00:00.123456"
+  },
+  "createdAt": "2025-12-13T12:01:00.123456",
+  "updatedAt": "2025-12-13T12:01:00.123456"
+}
+```
+
+**ポイント**:
+- 投稿のレスポンスには、紐づくユーザー情報が含まれます
+- ただし、ユーザー情報の中に`posts`フィールドは含まれません（`@JsonIgnore`の効果）
+
+### 6-4. ユーザーの投稿一覧を取得
+
+```bash
+# ユーザー1の投稿一覧
+curl http://localhost:8080/api/users/1/posts
+```
+
+**期待される結果**:
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Spring Bootの学習",
+    "content": "Spring Bootの学習を始めました。とても楽しいです。",
+    "user": {
+      "id": 1,
+      "name": "田中太郎",
+      "email": "tanaka@example.com",
+      "age": 30,
+      "createdAt": "2025-12-13T12:00:00.123456",
+      "updatedAt": "2025-12-13T12:00:00.123456"
+    },
+    "createdAt": "2025-12-13T12:01:00.123456",
+    "updatedAt": "2025-12-13T12:01:00.123456"
+  },
+  {
+    "id": 2,
+    "title": "データベース連携",
+    "content": "MySQLとの連携ができました！",
+    "user": {
+      "id": 1,
+      "name": "田中太郎",
+      "email": "tanaka@example.com",
+      "age": 30,
+      "createdAt": "2025-12-13T12:00:00.123456",
+      "updatedAt": "2025-12-13T12:00:00.123456"
+    },
+    "createdAt": "2025-12-13T12:02:00.123456",
+    "updatedAt": "2025-12-13T12:02:00.123456"
+  }
+]
+```
+
+### 6-5. MySQLで確認
+
+```bash
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM users;"
+docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e "SELECT * FROM posts;"
+```
+
+**期待される結果**（posts）:
+
+```
++----+-------------------------+----------------------------------------------+---------+----------------------------+----------------------------+
+| id | title                   | content                                      | user_id | created_at                 | updated_at                 |
++----+-------------------------+----------------------------------------------+---------+----------------------------+----------------------------+
+|  1 | Spring Bootの学習       | Spring Bootの学習を始めました。              |       1 | 2025-12-13 12:01:00.123456 | 2025-12-13 12:01:00.123456 |
+|  2 | データベース連携         | MySQLとの連携ができました！                  |       1 | 2025-12-13 12:02:00.123456 | 2025-12-13 12:02:00.123456 |
+|  3 | JPAのリレーション        | 1対多のリレーションシップを実装しました。    |       2 | 2025-12-13 12:03:00.123456 | 2025-12-13 12:03:00.123456 |
++----+-------------------------+----------------------------------------------+---------+----------------------------+----------------------------+
+```
+
+`user_id`カラムが追加され、値が設定されていることを確認してください。
+
+### 6-6. カスケード削除の確認
+
+ユーザーを削除すると、そのユーザーの投稿も自動的に削除されます（`cascade = CascadeType.ALL`の効果）。
+
+```bash
+# ユーザー2を削除
+curl -X DELETE http://localhost:8080/api/users/2
+
+# 投稿一覧を確認（ユーザー2の投稿が削除されているはず）
+curl http://localhost:8080/api/posts
+```
+
+**期待される結果**: ユーザー2の投稿（id=3）が削除されています。
+
+---
+
+## ✅ ステップ7: カテゴリと商品の動作確認（オプション）
+
+CategoryとProductのリレーションも実装した場合は、以下の手順で動作確認を行います。
+
+### 7-1. カテゴリを作成
 
 ```bash
 # カテゴリ1: パソコン
@@ -689,9 +1308,16 @@ Category findByIdWithProducts(@Param("id") Long id);
 
 ### 循環参照でJSONシリアライズエラー
 
-**原因**: `@JsonManagedReference`と`@JsonBackReference`が付いていない
+**エラーメッセージ**:
 
-**解決策**: すでに実装済みですが、以下を確認：
+```
+com.fasterxml.jackson.databind.exc.InvalidDefinitionException: 
+No serializer found for class org.hibernate.proxy.pojo.bytebuddy.ByteBuddyInterceptor
+```
+
+**原因**: `@JsonManagedReference`と`@JsonBackReference`が付いていない、またはHibernate遅延ロードプロキシがJSONシリアライズされようとしている
+
+**解決策1**: `@JsonManagedReference`と`@JsonBackReference`を使用（推奨）
 
 ```java
 // Category
@@ -702,6 +1328,28 @@ private List<Product> products;
 @JsonBackReference
 private Category category;
 ```
+
+**解決策2**: `@JsonIgnoreProperties`を使用
+
+```java
+// Product
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "category_id")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "products"})
+private Category category;
+```
+
+**解決策3**: `@JsonIgnore`で完全に無視（単方向のみ必要な場合）
+
+```java
+// Product
+@JsonIgnore
+private Category category;
+```
+
+**ポイント**:
+- `hibernateLazyInitializer`と`handler`を無視することで、Hibernateプロキシのシリアライズエラーを防げます
+- 循環参照を防ぐため、親側（`products`）も無視リストに追加します
 
 ### カテゴリを削除すると商品も削除される
 
