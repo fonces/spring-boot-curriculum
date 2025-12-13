@@ -214,10 +214,8 @@ spring-boot-curriculum/
 **workspace構成例**:
 ```
 workspace/
-├── hello-spring-boot/          # Phase 1-4の基本実装
-├── hello-spring-boot-thymeleaf/ # Phase 5のThymeleaf実装
-├── hello-spring-boot-security/  # Phase 6のセキュリティ実装
-└── final-project/              # Phase 8の総合演習
+├── hello-spring-boot/          # Phase 1-7の基本実装
+└── bloghub/                    # Phase 8の総合演習
 ```
 
 ---
