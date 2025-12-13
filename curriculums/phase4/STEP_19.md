@@ -190,7 +190,7 @@ public class User {
 ```xml
 <properties>
     <java.version>21</java.version>
-    <org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
+    <mapstruct.version>1.5.5.Final</mapstruct.version>
 </properties>
 
 <dependencies>
@@ -198,7 +198,7 @@ public class User {
     <dependency>
         <groupId>org.mapstruct</groupId>
         <artifactId>mapstruct</artifactId>
-        <version>${org.mapstruct.version}</version>
+        <version>${mapstruct.version}</version>
     </dependency>
 </dependencies>
 
@@ -207,7 +207,7 @@ public class User {
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.11.0</version>
+            <version>3.14.1</version>
             <configuration>
                 <source>21</source>
                 <target>21</target>
@@ -220,7 +220,7 @@ public class User {
                     <path>
                         <groupId>org.mapstruct</groupId>
                         <artifactId>mapstruct-processor</artifactId>
-                        <version>${org.mapstruct.version}</version>
+                        <version>${mapstruct.version}</version>
                     </path>
                     <path>
                         <groupId>org.projectlombok</groupId>

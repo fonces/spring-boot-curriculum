@@ -174,9 +174,9 @@ throw new ResourceNotFoundException("User", "id", 999);
 
 ---
 
-### 1-3. BadRequestExceptionの作成
+### 1-3. InvalidRequestExceptionの作成
 
-以下のファイルを`src/main/java/com/example/hellospringboot/exceptions/BadRequestException.java`に作成します：
+以下のファイルを`src/main/java/com/example/hellospringboot/exceptions/InvalidRequestException.java`に作成します：
 
 ```java
 package com.example.hellospringboot.exceptions;
@@ -185,46 +185,22 @@ package com.example.hellospringboot.exceptions;
  * 不正なリクエストの場合にスローされる例外
  * HTTPステータス: 400 Bad Request
  */
-public class BadRequestException extends RuntimeException {
+public class InvalidRequestException extends RuntimeException {
     
-    public BadRequestException(String message) {
+    public InvalidRequestException(String message) {
         super(message);
+    }
+    
+    public InvalidRequestException(String message, Throwable cause) {
+        super(message, cause);
     }
 }
 ```
 
 **使用例**:
 ```java
-if (user.getAge() < 0) {
-    throw new BadRequestException("Age must be positive");
-}
-```
-
----
-
-### 1-4. ConflictExceptionの作成
-
-以下のファイルを`src/main/java/com/example/hellospringboot/exceptions/ConflictException.java`に作成します：
-
-```java
-package com.example.hellospringboot.exceptions;
-
-/**
- * リソースの競合が発生した場合にスローされる例外
- * HTTPステータス: 409 Conflict
- */
-public class ConflictException extends RuntimeException {
-    
-    public ConflictException(String message) {
-        super(message);
-    }
-}
-```
-
-**使用例**:
-```java
-if (userRepository.existsByEmail(email)) {
-    throw new ConflictException("Email already exists: " + email);
+if (product.getStock() < quantity) {
+    throw new InvalidRequestException("Insufficient stock. Available: " + product.getStock() + ", Requested: " + quantity);
 }
 ```
 
@@ -232,7 +208,47 @@ if (userRepository.existsByEmail(email)) {
 
 ## 🚀 ステップ2: エラーレスポンスDTOの作成
 
-### 2-1. ErrorResponseの作成
+### 2-1. FieldErrorの作成（バリデーションエラー詳細用）
+
+まず、バリデーションエラーの詳細を表すDTOを作成します。
+
+以下のファイルを`src/main/java/com/example/hellospringboot/dto/FieldError.java`に作成します：
+
+```java
+package com.example.hellospringboot.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * バリデーションエラーの詳細情報
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class FieldError {
+    
+    /**
+     * エラーが発生したフィールド名
+     */
+    private String field;
+    
+    /**
+     * 拒否された値
+     */
+    private Object rejectedValue;
+    
+    /**
+     * エラーメッセージ
+     */
+    private String message;
+}
+```
+
+---
+
+### 2-2. ErrorResponseの作成
 
 以下のファイルを`src/main/java/com/example/hellospringboot/dto/ErrorResponse.java`に作成します：
 
@@ -241,10 +257,12 @@ package com.example.hellospringboot.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * エラーレスポンスの統一フォーマット
@@ -252,12 +270,13 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ErrorResponse {
     
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime timestamp;
     
-    private int status;
+    private Integer status;
     
     private String error;
     
@@ -266,23 +285,16 @@ public class ErrorResponse {
     private String path;
     
     /**
-     * エラーレスポンスを生成するファクトリメソッド
+     * バリデーションエラーの詳細リスト（オプション）
      */
-    public static ErrorResponse of(int status, String error, String message, String path) {
-        return new ErrorResponse(
-            LocalDateTime.now(),
-            status,
-            error,
-            message,
-            path
-        );
-    }
+    private List<FieldError> errors;
 }
 ```
 
 **ポイント**:
 - `@JsonFormat`で日付のフォーマットを指定
-- ファクトリメソッド`of()`で生成を簡潔に
+- `@Builder`アノテーションでビルダーパターンを使用可能に
+- `errors`フィールドはバリデーションエラー時に使用（オプション）
 - すべてのエラーで統一されたJSON形式
 
 **レスポンス例**:
@@ -300,24 +312,39 @@ public class ErrorResponse {
 
 ## 🚀 ステップ3: GlobalExceptionHandlerの作成
 
-### 3-1. GlobalExceptionHandlerクラス
+### 3-1. configパッケージを作成
 
-以下のファイルを`src/main/java/com/example/hellospringboot/exceptions/GlobalExceptionHandler.java`に作成します：
+`src/main/java/com/example/hellospringboot/config/`ディレクトリを作成します。
+
+---
+
+### 3-2. GlobalExceptionHandlerクラス
+
+以下のファイルを`src/main/java/com/example/hellospringboot/config/GlobalExceptionHandler.java`に作成します：
 
 ```java
-package com.example.hellospringboot.exceptions;
+package com.example.hellospringboot.config;
 
 import com.example.hellospringboot.dto.ErrorResponse;
+import com.example.hellospringboot.dto.FieldError;
+import com.example.hellospringboot.exceptions.InvalidRequestException;
+import com.example.hellospringboot.exceptions.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * アプリケーション全体の例外をハンドリングするグローバルハンドラー
  */
-@ControllerAdvice
+@Slf4j
+@RestControllerAdvice
 public class GlobalExceptionHandler {
     
     /**
@@ -329,12 +356,15 @@ public class GlobalExceptionHandler {
         ResourceNotFoundException ex,
         HttpServletRequest request
     ) {
-        ErrorResponse errorResponse = ErrorResponse.of(
-            HttpStatus.NOT_FOUND.value(),
-            HttpStatus.NOT_FOUND.getReasonPhrase(),
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        log.error("ResourceNotFoundException: {}", ex.getMessage());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.NOT_FOUND.value())
+            .error(HttpStatus.NOT_FOUND.getReasonPhrase())
+            .message(ex.getMessage())
+            .path(request.getRequestURI())
+            .build();
         
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
@@ -342,20 +372,23 @@ public class GlobalExceptionHandler {
     }
     
     /**
-     * BadRequestException をハンドリング
+     * InvalidRequestException をハンドリング
      * HTTPステータス: 400 Bad Request
      */
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ErrorResponse> handleBadRequestException(
-        BadRequestException ex,
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRequestException(
+        InvalidRequestException ex,
         HttpServletRequest request
     ) {
-        ErrorResponse errorResponse = ErrorResponse.of(
-            HttpStatus.BAD_REQUEST.value(),
-            HttpStatus.BAD_REQUEST.getReasonPhrase(),
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        log.error("InvalidRequestException: {}", ex.getMessage());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+            .message(ex.getMessage())
+            .path(request.getRequestURI())
+            .build();
         
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
@@ -363,23 +396,35 @@ public class GlobalExceptionHandler {
     }
     
     /**
-     * ConflictException をハンドリング
-     * HTTPステータス: 409 Conflict
+     * バリデーションエラーをハンドリング（Step 18で使用）
+     * HTTPステータス: 400 Bad Request
      */
-    @ExceptionHandler(ConflictException.class)
-    public ResponseEntity<ErrorResponse> handleConflictException(
-        ConflictException ex,
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValidException(
+        MethodArgumentNotValidException ex,
         HttpServletRequest request
     ) {
-        ErrorResponse errorResponse = ErrorResponse.of(
-            HttpStatus.CONFLICT.value(),
-            HttpStatus.CONFLICT.getReasonPhrase(),
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        log.error("Validation failed: {}", ex.getMessage());
+        
+        List<FieldError> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+            .map(error -> new FieldError(
+                error.getField(),
+                error.getRejectedValue(),
+                error.getDefaultMessage()
+            ))
+            .toList();
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error("Validation Failed")
+            .message("Input validation failed")
+            .path(request.getRequestURI())
+            .errors(fieldErrors)
+            .build();
         
         return ResponseEntity
-            .status(HttpStatus.CONFLICT)
+            .status(HttpStatus.BAD_REQUEST)
             .body(errorResponse);
     }
     
@@ -392,15 +437,15 @@ public class GlobalExceptionHandler {
         Exception ex,
         HttpServletRequest request
     ) {
-        ErrorResponse errorResponse = ErrorResponse.of(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(),
-            HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
-            "An unexpected error occurred",  // 本番環境では詳細を隠す
-            request.getRequestURI()
-        );
+        log.error("Unexpected error occurred", ex);
         
-        // サーバー側のログには詳細を出力
-        ex.printStackTrace();
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+            .error(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
+            .message("An unexpected error occurred")  // 本番環境では詳細を隠す
+            .path(request.getRequestURI())
+            .build();
         
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -411,17 +456,32 @@ public class GlobalExceptionHandler {
 
 ---
 
-### 3-2. コードの解説
+### 3-3. コードの解説
 
-#### `@ControllerAdvice`
+#### `@RestControllerAdvice`
+- `@ControllerAdvice` + `@ResponseBody`の組み合わせ
 - すべてのController（`@RestController`）に適用される
 - グローバルな例外ハンドリングを実現
-- クラスレベルで指定
+- レスポンスボディをJSONに自動変換
 
 #### `@ExceptionHandler(XxxException.class)`
 - 特定の例外をキャッチするメソッドに付与
 - 複数の例外を指定可能: `@ExceptionHandler({Ex1.class, Ex2.class})`
 - メソッドの引数で例外オブジェクトとHttpServletRequestを受け取れる
+
+#### `@Slf4j`
+- Lombokのロギングアノテーション
+- `log.error()`でエラーログを出力
+- Step 20で詳しく学習
+
+#### `ErrorResponse.builder()`
+- Lombokの`@Builder`アノテーションにより使用可能
+- 読みやすくメンテナンスしやすいコード
+
+#### `MethodArgumentNotValidException`
+- Spring MVCのバリデーションエラー
+- `@Valid`アノテーション使用時に発生
+- Step 18で詳しく学習
 
 #### `ResponseEntity<ErrorResponse>`
 - HTTPステータスコードとボディを自由に設定できる
@@ -468,8 +528,7 @@ package com.example.hellospringboot.services;
 
 import com.example.hellospringboot.entities.User;
 import com.example.hellospringboot.exceptions.ResourceNotFoundException;
-import com.example.hellospringboot.exceptions.BadRequestException;
-import com.example.hellospringboot.exceptions.ConflictException;
+import com.example.hellospringboot.exceptions.InvalidRequestException;
 import com.example.hellospringboot.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -493,16 +552,15 @@ public class UserService {
     public User createUser(User user) {
         // バリデーション: 年齢が負の数でないか
         if (user.getAge() != null && user.getAge() < 0) {
-            throw new BadRequestException("Age must be positive");
+            throw new InvalidRequestException("Age must be positive");
         }
         
         // バリデーション: メールアドレスの重複チェック
         if (userRepository.existsByEmail(user.getEmail())) {
-            throw new ConflictException("Email already exists: " + user.getEmail());
+            throw new InvalidRequestException("Email already exists: " + user.getEmail());
         }
         
-        userRepository.save(user);
-        return user;
+        return userRepository.save(user);
     }
     
     public User updateUser(Long id, User updatedUser) {
@@ -511,7 +569,7 @@ public class UserService {
         
         // 年齢のバリデーション
         if (updatedUser.getAge() != null && updatedUser.getAge() < 0) {
-            throw new BadRequestException("Age must be positive");
+            throw new InvalidRequestException("Age must be positive");
         }
         
         // 既存ユーザーの情報を更新
@@ -519,8 +577,7 @@ public class UserService {
         existingUser.setEmail(updatedUser.getEmail());
         existingUser.setAge(updatedUser.getAge());
         
-        userRepository.save(existingUser);
-        return existingUser;
+        return userRepository.save(existingUser);
     }
     
     public void deleteUser(Long id) {
@@ -537,7 +594,7 @@ public class UserService {
 
 ### 4-2. UserRepositoryにメソッド追加
 
-MyBatisの`UserMapper`に以下のメソッドを追加します：
+JPA Repositoryの`UserRepository`に以下のメソッドを追加します：
 
 **src/main/java/com/example/hellospringboot/mappers/UserMapper.java**:
 
@@ -1157,12 +1214,12 @@ curl -X POST http://localhost:8080/api/users \
 ```java
 // ❌ 間違い
 if (user.getAge() < 0) {
-    throw new BadRequestException("Age must be positive");
+    throw new InvalidRequestException("Age must be positive");
 }
 
 // ✅ 正しい
 if (user.getAge() != null && user.getAge() < 0) {
-    throw new BadRequestException("Age must be positive");
+    throw new InvalidRequestException("Age must be positive");
 }
 ```
 
@@ -1285,7 +1342,7 @@ throw new ResourceNotFoundException("User", "id", 999);
 // メッセージ: "User not found with id: '999'"
 
 // ✅ より良い例（修正方法のヒント）
-throw new BadRequestException("Age must be positive. Provided: " + user.getAge());
+throw new InvalidRequestException("Age must be positive. Provided: " + user.getAge());
 ```
 
 ---

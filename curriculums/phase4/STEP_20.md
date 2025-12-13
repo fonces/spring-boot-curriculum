@@ -165,7 +165,7 @@ import com.example.hellospringboot.dto.UserCreateRequest;
 import com.example.hellospringboot.dto.UserUpdateRequest;
 import com.example.hellospringboot.entities.User;
 import com.example.hellospringboot.exceptions.ResourceNotFoundException;
-import com.example.hellospringboot.exceptions.ConflictException;
+import com.example.hellospringboot.exceptions.InvalidRequestException;
 import com.example.hellospringboot.mappers.UserDtoMapper;
 import com.example.hellospringboot.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -208,7 +208,7 @@ public class UserService {
         // メールアドレスの重複チェック
         if (userRepository.existsByEmail(request.getEmail())) {
             log.warn("Email already exists: {}", request.getEmail());
-            throw new ConflictException("Email already exists: " + request.getEmail());
+            throw new InvalidRequestException("Email already exists: " + request.getEmail());
         }
         
         User user = userDtoMapper.toEntity(request);
