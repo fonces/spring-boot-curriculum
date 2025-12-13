@@ -2,629 +2,789 @@
 
 ## 🎯 このステップの目標
 
-- `@PostMapping`でPOSTリクエストを処理する方法を理解する
-- `@RequestBody`でJSONデータを受け取る方法を学ぶ
-- DTOクラスを作成してデータを構造化する
-- POSTリクエストでデータを送信し、レスポンスを返す
+- `@PostMapping`を使ってPOSTリクエストを処理できる
+- `@RequestBody`でJSONデータを受け取り、Java POJOに変換できる
+- HTTPメソッド（GET、POST）の違いと使い分けを理解できる
+- `ResponseEntity<T>`を使って適切なHTTPステータスコードを返せる
+- POJOクラス（Plain Old Java Object）とJSONの自動変換の仕組みを理解できる
 
-**所要時間**: 約1時間
+**所要時間**: 約50分
 
 ---
 
 ## 📋 事前準備
 
-- Step 2で作成した`hello-spring-boot`プロジェクト
-- Postmanまたはcurlでのリクエスト送信方法の理解
+このステップを始める前に、以下を確認してください：
 
-**Step 2をまだ完了していない場合**: [Step 2: パスパラメータとクエリパラメータ](STEP_2.md)を先に進めてください。
+- [Step 2: パスパラメータとクエリパラメータ](STEP_2.md)が完了している
+- `hello-spring-boot`プロジェクトが作成されている
+- `HelloController.java`に各種エンドポイントが実装されている
+- curlコマンドでAPIの動作確認ができる
 
----
+### 環境確認
 
-## 💡 GETとPOSTの違い
-
-### GET（これまで使用）
-
-- データの**取得**に使用
-- URLにパラメータを含める
-- リクエストボディは使用しない
-- ブラウザで直接アクセス可能
-
-### POST（これから学ぶ）
-
-- データの**作成・送信**に使用
-- リクエストボディにデータを含める
-- 大量のデータを送信できる
-- JSON形式でデータを送受信
-
----
-
-## 🚀 ステップ1: 最初のPOSTエンドポイント
-
-### 1-1. UserControllerの作成
-
-新しいコントローラーを作成します。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/controller/UserController.java`
-
-```java
-package com.example.hellospringboot.controller;
-
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
-
-@RestController
-public class UserController {
-
-    @PostMapping("/users")
-    public String createUser(@RequestBody Map<String, String> user) {
-        String name = user.get("name");
-        String email = user.get("email");
-        return "User created: " + name + " (" + email + ")";
-    }
-}
-```
-
-### 1-2. コードの解説
-
-#### `@PostMapping("/users")`
-- HTTPのPOSTリクエストを受け付ける
-- `/users`というパスで受け付ける
-- `@GetMapping`のPOST版
-
-#### `@RequestBody`
-- リクエストボディのJSONをJavaオブジェクトに変換
-- Spring Bootが自動的にJSON→オブジェクトに変換（デシリアライズ）
-
-#### `Map<String, String>`
-- シンプルなキー・バリュー形式でデータを受け取る
-- とりあえず動かすには便利だが、実用的ではない
-
-### 1-3. 動作確認（curl）
-
-アプリケーションを起動して以下を実行：
+Step 2で作成したプロジェクトディレクトリに移動し、アプリケーションが起動することを確認しましょう：
 
 ```bash
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Taro","email":"taro@example.com"}'
+cd ~/workspace/hello-spring-boot
+./mvnw spring-boot:run
+```
+
+別のターミナルで動作確認：
+
+```bash
+curl http://localhost:8080/users/123
 ```
 
 **期待される結果**:
 ```
-User created: Taro (taro@example.com)
+User ID: 123
 ```
 
-### 1-4. 動作確認（Postman）
-
-1. Postmanを開く
-2. メソッド: `POST`
-3. URL: `http://localhost:8080/users`
-4. Headers: `Content-Type: application/json`
-5. Body → raw → JSON を選択
-6. 以下を入力：
-```json
-{
-  "name": "Taro",
-  "email": "taro@example.com"
-}
-```
-7. 「Send」をクリック
+確認できたら、`Ctrl+C`でアプリケーションを停止してください。
 
 ---
 
-## 🚀 ステップ2: DTOクラスの作成
+## 🚀 ステップ1: HTTPメソッドの理解
 
-### 2-1. DTOとは？
+POSTリクエストを実装する前に、HTTPメソッドの基本を理解しましょう。
 
-**DTO (Data Transfer Object)** = データ転送用オブジェクト
+### 1-1. GETとPOSTの違い
 
-**メリット**:
-- 型安全性: コンパイル時にエラーを検出
-- 可読性: どんなデータが必要か明確
-- 保守性: フィールド追加・変更が容易
+#### GETメソッド
+- **目的**: リソースの取得（読み取り）
+- **データの送信方法**: URLのクエリパラメータ（`?key=value`）
+- **用途**: データの検索、一覧取得、詳細表示
+- **特徴**: 
+  - ブラウザのアドレスバーに直接入力できる
+  - ブックマーク可能
+  - 履歴に残る
+  - データの変更はしない（冪等性）
 
-### 2-2. UserRequestDTOの作成
+**例**: `/users?page=1` - ユーザー一覧を取得
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/UserRequest.java`
+#### POSTメソッド
+- **目的**: リソースの作成
+- **データの送信方法**: リクエストボディ（HTTPボディ部分）
+- **用途**: データの新規作成、フォーム送信
+- **特徴**: 
+  - 大量のデータを送信できる
+  - URLにデータが表示されない（セキュア）
+  - ブックマークできない
+  - データを変更する
 
-```java
-package com.example.hellospringboot.dto;
+**例**: `POST /users` + JSON - 新しいユーザーを作成
 
-public class UserRequest {
-    private String name;
-    private String email;
-    private Integer age;
+### 1-2. RESTful APIでのHTTPメソッドの使い分け
 
-    // デフォルトコンストラクタ（必須）
-    public UserRequest() {
-    }
+| HTTPメソッド | 用途 | 例 |
+|------------|------|-----|
+| **GET** | 取得（Read） | `GET /users` - ユーザー一覧取得 |
+| **POST** | 作成（Create） | `POST /users` - ユーザー作成 |
+| **PUT** | 更新（Update） | `PUT /users/123` - ユーザー123を更新 |
+| **DELETE** | 削除（Delete） | `DELETE /users/123` - ユーザー123を削除 |
 
-    // コンストラクタ
-    public UserRequest(String name, String email, Integer age) {
-        this.name = name;
-        this.email = email;
-        this.age = age;
-    }
+このステップでは**POST**を扱い、PUT/DELETEはチャレンジ課題で学びます。
 
-    // Getter
-    public String getName() {
-        return name;
-    }
+---
 
-    public String getEmail() {
-        return email;
-    }
+## 🚀 ステップ2: POJOクラス（Userクラス）の作成
 
-    public Integer getAge() {
-        return age;
-    }
+JSONデータを受け取るために、まずPOJO（Plain Old Java Object）クラスを作成します。
 
-    // Setter
-    public void setName(String name) {
-        this.name = name;
-    }
+### 2-1. POJOとは
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
+**POJO（Plain Old Java Object）** は、特別なフレームワークに依存しない、シンプルなJavaクラスのことです。データを格納するための入れ物として使います。
 
-    public void setAge(Integer age) {
-        this.age = age;
-    }
-}
-```
+**POJOの特徴**:
+- フィールド（プロパティ）を持つ
+- ゲッター/セッターメソッドを持つ
+- コンストラクタを持つ
+- フレームワークに依存しない
 
-### 2-3. UserResponseDTOの作成
+### 2-2. Userクラスを作成
 
-レスポンス用のDTOも作成します。
+`src/main/java/com/example/hellospringboot/`ディレクトリに、`User.java`を新規作成します。
 
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/UserResponse.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
 
 ```java
-package com.example.hellospringboot.dto;
+package com.example.hellospringboot;
 
-public class UserResponse {
+public class User {
     private Long id;
     private String name;
     private String email;
     private Integer age;
-    private String createdAt;
 
-    public UserResponse() {
+    // デフォルトコンストラクタ（JSONデシリアライズに必要）
+    public User() {
     }
 
-    public UserResponse(Long id, String name, String email, Integer age, String createdAt) {
+    // すべてのフィールドを持つコンストラクタ
+    public User(Long id, String name, String email, Integer age) {
         this.id = id;
         this.name = name;
         this.email = email;
         this.age = age;
-        this.createdAt = createdAt;
     }
 
-    // Getter
+    // ゲッター/セッター
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getName() {
         return name;
     }
 
-    public String getEmail() {
-        return email;
-    }
-
-    public Integer getAge() {
-        return age;
-    }
-
-    public String getCreatedAt() {
-        return createdAt;
-    }
-
-    // Setter
-    public void setId(Long id) {
-        this.id = id;
-    }
-
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public void setEmail(String email) {
         this.email = email;
     }
 
-    public void setAge(Integer age) {
-        this.age = age;
+    public Integer getAge() {
+        return age;
     }
 
-    public void setCreatedAt(String createdAt) {
-        this.createdAt = createdAt;
+    public void setAge(Integer age) {
+        this.age = age;
     }
 }
 ```
 
----
+### 2-3. コードの解説
 
-## 🚀 ステップ3: DTOを使ったコントローラーの改良
-
-### 3-1. UserControllerの修正
-
-`UserController.java`を以下のように**修正**します：
+#### フィールド（プロパティ）
 
 ```java
-package com.example.hellospringboot.controller;
+private Long id;
+private String name;
+private String email;
+private Integer age;
+```
 
-import com.example.hellospringboot.dto.UserRequest;
-import com.example.hellospringboot.dto.UserResponse;
+- `private`修飾子で外部から直接アクセスできないようにする
+- ゲッター/セッターを通してアクセスする（カプセル化）
+- `Long`や`Integer`はnullを許容するため、オプショナルな値に適している
+
+#### デフォルトコンストラクタ
+
+```java
+public User() {
+}
+```
+
+- **重要**: Jacksonライブラリ（Spring BootのJSON変換ライブラリ）がJSONからJavaオブジェクトを作成する際に必要
+- 引数なしのコンストラクタがないと、JSONのデシリアライズ（変換）に失敗します
+
+#### ゲッター/セッター
+
+```java
+public String getName() {
+    return name;
+}
+
+public void setName(String name) {
+    this.name = name;
+}
+```
+
+- Jacksonは、JSONのキー名とゲッター/セッターのメソッド名を対応させます
+- `name`フィールド → `getName()`/`setName()` → JSONの`"name"`キー
+- このルールを**JavaBeansの規約**と呼びます
+
+---
+
+## 🚀 ステップ3: POSTエンドポイントの作成
+
+新しいコントローラー`UserController.java`を作成し、POSTリクエストを処理します。
+
+### 3-1. UserControllerを作成
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserController.java`
+
+```java
+package com.example.hellospringboot;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.concurrent.atomic.AtomicLong;
-
 @RestController
+@RequestMapping("/api/users")
 public class UserController {
 
-    // IDを自動採番するためのカウンター
-    private final AtomicLong counter = new AtomicLong(1);
-
-    @PostMapping("/users")
-    public UserResponse createUser(@RequestBody UserRequest request) {
-        // IDを自動生成
-        Long id = counter.getAndIncrement();
+    @PostMapping
+    public ResponseEntity<User> createUser(@RequestBody User user) {
+        // 実際にはDBに保存する処理がここに入る（今回は省略）
         
-        // 現在時刻を取得
-        String createdAt = LocalDateTime.now()
-            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        // 仮のIDを設定（通常はDBで自動生成）
+        user.setId(1L);
         
-        // レスポンスを作成
-        UserResponse response = new UserResponse(
-            id,
-            request.getName(),
-            request.getEmail(),
-            request.getAge(),
-            createdAt
-        );
-        
-        return response;
+        // 201 Created ステータスコードとともにユーザー情報を返す
+        return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 }
 ```
 
 ### 3-2. コードの解説
 
-#### `AtomicLong counter`
-- スレッドセーフなカウンター
-- `getAndIncrement()`で1ずつ増加するIDを生成
-- 実際のアプリではデータベースが自動採番
+#### `@RestController`
 
-#### `@RequestBody UserRequest request`
-- JSONが`UserRequest`オブジェクトに自動変換される
-- `request.getName()`でアクセス可能
-
-#### 戻り値が`UserResponse`
-- Javaオブジェクトが自動的にJSONに変換される（シリアライズ）
-- Spring Bootが`@RestController`で自動処理
-
-### 3-3. 動作確認
-
-```bash
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Hanako","email":"hanako@example.com","age":25}'
+```java
+@RestController
 ```
 
-**期待される結果**（JSON形式で返る）:
+- クラスがREST APIのコントローラーであることを示します
+- すべてのメソッドの戻り値が自動的にJSON形式に変換されます
+- Step 1、Step 2で学んだ`HelloController`と同じアノテーションです
+
+#### `@RequestMapping("/api/users")`
+
+```java
+@RequestMapping("/api/users")
+```
+
+- クラスレベルで共通のベースパスを定義します
+- このコントローラー内のすべてのエンドポイントは`/api/users`から始まります
+- メソッドごとに個別のパスを追加できます
+
+#### `@PostMapping`
+
+```java
+@PostMapping
+public ResponseEntity<User> createUser(@RequestBody User user) {
+```
+
+- POSTリクエストを処理するメソッドであることを示します
+- `@RequestMapping(method = RequestMethod.POST)`と同じ意味の省略形です
+- クラスの`/api/users`と組み合わさって、`POST /api/users`エンドポイントになります
+
+#### `@RequestBody`
+
+```java
+@RequestBody User user
+```
+
+- **HTTPリクエストボディのJSON**を、**Javaオブジェクト**に自動変換します
+- この変換処理を**デシリアライゼーション（Deserialization）** と呼びます
+- Spring Bootは内部で**Jackson**ライブラリを使ってJSON→Java変換を行います
+
+**変換例**:
+
+リクエストボディ（JSON）:
 ```json
 {
-  "id": 1,
-  "name": "Hanako",
-  "email": "hanako@example.com",
-  "age": 25,
-  "createdAt": "2025-10-27 14:30:45"
+  "name": "山田太郎",
+  "email": "taro@example.com",
+  "age": 30
 }
 ```
 
-複数回実行すると、IDが増えていくことを確認できます。
+↓ 自動変換 ↓
+
+Javaオブジェクト:
+```java
+User user = new User();
+user.setName("山田太郎");
+user.setEmail("taro@example.com");
+user.setAge(30);
+```
+
+#### `ResponseEntity<User>`
+
+```java
+public ResponseEntity<User> createUser(@RequestBody User user) {
+```
+
+- **HTTPレスポンス全体**（ステータスコード、ヘッダー、ボディ）を制御できるクラスです
+- `<User>`はジェネリクスで、レスポンスボディの型を指定しています
+
+#### `ResponseEntity.status(HttpStatus.CREATED).body(user)`
+
+```java
+return ResponseEntity.status(HttpStatus.CREATED).body(user);
+```
+
+- `HttpStatus.CREATED`は**201 Created**ステータスコードを返します
+- `body(user)`でレスポンスボディにUserオブジェクトを設定します
+- Userオブジェクトは自動的にJSONに変換されます（**シリアライゼーション**）
+
+**HTTPステータスコードの使い分け**:
+
+| ステータスコード | 意味 | 用途 |
+|---------------|------|------|
+| **200 OK** | 成功 | GETリクエストの成功 |
+| **201 Created** | 作成成功 | POSTリクエストでリソース作成成功 |
+| **204 No Content** | 成功（ボディなし） | DELETEリクエストの成功 |
+| **400 Bad Request** | リクエストエラー | バリデーションエラー |
+| **404 Not Found** | 未検出 | 指定したリソースが存在しない |
+| **500 Internal Server Error** | サーバーエラー | サーバー側の予期しないエラー |
 
 ---
 
-## 🚀 ステップ4: GETエンドポイントの追加
+## 🚀 ステップ4: JacksonによるJSON自動変換の仕組み
 
-### 4-1. ユーザー一覧取得APIの実装
+Spring Bootでは、**Jackson**ライブラリがJSON⇔Javaオブジェクトの変換を自動で行います。
 
-作成したユーザーを保存して取得できるようにします。
+### 4-1. Jacksonとは
 
-`UserController.java`に以下を追加：
+**Jackson**は、JavaとJSONを相互変換するための最も人気のあるライブラリです。Spring Bootには標準で組み込まれているため、特別な設定は不要です。
+
+### 4-2. シリアライゼーション（Java → JSON）
+
+**シリアライゼーション（Serialization）** は、JavaオブジェクトをJSON文字列に変換することです。
 
 ```java
-import org.springframework.web.bind.annotation.GetMapping;
-
-import java.util.ArrayList;
-import java.util.List;
-
-@RestController
-public class UserController {
-
-    private final AtomicLong counter = new AtomicLong(1);
-    // ユーザーを保存するリスト（本来はデータベース）
-    private final List<UserResponse> users = new ArrayList<>();
-
-    @PostMapping("/users")
-    public UserResponse createUser(@RequestBody UserRequest request) {
-        Long id = counter.getAndIncrement();
-        
-        String createdAt = LocalDateTime.now()
-            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        
-        UserResponse response = new UserResponse(
-            id,
-            request.getName(),
-            request.getEmail(),
-            request.getAge(),
-            createdAt
-        );
-        
-        // リストに追加
-        users.add(response);
-        
-        return response;
-    }
-
-    @GetMapping("/users")
-    public List<UserResponse> getUsers() {
-        return users;
-    }
-}
+User user = new User(1L, "山田太郎", "taro@example.com", 30);
+// ↓ Jacksonが自動変換
+// {"id":1,"name":"山田太郎","email":"taro@example.com","age":30}
 ```
 
-### 4-2. 動作確認
+Jacksonは以下のルールで変換します：
+1. ゲッターメソッド（`getName()`など）を探す
+2. メソッド名から`get`を除いて最初を小文字にした名前をJSONキーにする
+3. メソッドの戻り値をJSONの値にする
+
+### 4-3. デシリアライゼーション（JSON → Java）
+
+**デシリアライゼーション（Deserialization）** は、JSON文字列をJavaオブジェクトに変換することです。
+
+```json
+{"name":"山田太郎","email":"taro@example.com","age":30}
+```
+
+↓ Jacksonが自動変換 ↓
+
+```java
+User user = new User();
+user.setName("山田太郎");
+user.setEmail("taro@example.com");
+user.setAge(30);
+```
+
+Jacksonは以下のルールで変換します：
+1. デフォルトコンストラクタ（引数なし）でオブジェクトを作成
+2. JSONのキー名に対応するセッターメソッド（`setName()`など）を探す
+3. JSONの値をセッターメソッドに渡す
+
+**重要**: デフォルトコンストラクタがないと、デシリアライゼーションに失敗します！
+
+### 4-4. Content-Typeヘッダー
+
+JSON形式のデータを送受信する際は、**Content-Type**ヘッダーで形式を明示します。
+
+- **リクエスト**: `Content-Type: application/json` - 送信するデータがJSON形式
+- **レスポンス**: Spring Bootが自動的に`Content-Type: application/json`を設定
+
+---
+
+## ✅ ステップ5: 動作確認
+
+### 5-1. アプリケーションの起動
+
+まず、アプリケーションを起動します：
 
 ```bash
-# ユーザーを3人作成
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Taro","email":"taro@example.com","age":30}'
+cd ~/workspace/hello-spring-boot
+./mvnw spring-boot:run
+```
 
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Hanako","email":"hanako@example.com","age":25}'
+起動ログに以下のようなメッセージが表示されればOKです：
 
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Jiro","email":"jiro@example.com","age":28}'
+```
+Started HelloSpringBootApplication in X.XXX seconds
+```
 
-# 一覧取得
-curl http://localhost:8080/users
+### 5-2. POSTリクエストの送信
+
+別のターミナルを開き、curlコマンドでPOSTリクエストを送信します：
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "山田太郎",
+    "email": "taro@example.com",
+    "age": 30
+  }'
+```
+
+**コマンドの解説**:
+- `-X POST`: POSTメソッドを使用
+- `-H "Content-Type: application/json"`: リクエストボディがJSON形式であることを明示
+- `-d '{...}'`: リクエストボディのデータ（JSON）
+
+**期待される結果**:
+
+```json
+{"id":1,"name":"山田太郎","email":"taro@example.com","age":30}
+```
+
+レスポンスに`id`が追加されて返ってきていることを確認してください。
+
+### 5-3. HTTPステータスコードの確認
+
+ステータスコードも確認してみましょう：
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "佐藤花子", "email": "hanako@example.com", "age": 25}' \
+  -i
+```
+
+`-i`オプションをつけると、レスポンスヘッダーも表示されます。
+
+**期待される結果**:
+
+```
+HTTP/1.1 201 
+Content-Type: application/json
+...
+
+{"id":1,"name":"佐藤花子","email":"hanako@example.com","age":25}
+```
+
+**HTTP/1.1 201** が表示されていれば、201 Createdステータスコードが正しく返されています！
+
+### 5-4. 様々なパターンでテスト
+
+#### パターン1: ageを省略
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "鈴木一郎", "email": "ichiro@example.com"}'
 ```
 
 **期待される結果**:
 ```json
-[
-  {
-    "id": 1,
-    "name": "Taro",
-    "email": "taro@example.com",
-    "age": 30,
-    "createdAt": "2025-10-27 14:30:45"
-  },
-  {
-    "id": 2,
-    "name": "Hanako",
-    "email": "hanako@example.com",
-    "age": 25,
-    "createdAt": "2025-10-27 14:31:02"
-  },
-  {
-    "id": 3,
-    "name": "Jiro",
-    "email": "jiro@example.com",
-    "age": 28,
-    "createdAt": "2025-10-27 14:31:15"
-  }
-]
+{"id":1,"name":"鈴木一郎","email":"ichiro@example.com","age":null}
 ```
+
+省略されたフィールドは`null`になります。
+
+#### パターン2: 余分なフィールドを含める
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "田中次郎", "email": "jiro@example.com", "age": 28, "address": "東京都"}'
+```
+
+**期待される結果**:
+```json
+{"id":1,"name":"田中次郎","email":"jiro@example.com","age":28}
+```
+
+Userクラスに存在しない`address`フィールドは無視されます（デフォルト動作）。
+
+#### パターン3: Content-Typeヘッダーを省略した場合
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -d '{"name": "テスト", "email": "test@example.com"}'
+```
+
+**期待される結果**:
+```
+{"timestamp":"2025-12-13T...","status":415,"error":"Unsupported Media Type",...}
+```
+
+`Content-Type: application/json`がないと、Spring Bootはリクエストボディを解釈できず、**415 Unsupported Media Type**エラーになります。
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: IDで特定のユーザーを取得
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-`GET /users/{id}`で特定のユーザーを取得するエンドポイントを追加してください。
+### チャレンジ 1: 複数ユーザーの一括作成
+
+`POST /api/users/batch`エンドポイントを作成し、ユーザーの配列を受け取って一括作成してみましょう。
 
 **ヒント**:
 ```java
-@GetMapping("/users/{id}")
-public UserResponse getUser(@PathVariable Long id) {
-    // usersリストから該当IDを探す
-    // Optional: 見つからない場合のエラーハンドリング
+@PostMapping("/batch")
+public ResponseEntity<List<User>> createUsers(@RequestBody List<User> users) {
+    // ユーザーリストを処理
+    // ...
+    return ResponseEntity.status(HttpStatus.CREATED).body(users);
 }
 ```
 
-### チャレンジ 2: 商品登録API
+**テスト用curlコマンド**:
+```bash
+curl -X POST http://localhost:8080/api/users/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"name": "ユーザー1", "email": "user1@example.com", "age": 20},
+    {"name": "ユーザー2", "email": "user2@example.com", "age": 30}
+  ]'
+```
 
-ユーザーと同様に、商品を登録するAPIを作成してください。
+### チャレンジ 2: GETエンドポイントの追加
 
-**必要なフィールド**:
-- `name` (商品名)
-- `price` (価格)
-- `category` (カテゴリ)
+`UserController`に、特定のユーザーを取得する`GET /api/users/{id}`エンドポイントを追加してみましょう。
 
-**エンドポイント**:
-- `POST /products`: 商品登録
-- `GET /products`: 商品一覧
-
-### チャレンジ 3: レスポンスにメッセージを追加
-
-登録成功時に以下のような構造のレスポンスを返してください：
-
-```json
-{
-  "success": true,
-  "message": "User created successfully",
-  "data": {
-    "id": 1,
-    "name": "Taro",
-    ...
-  }
+**ヒント**:
+```java
+@GetMapping("/{id}")
+public ResponseEntity<User> getUser(@PathVariable Long id) {
+    // 仮データを返す（実際にはDBから取得）
+    User user = new User(id, "サンプルユーザー", "sample@example.com", 25);
+    return ResponseEntity.ok(user);
 }
 ```
 
-**ヒント**: 新しいレスポンスDTOを作成します。
+**テスト用curlコマンド**:
+```bash
+curl http://localhost:8080/api/users/123
+```
+
+### チャレンジ 3: PUT（更新）エンドポイントの実装
+
+`PUT /api/users/{id}`エンドポイントを作成し、既存ユーザー情報を更新してみましょう。
+
+**ヒント**:
+```java
+@PutMapping("/{id}")
+public ResponseEntity<User> updateUser(
+    @PathVariable Long id,
+    @RequestBody User user
+) {
+    // IDを設定
+    user.setId(id);
+    
+    // 実際にはDBを更新する処理がここに入る
+    
+    // 200 OK で更新後のユーザー情報を返す
+    return ResponseEntity.ok(user);
+}
+```
+
+**テスト用curlコマンド**:
+```bash
+curl -X PUT http://localhost:8080/api/users/123 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "更新太郎", "email": "updated@example.com", "age": 35}'
+```
+
+### チャレンジ 4: DELETE（削除）エンドポイントの実装
+
+`DELETE /api/users/{id}`エンドポイントを作成し、ユーザーを削除してみましょう。
+
+**ヒント**:
+```java
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    // 実際にはDBから削除する処理がここに入る
+    
+    // 204 No Content（成功、ボディなし）を返す
+    return ResponseEntity.noContent().build();
+}
+```
+
+**テスト用curlコマンド**:
+```bash
+curl -X DELETE http://localhost:8080/api/users/123 -i
+```
+
+**期待される結果**: `HTTP/1.1 204` ステータスコード、ボディなし
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### エラー: "HttpMediaTypeNotSupportedException"
+### エラー: "HTTP Status 415 - Unsupported Media Type"
 
-**原因**: `Content-Type: application/json`ヘッダーが設定されていない
+**原因**: リクエストヘッダーに`Content-Type: application/json`が設定されていません。
 
-**解決策**:
+**解決策**: curlコマンドに`-H "Content-Type: application/json"`を追加してください。
+
 ```bash
-# ヘッダーを追加
-curl -X POST http://localhost:8080/users \
+curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"name":"Taro","email":"taro@example.com"}'
+  -d '{"name": "テスト", "email": "test@example.com"}'
 ```
 
-### エラー: JSONのパースエラー
+### エラー: "Cannot construct instance of User (no Creators, like default constructor, exist)"
 
-**原因**: JSON形式が正しくない
+**原因**: `User.java`にデフォルトコンストラクタ（引数なし）が定義されていません。
 
-**よくある間違い**:
+**解決策**: `User.java`に以下を追加してください。
+
+```java
+public User() {
+}
+```
+
+Jacksonは、JSONからJavaオブジェクトを作成する際にデフォルトコンストラクタを使用します。
+
+### エラー: "Required request body is missing"
+
+**原因**: リクエストボディ（`-d`オプション）が指定されていません。
+
+**解決策**: `-d`オプションでJSONデータを指定してください。
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "山田太郎", "email": "taro@example.com"}'
+```
+
+### エラー: JSONのパース失敗（Unexpected character...）
+
+**原因**: JSON形式が正しくありません（カンマ忘れ、引用符の不一致など）。
+
+**解決策**: JSON形式を確認してください。以下の点に注意：
+
+- キーと値は**ダブルクォート**（`"key": "value"`）
+- 複数のフィールドはカンマで区切る
+- 最後のフィールドの後にカンマをつけない
+
+**良い例**:
 ```json
-// NG: シングルクォート
-{'name':'Taro'}
-
-// NG: ダブルクォート忘れ
-{name:"Taro"}
-
-// OK: ダブルクォートで囲む
-{"name":"Taro"}
+{"name": "山田太郎", "email": "taro@example.com", "age": 30}
 ```
 
-### Getterが呼ばれない / JSONが空
+**悪い例**:
+```json
+{name: '山田太郎', email: 'taro@example.com', age: 30,}
+```
 
-**原因**: DTOにGetterがない、またはpublicでない
+### エラー: シェルでのJSON記述エラー（bash: syntax error）
 
-**解決策**: すべてのフィールドにpublicなGetterを用意
+**原因**: シングルクォート内で日本語やエスケープ文字を使用した際に、シェルがJSON文字列を正しく解釈できていません。
 
-```java
-public String getName() {
-    return name;
+**解決策**: JSONデータをファイルに保存して送信するか、エスケープを調整してください。
+
+**方法1: JSONファイルを使用**:
+
+`user.json`:
+```json
+{
+  "name": "山田太郎",
+  "email": "taro@example.com",
+  "age": 30
 }
 ```
 
-### デフォルトコンストラクタエラー
-
-**エラー**: "Cannot construct instance of..."
-
-**原因**: DTOにデフォルトコンストラクタ（引数なし）がない
-
-**解決策**:
-```java
-public UserRequest() {
-    // 引数なしのコンストラクタを追加
-}
+curlコマンド:
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d @user.json
 ```
+
+**方法2: ヒアドキュメントを使用**:
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d @- << EOF
+{
+  "name": "山田太郎",
+  "email": "taro@example.com",
+  "age": 30
+}
+EOF
+```
+
+### コンパイルエラー: "package org.springframework.http does not exist"
+
+**原因**: Spring Webの依存関係が不足している可能性があります（通常は発生しません）。
+
+**解決策**: `pom.xml`に以下の依存関係が含まれていることを確認してください。
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+```
+
+依存関係を追加した後、再度ビルドしてください：
+
+```bash
+./mvnw clean install
+```
+
+---
+
+## 💡 補足: RESTful APIの設計原則
+
+### REST（Representational State Transfer）とは
+
+**REST**は、Web APIを設計するためのアーキテクチャスタイルです。以下の原則に従います：
+
+#### 1. リソース指向
+
+URLはリソース（データの集合）を表します。
+
+- **良い例**: `/api/users` - ユーザーリソース
+- **悪い例**: `/api/getUsers` - 動詞を含む
+
+#### 2. HTTPメソッドで操作を表現
+
+リソースに対する操作はHTTPメソッドで表現します。
+
+| 操作 | HTTPメソッド | エンドポイント | 説明 |
+|-----|------------|--------------|------|
+| 一覧取得 | GET | `/api/users` | すべてのユーザーを取得 |
+| 詳細取得 | GET | `/api/users/{id}` | 特定のユーザーを取得 |
+| 作成 | POST | `/api/users` | 新しいユーザーを作成 |
+| 更新 | PUT | `/api/users/{id}` | ユーザー情報を更新 |
+| 削除 | DELETE | `/api/users/{id}` | ユーザーを削除 |
+
+#### 3. ステートレス
+
+各リクエストは独立しており、サーバーはクライアントの状態を保持しません。
+
+#### 4. 適切なHTTPステータスコードを使用
+
+- **2xx**: 成功（200 OK、201 Created、204 No Content）
+- **4xx**: クライアントエラー（400 Bad Request、404 Not Found）
+- **5xx**: サーバーエラー（500 Internal Server Error）
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ `@PostMapping`でPOSTリクエストを処理
-- ✅ `@RequestBody`でJSONをJavaオブジェクトに変換
-- ✅ DTOクラスを作成してデータを構造化
-- ✅ リクエストDTOとレスポンスDTOの分離
-- ✅ JavaオブジェクトをJSONに自動変換
-- ✅ POSTとGETを組み合わせたCRUD操作の基礎
-- ✅ インメモリでのデータ保存（リスト使用）
-
----
-
-## 💡 補足: JSONとJavaオブジェクトの変換
-
-### デシリアライズ（JSON → Java）
-
-Spring Bootは**Jackson**というライブラリを使ってJSONをJavaオブジェクトに変換します。
-
-```
-リクエスト:
-{"name":"Taro","email":"taro@example.com"}
-    ↓ Spring Bootが自動変換
-UserRequest {
-    name = "Taro"
-    email = "taro@example.com"
-}
-```
-
-**変換ルール**:
-- JSONのキーとJavaのフィールド名が一致
-- SetterまたはフィールドにJacksonがアクセス
-- デフォルトコンストラクタが必要
-
-### シリアライズ（Java → JSON）
-
-逆にJavaオブジェクトをJSONに変換します。
-
-```
-UserResponse {
-    id = 1
-    name = "Taro"
-    email = "taro@example.com"
-}
-    ↓ Spring Bootが自動変換
-レスポンス:
-{"id":1,"name":"Taro","email":"taro@example.com"}
-```
-
-**変換ルール**:
-- Getterメソッドが必要
-- `getXxx()`の`Xxx`がJSONのキー名になる
-- `getId()` → `"id"`
-
-### なぜDTOにGetter/Setterが必要？
-
-- **Setter**: JSON → Java変換時にJacksonが使用
-- **Getter**: Java → JSON変換時にJacksonが使用
-
-**次のステップ（Step 5）でLombokを使うと、これらを自動生成できます！**
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 3: POSTリクエストとDTO実装完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
+- ✅ HTTPメソッド（GET、POST、PUT、DELETE）の違いと使い分け
+- ✅ `@PostMapping`を使ったPOSTリクエストの処理
+- ✅ POJO（Plain Old Java Object）クラスの作成とJavaBeans規約
+- ✅ `@RequestBody`によるJSON→Javaオブジェクトの自動変換（デシリアライゼーション）
+- ✅ Jacksonライブラリの役割とJSON自動変換の仕組み
+- ✅ `ResponseEntity<T>`によるHTTPステータスコードとレスポンスボディの制御
+- ✅ `Content-Type: application/json`ヘッダーの重要性
+- ✅ curlコマンドでのPOSTリクエスト送信とテスト方法
+- ✅ RESTful APIの基本設計原則（リソース指向、HTTPメソッドの使い分け）
 
 ---
 
 ## ➡️ 次のステップ
 
-レビューが完了したら、[Step 4: application.ymlで設定管理](STEP_4.md)へ進みましょう！
+[Step 4: application.ymlで設定管理](STEP_4.md)へ進みましょう！
 
-次のステップでは、アプリケーションの設定を外部ファイル（application.yml）で管理する方法を学びます。
-ポート番号の変更や、カスタムプロパティの定義方法を習得します。
+次のステップでは、アプリケーションの設定を外部ファイル（`application.yml`）で管理する方法を学びます。ポート番号、データベース接続情報、カスタム設定値などを、コードから分離して管理できるようになります。環境ごとに設定を切り替える実践的なテクニックも学びましょう！
 
 ---
 
-お疲れさまでした！ 🎉
-
-POSTリクエストとDTOの基本をマスターしました。
-Step 5ではLombokを使ってDTO作成を劇的に簡略化します。お楽しみに！
+**作成日**: 2025-12-13  
+**対象バージョン**: Spring Boot 3.5.8

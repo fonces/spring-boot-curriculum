@@ -2,54 +2,96 @@
 
 ## 🎯 このステップの目標
 
-- Lombokとは何か、なぜ使うのかを理解する
-- Lombokの依存関係を追加してIDEにプラグインをインストールする
-- `@Data`、`@Getter`、`@Setter`でGetter/Setterを自動生成する
-- `@AllArgsConstructor`、`@NoArgsConstructor`でコンストラクタを自動生成する
-- `@Builder`でビルダーパターンを実装する
-- Step 3で作成したDTOをLombokでリファクタリングする
+- Lombokライブラリの目的と利点を理解し、ボイラープレートコード削減のメリットを説明できる
+- `@Data`、`@Getter`、`@Setter`、`@NoArgsConstructor`、`@AllArgsConstructor`を使ってPOJOクラスを簡潔に記述できる
+- `@RequiredArgsConstructor`を使ってコンストラクタインジェクションを簡潔に実装できる
+- Before/Afterのコード比較を通じて、Lombokによる記述量削減の効果を実感できる
+- Lombokのメリットとデメリットを理解し、適切に使い分けられる
 
-**所要時間**: 約1時間
+**所要時間**: 約45分
 
 ---
 
 ## 📋 事前準備
 
-- Step 4で作成した`hello-spring-boot`プロジェクト
-- Step 3で作成したDTOクラス（`UserRequest`, `UserResponse`）
+このステップを始める前に、以下を確認してください：
 
-**Step 4をまだ完了していない場合**: [Step 4: application.ymlで設定管理](STEP_4.md)を先に進めてください。
+- [Step 4: application.ymlで設定管理](STEP_4.md)が完了している
+- `hello-spring-boot`プロジェクトが作成されている
+- `User.java`、`HelloController.java`、`UserController.java`が実装されている
+- アプリケーションが正常に起動・動作することを確認している
+
+### 環境確認
+
+Step 4で作成したプロジェクトディレクトリに移動し、アプリケーションが起動することを確認しましょう：
+
+```bash
+cd ~/workspace/hello-spring-boot
+./mvnw spring-boot:run
+```
+
+別のターミナルで動作確認：
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+**期待される結果**:
+```json
+[]
+```
+
+確認できたら、`Ctrl+C`でアプリケーションを停止してください。
 
 ---
 
-## 💡 Lombokとは？
+## 🚀 ステップ1: Lombokとは？ボイラープレートコードの問題を理解する
 
-### Lombokの役割
+### 1-1. ボイラープレートコードとは
 
-**Lombok** = ボイラープレートコード（定型的な冗長なコード）を自動生成するライブラリ
+**ボイラープレートコード（Boilerplate Code）**とは、プログラムで何度も繰り返し書かなければならない定型的なコードのことです。
 
-**ボイラープレートコードの例**:
-- Getter/Setterメソッド
-- コンストラクタ
-- `toString()`、`equals()`、`hashCode()`
+Javaでは特に、以下のようなコードが典型的なボイラープレートコードです：
 
-### Lombokなし vs Lombokあり
+- **getter/setterメソッド**
+- **コンストラクタ**
+- **toString()メソッド**
+- **equals()とhashCode()メソッド**
 
-#### Lombokなし（Step 3で書いたコード）
+### 1-2. 現在のUser.javaを確認
+
+現在の`User.java`を見てみましょう：
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
 
 ```java
-public class UserRequest {
+package com.example.hellospringboot;
+
+public class User {
+    private Long id;
     private String name;
     private String email;
     private Integer age;
 
-    public UserRequest() {
+    // デフォルトコンストラクタ（JSONデシリアライズに必要）
+    public User() {
     }
 
-    public UserRequest(String name, String email, Integer age) {
+    // すべてのフィールドを持つコンストラクタ
+    public User(Long id, String name, String email, Integer age) {
+        this.id = id;
         this.name = name;
         this.email = email;
         this.age = age;
+    }
+
+    // ゲッター/セッター
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getName() {
@@ -76,776 +118,1054 @@ public class UserRequest {
         this.age = age;
     }
 }
-// 約40行
 ```
 
-#### Lombokあり
+たった4つのフィールド（`id`、`name`、`email`、`age`）を持つシンプルなクラスなのに、**54行**もあります！
+
+実際にビジネスロジックを書いているのは最初の4行だけで、残りはすべて定型的なコードです。
+
+### 1-3. Lombokとは
+
+**Lombok**は、アノテーションを使ってこれらのボイラープレートコードを**コンパイル時に自動生成**してくれるJavaライブラリです。
+
+Lombokを使うと、上記の`User.java`をこのように書けます：
 
 ```java
+package com.example.hellospringboot;
+
 import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class UserRequest {
+public class User {
+    private Long id;
     private String name;
     private String email;
     private Integer age;
 }
-// たったの12行！
 ```
 
-**同じ機能を、1/3以下のコードで実現できます。**
+たった**10行**で、getter/setter、toString()、equals()、hashCode()などがすべて自動生成されます！
+
+### 1-4. Lombokの仕組み
+
+Lombokは**アノテーションプロセッサ（Annotation Processor）**として動作します。
+
+```
+[ソースコード]
+   ↓
+[Lombokがアノテーションを検出]
+   ↓
+[コンパイル時にメソッドを自動生成]
+   ↓
+[.classファイル（バイトコード）]
+```
+
+つまり、**ソースコードには書かれていないけど、コンパイル後のクラスには存在する**ということです。
+
+### 1-5. Lombokのメリットとデメリット
+
+#### メリット
+
+- ✅ **コード量が劇的に減る**: 定型的なコードを書かなくて済む
+- ✅ **可読性が向上**: ビジネスロジックに集中できる
+- ✅ **保守性が高まる**: フィールドを追加してもgetter/setterを書く必要がない
+- ✅ **バグが減る**: 自動生成されるので人的ミスが減る
+
+#### デメリット
+
+- ❌ **IDE/エディタの設定が必要**: プラグインをインストールしないと補完が効かない
+- ❌ **学習コスト**: アノテーションの種類と使い方を覚える必要がある
+- ❌ **デバッグが難しい場合がある**: 自動生成されたコードはソースに見えない
+- ❌ **過度に使うと可読性が下がる**: `@Data`を多用すると何が生成されるか分かりにくい
+
+### 1-6. Lombokの主要なアノテーション
+
+このステップでは、以下のアノテーションを学びます：
+
+| アノテーション | 生成されるもの |
+|---|---|
+| `@Getter` | すべてのフィールドのgetterメソッド |
+| `@Setter` | すべてのフィールドのsetterメソッド |
+| `@ToString` | toString()メソッド |
+| `@EqualsAndHashCode` | equals()とhashCode()メソッド |
+| `@NoArgsConstructor` | 引数なしのコンストラクタ |
+| `@AllArgsConstructor` | すべてのフィールドを引数に持つコンストラクタ |
+| `@RequiredArgsConstructor` | `final`フィールドのみを引数に持つコンストラクタ |
+| `@Data` | `@Getter` + `@Setter` + `@ToString` + `@EqualsAndHashCode` + `@RequiredArgsConstructor` |
+| `@Builder` | Builderパターンの実装 |
+| `@Slf4j` | ロガーフィールドの自動生成 |
 
 ---
 
-## 🚀 ステップ1: Lombok依存関係の追加
+## 🚀 ステップ2: Lombokの依存関係を追加する
 
-### 1-1. pom.xmlに依存関係を追加
+### 2-1. pom.xmlにLombokを追加
 
-`pom.xml`を開いて、`<dependencies>`セクション内に以下を追加します。
+`pom.xml`を開き、`<dependencies>`セクションにLombokの依存関係を追加します。
 
 **ファイルパス**: `pom.xml`
 
 ```xml
-<dependencies>
-    <!-- 既存の依存関係 -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.8</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example</groupId>
+	<artifactId>hello-spring-boot</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>hello-spring-boot</name>
+	<description>Demo project for Spring Boot</description>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>21</java.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
 
-    <!-- Lombokを追加 -->
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <optional>true</optional>
-    </dependency>
+		<!-- Lombok -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
 
-    <!-- テスト用（既存） -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-test</artifactId>
-        <scope>test</scope>
-    </dependency>
-</dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
 ```
 
-### 1-2. Mavenプロジェクトの更新
+### 2-2. Lombokの設定の解説
 
-VSCodeで：
-1. `pom.xml`を保存
-2. 右下に表示される「A build file was modified. Do you want to synchronize the Java classpath/configuration?」で「Always」をクリック
-3. または、コマンドパレット（`Ctrl + Shift + P`）で「Java: Clean Java Language Server Workspace」を実行
+#### `<optional>true</optional>`
 
-依存関係がダウンロードされるまで待ちます。
+Lombokは**コンパイル時にのみ必要**で、実行時には不要です。`<optional>true</optional>`を指定することで、このプロジェクトを他のプロジェクトから依存する際に、Lombokが伝播しないようにしています。
+
+#### `spring-boot-maven-plugin`の設定
+
+```xml
+<configuration>
+    <excludes>
+        <exclude>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </exclude>
+    </excludes>
+</configuration>
+```
+
+Spring BootのJARファイルを作成する際に、Lombokを含めないようにしています。これは、Lombokが**コンパイル時にのみ必要**で、実行時のJARには不要だからです。
+
+### 2-3. 依存関係のダウンロード
+
+依存関係を追加したら、Mavenで依存関係をダウンロードします：
+
+```bash
+./mvnw clean compile
+```
+
+**期待される出力**:
+```
+[INFO] BUILD SUCCESS
+```
+
+これで、Lombokが使える準備が整いました！
 
 ---
 
-## 🚀 ステップ2: VSCodeにLombok拡張機能をインストール
+## 🚀 ステップ3: User.javaを@Dataでリファクタリングする
 
-### 2-1. 拡張機能のインストール
+### 3-1. Before: 現在のUser.java（54行）
 
-1. VSCodeの拡張機能ビュー（サイドバーの四角4つのアイコン）を開く
-2. 検索ボックスに「Lombok」と入力
-3. 「Lombok Annotations Support for VS Code」（GabrielBB作）をインストール
-4. VSCodeを再起動（推奨）
+現在の`User.java`は54行あり、そのほとんどがボイラープレートコードです：
 
-### 2-2. 設定の確認
-
-Lombokが正しく動作するように設定を確認します：
-
-1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
-2. 検索ボックスに「java.compile.nullAnalysis.mode」と入力
-3. 値が「automatic」になっていることを確認
-
-**これでVSCodeがLombokのアノテーションを認識します！**
-
----
-
-## 🚀 ステップ3: @Dataでリファクタリング
-
-### 3-1. UserRequestをLombok化
-
-Step 3で作成した`UserRequest.java`を以下のように**書き換え**ます。
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/UserRequest.java`
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
 
 ```java
-package com.example.hellospringboot.dto;
+package com.example.hellospringboot;
 
-import lombok.Data;
-
-@Data
-public class UserRequest {
+public class User {
+    private Long id;
     private String name;
     private String email;
     private Integer age;
+
+    // デフォルトコンストラクタ（JSONデシリアライズに必要）
+    public User() {
+    }
+
+    // すべてのフィールドを持つコンストラクタ
+    public User(Long id, String name, String email, Integer age) {
+        this.id = id;
+        this.name = name;
+        this.email = email;
+        this.age = age;
+    }
+
+    // ゲッター/セッター
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public Integer getAge() {
+        return age;
+    }
+
+    public void setAge(Integer age) {
+        this.age = age;
+    }
 }
 ```
 
-### 3-2. @Dataの機能
+### 3-2. After: Lombokを使ったUser.java（13行）
 
-`@Data`は以下を自動生成します：
+`User.java`を以下のように書き換えましょう：
 
-- すべてのフィールドの**Getter**
-- すべてのフィールドの**Setter**
-- `toString()`
-- `equals()`と`hashCode()`
-- **引数を持つコンストラクタ**（全フィールド）
-
-### 3-3. 動作確認
-
-アプリケーションを再起動して、POSTリクエストを送信：
-
-```bash
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Lombok User","email":"lombok@example.com","age":30}'
-```
-
-**期待される結果**:
-```json
-{
-  "id": 1,
-  "name": "Lombok User",
-  "email": "lombok@example.com",
-  "age": 30,
-  "createdAt": "2025-10-27 15:30:45"
-}
-```
-
-Getter/Setterを書かなくても動作します！
-
----
-
-## 🚀 ステップ4: @NoArgsConstructorと@AllArgsConstructor
-
-### 4-1. 問題: デフォルトコンストラクタがない
-
-`@Data`だけでは、引数なしのデフォルトコンストラクタが生成されません。
-JSON → Javaオブジェクトの変換時にエラーになる場合があります。
-
-### 4-2. コンストラクタアノテーションの追加
-
-`UserRequest.java`を修正：
+**ファイルパス**: `src/main/java/com/example/hellospringboot/User.java`
 
 ```java
-package com.example.hellospringboot.dto;
+package com.example.hellospringboot;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor   // 引数なしコンストラクタ
-@AllArgsConstructor  // 全フィールドを引数に持つコンストラクタ
-public class UserRequest {
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    private Long id;
     private String name;
     private String email;
     private Integer age;
 }
 ```
 
-### 4-3. コンストラクタアノテーションの解説
+**54行 → 13行**に削減されました！これがLombokの威力です。
+
+### 3-3. アノテーションの解説
+
+#### `@Data`
+
+`@Data`は、以下のアノテーションをまとめたものです：
+
+- `@Getter`: すべてのフィールドにgetterメソッドを生成
+- `@Setter`: すべてのfinalでないフィールドにsetterメソッドを生成
+- `@ToString`: toString()メソッドを生成
+- `@EqualsAndHashCode`: equals()とhashCode()メソッドを生成
+- `@RequiredArgsConstructor`: finalフィールドのみを引数に持つコンストラクタを生成
 
 #### `@NoArgsConstructor`
+
+引数なしのデフォルトコンストラクタを生成します。
+
 ```java
-public UserRequest() {
+public User() {
 }
 ```
-を自動生成
+
+Spring BootのJSONデシリアライズ（JSONからJavaオブジェクトへの変換）では、デフォルトコンストラクタが必要なため、明示的に指定しています。
 
 #### `@AllArgsConstructor`
+
+すべてのフィールドを引数に持つコンストラクタを生成します。
+
 ```java
-public UserRequest(String name, String email, Integer age) {
+public User(Long id, String name, String email, Integer age) {
+    this.id = id;
     this.name = name;
     this.email = email;
     this.age = age;
 }
 ```
-を自動生成
 
----
+テストコードなどで、オブジェクトを簡単に作成できるようになります。
 
-## 🚀 ステップ5: UserResponseもLombok化
+### 3-4. コンパイルして確認
 
-### 5-1. UserResponseの書き換え
-
-`UserResponse.java`も同様にリファクタリング：
-
-**ファイルパス**: `src/main/java/com/example/hellospringboot/dto/UserResponse.java`
-
-```java
-package com.example.hellospringboot.dto;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class UserResponse {
-    private Long id;
-    private String name;
-    private String email;
-    private Integer age;
-    private String createdAt;
-}
-```
-
-**約60行 → 約15行になりました！**
-
-### 5-2. 動作確認
+コードを保存したら、コンパイルして確認しましょう：
 
 ```bash
-# ユーザー作成
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Hanako","email":"hanako@example.com","age":25}'
-
-# 一覧取得
-curl http://localhost:8080/users
+./mvnw clean compile
 ```
 
-問題なく動作するはずです。
+**期待される出力**:
+```
+[INFO] BUILD SUCCESS
+```
+
+エラーが出なければ、Lombokが正しく動作しています！
 
 ---
 
-## 🚀 ステップ6: @Builderパターン
+## 🚀 ステップ4: @RequiredArgsConstructorでコンストラクタインジェクションを簡潔にする
 
-### 6-1. Builderパターンとは？
+Spring Bootでは、**コンストラクタインジェクション（Constructor Injection）**が推奨されています。Lombokの`@RequiredArgsConstructor`を使うと、これを簡潔に書けます。
 
-オブジェクトを段階的に構築するデザインパターン。
+### 4-1. コンストラクタインジェクションとは
 
-**通常の方法**:
-```java
-UserResponse response = new UserResponse();
-response.setId(1L);
-response.setName("Taro");
-response.setEmail("taro@example.com");
-response.setAge(30);
-response.setCreatedAt("2025-10-27 15:30:45");
-```
+Spring Bootでは、依存オブジェクト（Bean）を注入する方法として、以下の3つがあります：
 
-**Builderパターン**:
-```java
-UserResponse response = UserResponse.builder()
-    .id(1L)
-    .name("Taro")
-    .email("taro@example.com")
-    .age(30)
-    .createdAt("2025-10-27 15:30:45")
-    .build();
-```
+1. **コンストラクタインジェクション**（推奨）
+2. フィールドインジェクション（`@Autowired`をフィールドに付ける）
+3. セッターインジェクション（setterメソッドに`@Autowired`を付ける）
 
-**メリット**:
-- 可読性が高い
-- 設定し忘れを防げる
-- 不変オブジェクトを作りやすい
+コンストラクタインジェクションが推奨される理由：
+- ✅ **不変性（Immutability）**: フィールドを`final`にできる
+- ✅ **テストしやすい**: モックオブジェクトを簡単に渡せる
+- ✅ **必須依存が明確**: コンストラクタで渡さないとオブジェクトが作れない
 
-### 6-2. @Builderの追加
+### 4-2. Before: 従来のコンストラクタインジェクション
 
-`UserResponse.java`に`@Builder`を追加：
+例として、新しいサービスクラス`UserService`を作成してみましょう。
+
+まず、Lombokを使わない場合のコードを見てみます：
 
 ```java
-package com.example.hellospringboot.dto;
+package com.example.hellospringboot;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.springframework.stereotype.Service;
+import java.util.ArrayList;
+import java.util.List;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserResponse {
-    private Long id;
-    private String name;
-    private String email;
-    private Integer age;
-    private String createdAt;
+@Service
+public class UserService {
+    private final List<User> users;
+
+    // コンストラクタインジェクション
+    public UserService() {
+        this.users = new ArrayList<>();
+    }
+
+    public List<User> getAllUsers() {
+        return users;
+    }
+
+    public void addUser(User user) {
+        users.add(user);
+    }
 }
 ```
 
-### 6-3. Controllerでの使用
-
-`UserController.java`を修正：
+この例では依存が単純なので問題ありませんが、複数の依存がある場合は以下のようになります：
 
 ```java
-@PostMapping("/users")
-public UserResponse createUser(@RequestBody UserRequest request) {
-    Long id = counter.getAndIncrement();
+@Service
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+    private final NotificationService notificationService;
+
+    public UserService(UserRepository userRepository, 
+                       EmailService emailService,
+                       NotificationService notificationService) {
+        this.userRepository = userRepository;
+        this.emailService = emailService;
+        this.notificationService = notificationService;
+    }
     
-    String createdAt = LocalDateTime.now()
-        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-    
-    // Builderパターンで構築
-    UserResponse response = UserResponse.builder()
-        .id(id)
-        .name(request.getName())
-        .email(request.getEmail())
-        .age(request.getAge())
-        .createdAt(createdAt)
-        .build();
-    
-    users.add(response);
-    
-    return response;
+    // ... メソッド
 }
 ```
 
-### 6-4. 動作確認
+フィールドが3つあると、コンストラクタだけで7行必要です。
+
+### 4-3. After: @RequiredArgsConstructorを使った簡潔な書き方
+
+実際に`UserService`クラスを作成しましょう。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserService.java`
+
+```java
+package com.example.hellospringboot;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    // finalフィールドはコンストラクタで初期化される必要がある
+    // @RequiredArgsConstructorが自動的にコンストラクタを生成
+    private final List<User> users = new ArrayList<>();
+
+    public List<User> getAllUsers() {
+        return new ArrayList<>(users); // 防御的コピー
+    }
+
+    public User addUser(User user) {
+        // 簡易的なID生成
+        if (user.getId() == null) {
+            user.setId((long) (users.size() + 1));
+        }
+        users.add(user);
+        return user;
+    }
+
+    public User getUserById(Long id) {
+        return users.stream()
+                .filter(user -> user.getId().equals(id))
+                .findFirst()
+                .orElse(null);
+    }
+}
+```
+
+### 4-4. @RequiredArgsConstructorの解説
+
+`@RequiredArgsConstructor`は、**finalフィールドと@NonNullフィールド**を引数に持つコンストラクタを自動生成します。
+
+上記の例では、`users`フィールドは初期化式があるため、実際にはコンストラクタの引数にはなりませんが、`@RequiredArgsConstructor`を付けることで、将来的に依存を追加した際に自動的にコンストラクタが更新されます。
+
+より実践的な例：
+
+```java
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+    
+    // Lombokが以下のコンストラクタを自動生成
+    // public UserService(UserRepository userRepository, EmailService emailService) {
+    //     this.userRepository = userRepository;
+    //     this.emailService = emailService;
+    // }
+}
+```
+
+### 4-5. UserControllerをUserServiceを使うように更新
+
+既存の`UserController`を、作成した`UserService`を使うように更新しましょう。
+
+**ファイルパス**: `src/main/java/com/example/hellospringboot/UserController.java`
+
+```java
+package com.example.hellospringboot;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    private final UserService userService;
+
+    @GetMapping
+    public List<User> getAllUsers() {
+        return userService.getAllUsers();
+    }
+
+    @GetMapping("/{id}")
+    public User getUserById(@PathVariable Long id) {
+        return userService.getUserById(id);
+    }
+
+    @PostMapping
+    public User createUser(@RequestBody User user) {
+        return userService.addUser(user);
+    }
+}
+```
+
+**変更点**:
+- ✅ `@RequiredArgsConstructor`を追加
+- ✅ `private final UserService userService;`でサービスを注入
+- ✅ ビジネスロジックを`UserService`に委譲
+- ✅ インメモリのリストを削除（UserServiceに移動）
+
+これで、**Controller（APIの窓口） → Service（ビジネスロジック）** という責任分離ができました！
+
+---
+
+## ✅ ステップ5: 動作確認
+
+### 5-1. アプリケーションを起動
+
+アプリケーションを起動します：
 
 ```bash
-curl -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Builder User","email":"builder@example.com","age":28}'
+./mvnw spring-boot:run
 ```
 
-同じように動作しますが、コードがより読みやすくなりました。
+### 5-2. ユーザーを作成
+
+POSTリクエストでユーザーを作成します：
+
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "山田太郎",
+    "email": "yamada@example.com",
+    "age": 30
+  }'
+```
+
+**期待される結果**:
+```json
+{"id":1,"name":"山田太郎","email":"yamada@example.com","age":30}
+```
+
+### 5-3. すべてのユーザーを取得
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+**期待される結果**:
+```json
+[{"id":1,"name":"山田太郎","email":"yamada@example.com","age":30}]
+```
+
+### 5-4. IDでユーザーを取得
+
+```bash
+curl http://localhost:8080/api/users/1
+```
+
+**期待される結果**:
+```json
+{"id":1,"name":"山田太郎","email":"yamada@example.com","age":30}
+```
+
+すべて正常に動作すれば成功です！ 🎉
 
 ---
 
-## 🚀 ステップ7: その他の便利なLombokアノテーション
+## 🚀 ステップ6: Lombokの他のアノテーションを理解する
 
-### 7-1. @Getter / @Setterの個別使用
+### 6-1. @Getter/@Setter（個別指定）
 
-`@Data`はすべてを生成しますが、個別に制御したい場合：
+`@Data`はすべてのフィールドにgetter/setterを生成しますが、特定のフィールドだけに適用したい場合は、`@Getter`と`@Setter`を個別に使います。
 
 ```java
 import lombok.Getter;
 import lombok.Setter;
 
-@Getter
-@Setter
 public class Product {
-    private String name;
-    private Integer price;
-    
-    @Setter(lombok.AccessLevel.NONE)  // Setterを生成しない
+    @Getter @Setter
     private Long id;
+    
+    @Getter @Setter
+    private String name;
+    
+    @Getter  // getterのみ（setterは生成しない）
+    private Double price;
+    
+    public Product(Long id, String name, Double price) {
+        this.id = id;
+        this.name = name;
+        this.price = price;
+    }
 }
 ```
 
-### 7-2. @ToString
+**使い分け**:
+- **不変フィールド**: `@Getter`のみ（setterを生成しない）
+- **可変フィールド**: `@Getter @Setter`
 
-`@ToString`は、オブジェクトの内容を文字列で表現する`toString()`メソッドを自動生成します。
+### 6-2. @ToString
 
-#### 基本的な使い方
+`toString()`メソッドを生成します。
 
 ```java
 import lombok.ToString;
 
 @ToString
 public class User {
+    private Long id;
     private String name;
-    private String email;
+    private String password;  // パスワードは表示したくない
 }
 ```
 
-このクラスのインスタンスを出力すると：
+デフォルトでは、すべてのフィールドが含まれます：
+
+```
+User(id=1, name=山田太郎, password=secret123)
+```
+
+**特定のフィールドを除外する**:
 
 ```java
-User user = new User();
-user.setName("Taro");
-user.setEmail("taro@example.com");
-
-System.out.println(user);
-// 出力: User(name=Taro, email=taro@example.com)
-```
-
-<details>
-<summary><strong>📖 主な用途: ログ出力でのデバッグ（クリックして展開）</strong></summary>
-
-`@ToString`は**ログ出力**で非常に便利です。オブジェクトの状態を簡単に確認できます：
-
-```java
-@RestController
-@Slf4j  // Lombokのログアノテーション
-public class UserController {
-    
-    @PostMapping("/users")
-    public UserResponse createUser(@RequestBody UserRequest request) {
-        // リクエスト内容をログ出力（デバッグ用）
-        log.info("Received user request: {}", request);
-        
-        // ... 処理 ...
-        
-        return response;
-    }
-}
-```
-
-**ログ出力例**:
-```
-2025-11-14 10:30:45.123  INFO 12345 --- [nio-8080-exec-1] c.e.h.controller.UserController : Received user request: UserRequest(name=Taro, email=taro@example.com, age=30)
-```
-
-`@ToString`がなければ、以下のように表示されてしまいます：
-```
-Received user request: com.example.hellospringboot.dto.UserRequest@5a2e4553
-```
-
-#### ⚠️ 重要: 機密情報の除外
-
-**パスワードやトークンなどの機密情報は、ログに出力してはいけません！**
-
-`exclude`パラメータで特定フィールドを除外できます：
-
-```java
-import lombok.ToString;
-
-@ToString(exclude = {"password", "creditCardNumber"})
-public class UserRegistration {
-    private String username;
-    private String email;
-    private String password;           // ログに出力されない
-    private String creditCardNumber;   // ログに出力されない
-}
-```
-
-**出力例**:
-```java
-UserRegistration user = new UserRegistration();
-user.setUsername("taro");
-user.setEmail("taro@example.com");
-user.setPassword("secret123");
-user.setCreditCardNumber("1234-5678-9012-3456");
-
-System.out.println(user);
-// 出力: UserRegistration(username=taro, email=taro@example.com)
-// passwordとcreditCardNumberは出力されない
-```
-
-#### 💡 セキュリティのベストプラクティス
-
-**機密情報を含むクラスの例**:
-
-```java
-@ToString(exclude = {"password", "token", "secret"})
-@Data
-public class LoginRequest {
-    private String username;
-    private String password;  // 絶対にログに出さない！
-    private String deviceId;
-}
-```
-
-```java
-@ToString(exclude = "apiKey")
-@Data
-public class ExternalApiConfig {
-    private String endpoint;
-    private String apiKey;    // APIキーは機密情報
-    private Integer timeout;
-}
-```
-
-#### その他の便利なオプション
-
-**特定フィールドのみを含める**:
-
-```java
-@ToString(of = {"id", "name"})  // idとnameだけ出力
+@ToString(exclude = "password")
 public class User {
     private Long id;
     private String name;
-    private String email;
-    private String internalNote;  // 出力されない
+    private String password;
 }
 ```
 
-**スーパークラスのフィールドも含める**:
-
-```java
-@ToString(callSuper = true)
-public class AdminUser extends User {
-    private String role;
-}
-// 出力: AdminUser(super=User(name=Taro), role=ADMIN)
+結果：
+```
+User(id=1, name=山田太郎)
 ```
 
-**フィールド名を表示しない**:
+### 6-3. @EqualsAndHashCode
 
-```java
-@ToString(includeFieldNames = false)
-public class Point {
-    private Integer x;
-    private Integer y;
-}
-// 出力: Point(10, 20) ← フィールド名なし
-```
-
-#### 実践例: ログ出力での活用
-
-```java
-import lombok.Data;
-import lombok.ToString;
-import lombok.extern.slf4j.Slf4j;
-
-@Slf4j
-@RestController
-public class OrderController {
-    
-    @PostMapping("/orders")
-    public OrderResponse createOrder(@RequestBody OrderRequest request) {
-        // リクエストの内容をログに記録
-        log.info("Creating order: {}", request);
-        
-        try {
-            // 処理...
-            OrderResponse response = processOrder(request);
-            
-            // 成功時のログ
-            log.info("Order created successfully: {}", response);
-            
-            return response;
-        } catch (Exception e) {
-            // エラー時にリクエスト内容を記録（デバッグに有用）
-            log.error("Failed to create order. Request: {}", request, e);
-            throw e;
-        }
-    }
-}
-
-@ToString(exclude = {"creditCardNumber", "cvv"})  // 決済情報は除外！
-@Data
-class OrderRequest {
-    private String productId;
-    private Integer quantity;
-    private String creditCardNumber;  // ログに出力しない
-    private String cvv;               // ログに出力しない
-}
-
-@ToString
-@Data
-class OrderResponse {
-    private String orderId;
-    private String status;
-    private LocalDateTime createdAt;
-}
-```
-
-**重要ポイント**:
-- ✅ ログ出力でオブジェクトの状態を簡単に確認できる
-- ✅ デバッグ作業が効率的になる
-- ⚠️ パスワード、トークン、カード番号などは必ず`exclude`で除外
-- ⚠️ 個人情報（メールアドレス、電話番号等）の取り扱いにも注意
-
-</details>
-
-### 7-3. @EqualsAndHashCode
+`equals()`と`hashCode()`メソッドを生成します。
 
 ```java
 import lombok.EqualsAndHashCode;
 
-@EqualsAndHashCode(of = "id")
+@EqualsAndHashCode
 public class User {
     private Long id;
     private String name;
 }
-// IDが同じなら同じオブジェクトと判定
+```
+
+**特定のフィールドだけで比較する**:
+
+```java
+@EqualsAndHashCode(of = "id")  // idだけで比較
+public class User {
+    private Long id;
+    private String name;
+}
+```
+
+### 6-4. @Builder
+
+**Builderパターン**を自動生成します。オブジェクトの生成を流暢（fluent）に書けるようになります。
+
+```java
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class User {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+}
+```
+
+**使い方**:
+
+```java
+User user = User.builder()
+    .id(1L)
+    .name("山田太郎")
+    .email("yamada@example.com")
+    .age(30)
+    .build();
+```
+
+**メリット**:
+- ✅ 可読性が高い（どのフィールドに何を設定しているか明確）
+- ✅ 順序を気にしなくて良い
+- ✅ オプショナルなフィールドを扱いやすい
+
+### 6-5. @Slf4j
+
+ロガー（Logger）フィールドを自動生成します。
+
+```java
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.*;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+    
+    @GetMapping
+    public List<User> getAllUsers() {
+        log.info("すべてのユーザーを取得");  // ログ出力
+        // ...
+    }
+}
+```
+
+Lombokが以下のコードを自動生成します：
+
+```java
+private static final org.slf4j.Logger log = 
+    org.slf4j.LoggerFactory.getLogger(UserController.class);
 ```
 
 ---
 
 ## 🎨 チャレンジ課題
 
-### チャレンジ 1: ProductDTOの作成
+基本が理解できたら、以下にチャレンジしてみましょう：
 
-商品を扱うDTOをLombokで作成してください。
+### チャレンジ 1: @Builderパターンでユーザーを作成
 
-**要件**:
-- `ProductRequest`: name, price, category
-- `ProductResponse`: id, name, price, category, createdAt
-- すべてLombokを使用（`@Data`, `@Builder`など）
-
-### チャレンジ 2: 不変オブジェクトの作成
-
-`@Builder`と`@Getter`のみを使用して、変更不可能なレスポンスDTOを作成してください。
+`User`クラスに`@Builder`アノテーションを追加し、Builderパターンでユーザーを作成してみましょう。
 
 **ヒント**:
+
+1. `User.java`に`@Builder`を追加
+2. `UserService.java`で以下のようにオブジェクトを作成
+
 ```java
-@Getter
-@Builder
-public class ImmutableResponse {
-    private final Long id;
-    private final String name;
+User newUser = User.builder()
+    .id(1L)
+    .name("佐藤花子")
+    .email("sato@example.com")
+    .age(25)
+    .build();
+```
+
+**期待される動作**:
+- Builderパターンでユーザーを作成できる
+- 可読性が向上する
+
+### チャレンジ 2: カスタムtoString()の実装
+
+`User`クラスの`toString()`で、パスワードフィールドを除外してみましょう。
+
+**手順**:
+
+1. `User`クラスに`password`フィールドを追加
+2. `@ToString(exclude = "password")`を使う
+3. ログ出力で確認
+
+**ヒント**:
+
+```java
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = "password")
+public class User {
+    private Long id;
+    private String name;
+    private String email;
+    private Integer age;
+    private String password;  // 追加
 }
 ```
 
-### チャレンジ 3: カスタムビルダー
+### チャレンジ 3: @Slf4jでロギング機能を追加
 
-デフォルト値を持つBuilderを作成してください。
+`UserController`に`@Slf4j`を追加し、各エンドポイントでログを出力してみましょう。
+
+**手順**:
+
+1. `UserController`に`@Slf4j`を追加
+2. 各メソッドで`log.info()`を使ってログを出力
+3. アプリケーションを起動してログを確認
 
 **ヒント**:
+
 ```java
-@Builder
-public class UserRequest {
-    private String name;
-    
-    @Builder.Default
-    private String role = "USER";
-    
-    @Builder.Default
-    private Boolean active = true;
+@Slf4j
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    private final UserService userService;
+
+    @GetMapping
+    public List<User> getAllUsers() {
+        log.info("GET /api/users - すべてのユーザーを取得");
+        return userService.getAllUsers();
+    }
+
+    @PostMapping
+    public User createUser(@RequestBody User user) {
+        log.info("POST /api/users - ユーザーを作成: {}", user.getName());
+        return userService.addUser(user);
+    }
 }
+```
+
+**期待されるログ出力**:
+```
+INFO  c.e.h.UserController - GET /api/users - すべてのユーザーを取得
+INFO  c.e.h.UserController - POST /api/users - ユーザーを作成: 山田太郎
 ```
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### Lombokアノテーションが認識されない
+### エラー: "cannot find symbol: class Data"
 
-**症状**: `@Data`などに赤い波線が出る
-
-**原因**: Lombokプラグインがインストールされていない
+**原因**: Lombokの依存関係が正しくインストールされていない
 
 **解決策**:
-1. ステップ2を再確認
+
+1. `pom.xml`にLombokの依存関係が追加されているか確認
+2. Mavenの依存関係を再取得
+
+```bash
+./mvnw clean install
+```
+
+### エラー: "User()' in 'com.example.hellospringboot.User' cannot be applied"
+
+**原因**: `@NoArgsConstructor`が不足している
+
 **解決策**:
-1. `pom.xml`からLombokの依存関係を削除
-2. VSCodeを再起動
-3. `pom.xml`のLombok依存関係を確認
 
-### Getter/Setterが見つからないエラー
+JSONデシリアライズにはデフォルトコンストラクタが必要です。`@NoArgsConstructor`を追加してください：
 
-**エラー**: "Cannot resolve method 'getName()'"
-
-**原因**: Lombokの拡張機能がインストールされていない、または認識されていない
-
-**解決策**:
-1. VSCodeを再起動
-2. 「Lombok Annotations Support for VS Code」拡張機能がインストール済みか確認
-3. コマンドパレットで「Java: Clean Java Language Server Workspace」を実行
-4. プロジェクトを再度開く
-
-### @Builderと@NoArgsConstructorの競合
-
-**エラー**: コンストラクタエラー
-
-**解決策**: 3つセットで使用
 ```java
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class MyClass {
+public class User {
     // ...
 }
 ```
 
-### JSONへの変換で値がnull
+### エラー: IDEでgetter/setterが認識されない
 
-**原因**: Getterが生成されていない
+**原因**: IDEにLombokプラグインがインストールされていない
+
+**解決策（VSCode）**:
+
+1. 拡張機能「Lombok Annotations Support for VS Code」をインストール
+2. VSCodeを再起動
+3. Java Language Serverをリロード（`Cmd+Shift+P` → "Java: Clean Java Language Server Workspace"）
+
+**解決策（IntelliJ IDEA）**:
+
+1. Settings → Plugins → "Lombok"で検索してインストール
+2. Settings → Build, Execution, Deployment → Compiler → Annotation Processors → "Enable annotation processing"にチェック
+3. IDEを再起動
+
+### エラー: "log cannot be resolved"
+
+**原因**: `@Slf4j`を付けたが、SLF4Jの依存関係がない
 
 **解決策**:
-- `@Data`または`@Getter`が付いているか確認
-- クラス名、フィールド名を確認（typoがないか）
+
+Spring Boot Starterには既にSLF4Jが含まれています。以下を確認してください：
+
+1. `@Slf4j`アノテーションが正しくインポートされているか
+
+```java
+import lombok.extern.slf4j.Slf4j;
+```
+
+2. コンパイルエラーが出る場合は、クリーンビルド
+
+```bash
+./mvnw clean compile
+```
+
+### 警告: "Generating equals/hashCode implementation but without a call to superclass"
+
+**原因**: 継承しているクラスで`@EqualsAndHashCode`を使っている場合、親クラスのフィールドが考慮されない
+
+**解決策**:
+
+親クラスのequals/hashCodeを呼び出すように設定：
+
+```java
+@EqualsAndHashCode(callSuper = true)
+public class AdminUser extends User {
+    private String role;
+}
+```
+
+---
+
+## 💡 補足: Lombokを使う際のベストプラクティス
+
+### 1. @Dataは慎重に使う
+
+`@Data`は便利ですが、すべてのフィールドにsetterが生成されるため、不変性が損なわれます。
+
+**推奨**:
+
+- **不変オブジェクト**（変更されないデータ）: `@Value`を使う
+- **可変オブジェクト**（変更されるデータ）: `@Data`を使う
+
+```java
+import lombok.Value;
+
+@Value  // すべてのフィールドがfinalになり、setterは生成されない
+public class UserDto {
+    Long id;
+    String name;
+    String email;
+}
+```
+
+### 2. @RequiredArgsConstructorでDI
+
+Spring Bootでは、`@Autowired`よりもコンストラクタインジェクションが推奨されます。
+
+```java
+@Service
+@RequiredArgsConstructor  // finalフィールドのコンストラクタを自動生成
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+}
+```
+
+### 3. @Builderで可読性向上
+
+多くのフィールドを持つオブジェクトを作成する際は、`@Builder`を使うと可読性が向上します。
+
+```java
+@Data
+@Builder
+public class SearchCriteria {
+    private String keyword;
+    private Integer minAge;
+    private Integer maxAge;
+    private String sortBy;
+}
+
+// 使用例
+SearchCriteria criteria = SearchCriteria.builder()
+    .keyword("Spring Boot")
+    .minAge(20)
+    .maxAge(40)
+    .sortBy("name")
+    .build();
+```
+
+### 4. @Slf4jでロギング
+
+ロガーフィールドを手動で書く代わりに、`@Slf4j`を使いましょう。
+
+```java
+@Slf4j
+@Service
+public class UserService {
+    public void processUser(User user) {
+        log.debug("ユーザー処理開始: {}", user.getId());
+        // 処理
+        log.info("ユーザー処理完了: {}", user.getId());
+    }
+}
+```
+
+### 5. Lombokを使わない方が良い場面
+
+以下の場合は、Lombokを使わずに手動で書くことを検討してください：
+
+- ❌ **複雑なロジックを持つメソッド**: カスタムのequals/hashCode/toString
+- ❌ **パフォーマンスが重要な部分**: 自動生成されたコードが最適でない可能性
+- ❌ **チームがLombokに不慣れ**: 学習コストを考慮
 
 ---
 
 ## 📚 このステップで学んだこと
 
-- ✅ Lombokの役割と利点
-- ✅ Lombok依存関係の追加とプラグインインストール
-- ✅ `@Data`でGetter/Setter/toString等を自動生成
-- ✅ `@NoArgsConstructor`でデフォルトコンストラクタ生成
-- ✅ `@AllArgsConstructor`で全フィールドコンストラクタ生成
-- ✅ `@Builder`でビルダーパターン実装
-- ✅ DTOクラスのリファクタリング
-- ✅ コード量の大幅削減（約70%減）
+- ✅ **Lombokの目的**: ボイラープレートコードを削減し、コードを簡潔にする
+- ✅ **@Data**: getter/setter/toString/equals/hashCodeをまとめて生成
+- ✅ **@NoArgsConstructor/@AllArgsConstructor**: コンストラクタを自動生成
+- ✅ **@RequiredArgsConstructor**: finalフィールドのコンストラクタを生成し、DIを簡潔に
+- ✅ **@Builder**: Builderパターンでオブジェクト生成を流暢に
+- ✅ **@Slf4j**: ロガーフィールドを自動生成
+- ✅ **コード量削減**: 54行→13行（76%削減）の実例
+- ✅ **責任分離**: Controller → Service の設計パターン
 
 ---
 
-## 💡 補足: Lombokの使用上の注意点
+## 🎉 Phase 1完了おめでとうございます！
 
-### メリット
-
-- ✅ **コード量削減**: ボイラープレートコードを削減
-- ✅ **保守性向上**: フィールド追加時にGetter/Setter追記不要
-- ✅ **可読性向上**: 本質的なコードに集中できる
-
-### デメリット・注意点
-
-- ❌ **Lombok依存**: プロジェクトがLombokに依存
-- ❌ **学習コスト**: チーム全員がLombokを理解する必要
-- ❌ **デバッグ**: 生成されたコードが見えない
-- ❌ **IDE依存**: IDEプラグインが必要
-
-### 使い分けのガイドライン
-
-#### Lombokを使うべき場面
-- DTO/Entity（データクラス）
-- 単純なPOJO（Plain Old Java Object）
-- 内部的なモデルクラス
-
-#### Lombokを避けるべき場面
-- 複雑なビジネスロジックを持つクラス
-- 公開APIのモデル（外部ライブラリ等）
-- カスタムGetter/Setterが必要な場合
-
-### Spring Bootでの推奨設定
-
-```java
-// DTOやEntityでの標準的な使い方
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserDto {
-    private Long id;
-    private String name;
-    private String email;
-}
-```
-
----
-
-## 🔄 Gitへのコミットとレビュー依頼
-
-進捗を記録してレビューを受けましょう：
-
-```bash
-git add .
-git commit -m "Step 5: LombokでDTOをリファクタリング完了"
-git push origin main
-```
-
-コミット後、**Slackでレビュー依頼**を出してフィードバックをもらいましょう！
-
----
-
-## ➡️ 次のステップ
-
-**🎉 Phase 1 完了おめでとうございます！**
-
-Phase 1の5つのステップをすべて完了しました！
-
-レビューが完了したら、**Phase 2: データベース連携**へ進みましょう！
-
-[Step 6: MySQLとの接続](../phase2/STEP_6.md)で、データベース連携の基礎を学びます。
-
----
+お疲れ様でした！これで**Phase 1: Spring Boot基礎**の全5ステップが完了しました！
 
 ### Phase 1で学んだこと
 
-- ✅ Spring Bootプロジェクトの作成
-- ✅ REST APIの基本（GET/POST）
-- ✅ パスパラメータとクエリパラメータ
-- ✅ リクエストボディとDTO
-- ✅ 設定ファイル（application.yml）
-- ✅ Lombokによるコード簡略化
+- ✅ **Step 1**: Hello World REST APIでSpring Bootの基本
+- ✅ **Step 2**: パスパラメータとクエリパラメータ
+- ✅ **Step 3**: POSTリクエストとリクエストボディ
+- ✅ **Step 4**: application.ymlで設定管理
+- ✅ **Step 5**: Lombokで簡潔なコード
+
+あなたはもう、**REST APIを構築する基本的なスキル**を身につけました！
 
 ---
 
-お疲れさまでした！ 🚀
+## ➡️ 次のPhaseへ
 
-Lombokを使いこなせるようになると、Spring Boot開発が劇的に快適になります。
-次のPhaseでさらに実践的なスキルを身につけていきましょう！
+さあ、次は**Phase 2: データベース連携の基礎**に進みましょう！
+
+### [Phase 2の準備ガイド](../phase2/PREPARE.md)
+
+Phase 2では、以下を学びます：
+
+1. **MySQL環境構築**: データベースのセットアップ
+2. **Spring Data JPA**: データベース操作を簡単に
+3. **CRUD操作**: Create/Read/Update/Delete
+4. **トランザクション管理**: データの整合性を保つ
+5. **カスタムクエリ**: 複雑な検索処理
+6. **リレーションシップ**: 1対多の関係を扱う
+
+これまでインメモリ（メモリ上）でデータを管理していましたが、Phase 2からは**本物のデータベース（MySQL）**を使います。アプリケーションを再起動してもデータが消えなくなり、実用的なアプリケーションに近づきます！
+
+準備ができたら、[Phase 2の準備ガイド](../phase2/PREPARE.md)に進んでください。
+
+Happy Coding! 🚀

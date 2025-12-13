@@ -1,621 +1,718 @@
-# Phase 1: 事前準備
+# Phase 1 事前準備: 開発環境のセットアップ
 
-Phase 1のカリキュラムを始める前に、開発環境を整えましょう。
+## 🎯 この準備ガイドの目標
 
----
+Phase 1のステップを始める前に、以下の開発環境を整えます：
 
-## 🎯 このドキュメントの目的
+- Java 21 (OpenJDK) をインストールし、動作確認ができる
+- Mavenの基本を理解し、mvnwラッパーで実行できる
+- VSCodeとSpring Boot開発に必要な拡張機能をセットアップできる
+- 開発環境が正しく動作していることを確認できる
 
-- 必要な開発ツールをインストールする
-- 各ツールが正しく動作することを確認する
-- Spring Bootの開発に最適な環境を構築する
-
-**所要時間**: 約1時間
-
----
-
-## 📋 必要なツール一覧
-
-Phase 1では以下のツールを使用します：
-
-- ✅ **OpenJDK 21**: Javaの実行環境
-- ✅ **Maven 3.8+**: ビルドツール
-- ✅ **Visual Studio Code (VSCode)**: 統合開発環境
-- ✅ **curl**: APIテスト用コマンドラインツール
-- ✅ **Git**: バージョン管理（オプションだが推奨）
+**所要時間**: 約30分〜1時間（ダウンロード速度により変動）
 
 ---
 
-## ☕ OpenJDK 21のインストール
+## 📋 前提条件
 
-### Windows
+このガイドでは、以下の環境を前提とします：
 
-#### 方法1: Microsoft Build of OpenJDK（推奨）
+- **macOS** または **Windows + WSL2 (Ubuntu)** が利用可能
+- インターネット接続がある
+- ターミナル（macOSのTerminal.app、WSL2のbash）の基本操作ができる
 
-1. [Microsoft OpenJDK 21](https://learn.microsoft.com/ja-jp/java/openjdk/download#openjdk-21)にアクセス
+> **💡 Windows利用者へ**:  
+> このカリキュラムはWSL2（Windows Subsystem for Linux 2）での実行を推奨します。  
+> WSL2のインストールがまだの場合は、[Microsoft公式ガイド](https://learn.microsoft.com/ja-jp/windows/wsl/install)を参照してください。
 
-2. 「Windows x64」の`.msi`インストーラーをダウンロード
+---
 
-3. ダウンロードした`.msi`ファイルを実行
+## 🚀 ステップ1: Java 21のインストール
 
-4. インストールウィザードの指示に従う（デフォルト設定でOK）
+Spring Boot 3.5.8はJava 21を推奨バージョンとしています。OpenJDK 21をインストールしましょう。
 
-5. インストール完了後、環境変数が自動設定される
+### 1-1. macOSでのインストール (Homebrew使用)
 
-#### 方法2: Chocolatey（パッケージマネージャー使用）
+#### Homebrewのインストール確認
 
-PowerShellを管理者権限で開いて実行：
-
-```powershell
-choco install microsoft-openjdk21
-```
-
-### macOS
-
-#### 方法1: Homebrew（推奨）
-
-ターミナルで以下を実行：
+まず、Homebrewがインストールされているか確認します：
 
 ```bash
-# Homebrewがインストールされていない場合は先にインストール
+brew --version
+```
+
+**期待される結果**:
+```
+Homebrew 4.x.x
+```
+
+Homebrewがインストールされていない場合は、以下のコマンドでインストールします：
+
+```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-# OpenJDK 21をインストール
+#### OpenJDK 21のインストール
+
+Homebrewを使ってOpenJDK 21をインストールします：
+
+```bash
 brew install openjdk@21
-
-# シンボリックリンクを作成
-sudo ln -sfn $(brew --prefix)/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 ```
 
-#### 方法2: SDKMAN!
+インストールが完了したら、シンボリックリンクを作成してシステムがJavaを認識できるようにします：
 
 ```bash
-# SDKMAN!をインストール
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# OpenJDK 21をインストール
-sdk install java 21-open
+sudo ln -sfn /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 ```
 
-### Linux (Ubuntu/Debian)
+> **💡 Intel Macの場合**: `/opt/homebrew/`の代わりに`/usr/local/`を使用します。
+> ```bash
+> sudo ln -sfn /usr/local/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
+> ```
+
+#### JAVA_HOMEの設定（推奨）
+
+`.zshrc`（または`.bash_profile`）に以下を追加します：
 
 ```bash
-# パッケージリストを更新
+# .zshrcを開く
+nano ~/.zshrc
+```
+
+ファイルの最後に以下を追加：
+
+```bash
+# Java 21
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+変更を反映：
+
+```bash
+source ~/.zshrc
+```
+
+---
+
+### 1-2. WSL2 (Ubuntu)でのインストール
+
+#### パッケージリストの更新
+
+まず、パッケージリストを最新にします：
+
+```bash
 sudo apt update
+```
 
-# OpenJDK 21をインストール
+#### OpenJDK 21のインストール
+
+```bash
 sudo apt install openjdk-21-jdk -y
 ```
 
-### Linux (Fedora/RHEL/CentOS)
+#### デフォルトJavaバージョンの設定
+
+複数のJavaバージョンがインストールされている場合は、以下のコマンドでJava 21をデフォルトに設定します：
 
 ```bash
-# OpenJDK 21をインストール
-sudo dnf install java-21-openjdk-devel -y
+sudo update-alternatives --config java
 ```
 
-### インストール確認
+表示されるリストから、`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`を選択します。
 
-ターミナル/コマンドプロンプトで以下を実行：
+#### JAVA_HOMEの設定（推奨）
+
+`.bashrc`に以下を追加します：
+
+```bash
+# .bashrcを開く
+nano ~/.bashrc
+```
+
+ファイルの最後に以下を追加：
+
+```bash
+# Java 21
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+変更を反映：
+
+```bash
+source ~/.bashrc
+```
+
+---
+
+### 1-3. Javaのインストール確認
+
+以下のコマンドでJavaが正しくインストールされているか確認します：
 
 ```bash
 java -version
 ```
 
-**期待される出力例**:
+**期待される結果**:
 ```
 openjdk version "21.0.x" 2024-xx-xx
 OpenJDK Runtime Environment (build 21.0.x+xx)
 OpenJDK 64-Bit Server VM (build 21.0.x+xx, mixed mode, sharing)
 ```
 
-バージョンが`21.0.x`と表示されればOK！
+バージョンが`21.x.x`であることを確認してください。
+
+次に、Javaコンパイラも確認します：
+
+```bash
+javac -version
+```
+
+**期待される結果**:
+```
+javac 21.0.x
+```
+
+環境変数も確認：
+
+```bash
+echo $JAVA_HOME
+```
+
+**期待される結果（macOSの例）**:
+```
+/Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home
+```
+
+**期待される結果（WSL2の例）**:
+```
+/usr/lib/jvm/java-21-openjdk-amd64
+```
 
 ---
 
-## 🔧 Mavenのインストール
+## 🚀 ステップ2: Mavenの理解とmvnwの確認
 
-Maven（メイヴン）は、Javaプロジェクトのビルド、依存関係管理、プロジェクト管理を行うツールです。
-Spring Bootプロジェクトでは、ライブラリの管理やアプリケーションのビルドに使用します。
+### 2-1. Mavenとは
 
-### Windows
+**Maven**は、Javaプロジェクトのビルドツールです。主な役割は以下の通りです：
 
-1. [Maven公式サイト](https://maven.apache.org/download.cgi)から`apache-maven-3.9.x-bin.zip`をダウンロード
+- **依存関係の管理**: ライブラリ（Spring Boot、MySQLドライバなど）を自動でダウンロード
+- **ビルドの自動化**: コンパイル、テスト、パッケージングを統一的に実行
+- **プロジェクト構成の標準化**: ディレクトリ構造を統一
 
-2. `C:\Program Files\Apache\maven`に解凍
+### 2-2. Maven Wrapper（mvnw）の利点
 
-#### 💡 補足: 解凍後のディレクトリ構造
-
-解凍したフォルダの中に`apache-maven-3.9.x`というフォルダがあります。
-正しいパスは以下のようになります：
+このカリキュラムでは、**Maven Wrapper**（`mvnw`）を使用します。
 
 ```
-C:\Program Files\Apache\
-└── maven\
-    └── apache-maven-3.9.x\
-        ├── bin\
-        │   ├── mvn.cmd
-        │   └── mvnDebug.cmd
-        ├── boot\
-        ├── conf\
-        └── lib\
+📁 プロジェクトのルートディレクトリ
+├── mvnw          # Unix/Linux/macOS用の実行スクリプト
+├── mvnw.cmd      # Windows用（WSL2では使用しません）
+└── .mvn/         # Mavenラッパーの設定
 ```
 
-**重要**: 環境変数には`apache-maven-3.9.x`フォルダまでのパスを設定します：
-- ❌ `C:\Program Files\Apache\maven`（解凍先フォルダ）
-- ✅ `C:\Program Files\Apache\maven\apache-maven-3.9.x`（実際のMavenフォルダ）
+**Maven Wrapperのメリット**:
+- Mavenをシステムにインストールする必要がない
+- プロジェクトごとに指定されたMavenバージョンを自動使用
+- チーム開発でバージョンの統一が簡単
 
-3. 環境変数を設定：
-   - システム環境変数に`MAVEN_HOME`を追加: `C:\Program Files\Apache\maven\apache-maven-3.9.x`
-   - システム環境変数の`Path`に追加: `%MAVEN_HOME%\bin`
+**通常のMaven vs Maven Wrapper**:
 
-4. コマンドプロンプトを**再起動**して確認
+| コマンド | 通常のMaven | Maven Wrapper |
+|---------|------------|---------------|
+| ビルド | `mvn clean install` | `./mvnw clean install` |
+| 実行 | `mvn spring-boot:run` | `./mvnw spring-boot:run` |
+| テスト | `mvn test` | `./mvnw test` |
 
-#### Chocolateyを使う方法（推奨）
+> **💡 重要**: カリキュラムでは常に`./mvnw`を使用します。`mvn`コマンドは使いません。
 
-PowerShellを管理者権限で開いて実行：
+### 2-3. Mavenのインストール（オプション）
 
-```powershell
-choco install maven
-```
+Maven Wrapper（`mvnw`）を使う場合、Mavenのインストールは**必須ではありません**。
 
-### macOS
+ただし、新規プロジェクトの作成などで`mvn`コマンドが必要になる場合があります。その際は以下でインストールできます：
 
-#### Homebrew（推奨）
+#### macOSの場合:
 
 ```bash
 brew install maven
 ```
 
-### Linux
-
-#### Ubuntu/Debian
+#### WSL2の場合:
 
 ```bash
-sudo apt update
 sudo apt install maven -y
 ```
 
-#### Fedora/RHEL/CentOS
+#### 確認:
 
 ```bash
-sudo dnf install maven -y
+mvn -version
 ```
 
-### インストール確認
-
-ターミナル/コマンドプロンプトで以下を実行：
-
-```bash
-mvn -v
-```
-
-**期待される出力例**:
+**期待される結果**:
 ```
 Apache Maven 3.9.x (xxxxx)
 Maven home: /usr/share/maven
-Java version: 21.0.x, vendor: Oracle Corporation, runtime: /path/to/jdk-21
-Default locale: ja_JP, platform encoding: UTF-8
-OS name: "mac os x", version: "14.x", arch: "aarch64", family: "mac"
+Java version: 21.0.x, vendor: Oracle Corporation
 ```
-
-**重要**: Java versionが`21.0.x`と表示されていることを確認してください！
 
 ---
 
-## 💻 Visual Studio Code (VSCode) のインストール
+## 🚀 ステップ3: VSCodeのインストールと設定
 
-Visual Studio Code（VSCode）は、軽量で拡張性の高い統合開発環境（IDE）です。
-無料で使用でき、豊富な拡張機能によりSpring Boot開発に最適な環境を構築できます。
+### 3-1. VSCodeのインストール
 
-### インストール手順
+#### macOSの場合
 
-#### Windows/macOS/Linux共通
+[Visual Studio Code公式サイト](https://code.visualstudio.com/)からmacOS版をダウンロードしてインストールします。
 
-1. [VSCode公式サイト](https://code.visualstudio.com/)にアクセス
+または、Homebrewでインストール：
 
-2. 「Download」ボタンをクリックしてインストーラーをダウンロード
-
-3. ダウンロードしたインストーラーを実行
-
-4. インストールウィザードの指示に従う
-   - **Windows**: デフォルト設定でOK（「PATHへの追加」にチェック推奨）
-   - **macOS**: Applicationsフォルダにドラッグアンドドロップ
-   - **Linux**: `.deb`または`.rpm`パッケージをインストール、またはSnapを使用
-
-### 初回起動設定
-
-1. VSCodeを起動
-
-2. **言語設定**（日本語化する場合）:
-   - `Ctrl + Shift + P`（macOSは`⌘⇧P`）でコマンドパレットを開く
-   - 「Configure Display Language」と入力
-   - 「日本語」を選択してVSCodeを再起動
-
-3. **テーマ選択**: お好みのテーマを選択（Light/Dark）
-
-### 必須拡張機能のインストール
-
-VSCodeでSpring Boot開発を行うために、以下の拡張機能をインストールします。
-
-#### 1. Extension Pack for Java
-
-**インストール手順**:
-1. 左サイドバーの拡張機能アイコン（四角が4つ）をクリック
-2. 検索ボックスに「Extension Pack for Java」と入力
-3. Microsoftが提供する拡張機能を選択して「Install」
-
-この拡張パックには以下が含まれます：
-- **Language Support for Java**: Java言語サポート
-- **Debugger for Java**: Javaデバッガ
-- **Test Runner for Java**: テスト実行
-- **Maven for Java**: Maven統合
-- **Project Manager for Java**: プロジェクト管理
-- **IntelliCode**: AI支援コード補完
-
-#### 2. Spring Boot Extension Pack
-
-**インストール手順**:
-1. 拡張機能で「Spring Boot Extension Pack」を検索
-2. Pivotalが提供する拡張機能をインストール
-
-この拡張パックには以下が含まれます：
-- **Spring Boot Tools**: Spring Boot専用ツール
-- **Spring Initializr Java Support**: プロジェクト作成支援
-- **Spring Boot Dashboard**: アプリケーション管理ダッシュボード
-
-#### 3. その他の推奨拡張機能
-
-- **Lombok Annotations Support for VS Code**: Lombokサポート
-- **Rest Client**: APIテスト（curl代替）
-- **YAML**: application.yml編集支援
-
-### JDKの設定確認
-
-VSCodeでOpenJDK 21が認識されているか確認します。
-
-1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
-
-2. 検索ボックスに「java.jdt.ls.java.home」と入力
-
-3. 設定が空の場合、以下のパスを設定：
-
-#### 💡 パスの確認方法
-
-**Windows**:
-```cmd
-# 環境変数JAVA_HOMEが設定されている場合
-echo %JAVA_HOME%
-
-# Javaの実際のパスを確認
-where java
-```
-
-**macOS/Linux**:
 ```bash
-# 環境変数JAVA_HOMEが設定されている場合
-echo $JAVA_HOME
-
-# Javaの実際のパスを確認
-which java
-# または
-/usr/libexec/java_home -V  # macOSのみ
+brew install --cask visual-studio-code
 ```
 
-または、`settings.json`に直接追加：
+#### WSL2の場合
+
+Windows側にVSCodeをインストールします（WSL2内ではなくWindows側）：
+
+1. [Visual Studio Code公式サイト](https://code.visualstudio.com/)からWindows版をダウンロード
+2. インストーラーを実行
+3. インストール完了後、WSL2のターミナルから以下のコマンドでVSCodeを開けます：
+
+```bash
+code .
+```
+
+初回実行時、「WSL: Ubuntu」などの拡張機能が自動でインストールされます。
+
+---
+
+### 3-2. 必須拡張機能のインストール
+
+VSCodeを起動したら、以下の拡張機能をインストールします。
+
+#### Extension Pack for Java（必須）
+
+Java開発に必要な拡張機能のセットです。以下が含まれます：
+
+- Language Support for Java (Red Hat)
+- Debugger for Java
+- Test Runner for Java
+- Maven for Java
+- Project Manager for Java
+- IntelliCode
+
+**インストール方法**:
+
+1. VSCodeのサイドバーから拡張機能アイコンをクリック（またはCmd+Shift+X / Ctrl+Shift+X）
+2. 検索ボックスに`Extension Pack for Java`と入力
+3. Microsoft提供のものを選択して「Install」をクリック
+
+または、コマンドラインでインストール：
+
+```bash
+code --install-extension vscjava.vscode-java-pack
+```
+
+#### Spring Boot Extension Pack（必須）
+
+Spring Boot開発に特化した拡張機能のセットです：
+
+- Spring Boot Tools
+- Spring Initializr Java Support
+- Spring Boot Dashboard
+
+**インストール方法**:
+
+VSCodeの拡張機能タブで`Spring Boot Extension Pack`を検索してインストール。
+
+または、コマンドラインで：
+
+```bash
+code --install-extension vmware.vscode-boot-dev-pack
+```
+
+---
+
+### 3-3. VSCodeの推奨設定
+
+#### settings.jsonの設定
+
+VSCodeの設定ファイル（`settings.json`）に以下を追加すると、より快適に開発できます：
+
+1. VSCodeで`Cmd+Shift+P`（macOS）または`Ctrl+Shift+P`（Windows/WSL2）を押す
+2. `Preferences: Open User Settings (JSON)`を選択
+3. 以下の設定を追加：
 
 ```json
 {
-  "java.jdt.ls.java.home": "/path/to/jdk-21"
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-21",
+      "path": "/Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home",
+      "default": true
+    }
+  ],
+  "java.jdt.ls.java.home": "/Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home",
+  "spring-boot.ls.java.home": "/Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home",
+  "files.exclude": {
+    "**/.classpath": true,
+    "**/.project": true,
+    "**/.settings": true,
+    "**/.factorypath": true
+  }
 }
 ```
 
-### 便利な設定（オプション）
+> **💡 WSL2の場合**: `"path"`の値を`"/usr/lib/jvm/java-21-openjdk-amd64"`に変更してください。
 
-#### 自動保存の有効化
+---
 
-1. `File` → `Preferences` → `Settings`（macOSは`Code` → `Settings` → `Settings`）
+### 3-4. VSCodeでJavaプロジェクトが認識されるか確認
 
-2. 検索ボックスに「auto save」と入力
+#### テストプロジェクトの作成
 
-3. `Files: Auto Save`を「afterDelay」に設定
+VSCodeでSpring Initializrを使って簡単なプロジェクトを作成してみましょう：
 
-#### フォーマット設定
-
-1. 設定画面で「format on save」を検索
-
-2. 以下にチェック：
-   - ✅ `Editor: Format On Save`
-
-### VSCodeの基本的な使い方
+1. `Cmd+Shift+P`（macOS）または`Ctrl+Shift+P`（Windows/WSL2）を押す
+2. `Spring Initializr: Create a Maven Project`を選択
+3. 以下を選択：
+   - Spring Boot version: `3.5.8` (最新の3.5系)
+   - Language: `Java`
+   - Group Id: `com.example`
+   - Artifact Id: `demo`
+   - Packaging type: `Jar`
+   - Java version: `21`
+4. Dependencies: `Spring Web`を選択
+5. プロジェクトの保存先を選択
 
 #### プロジェクトを開く
 
-- `File` → `Open Folder` → プロジェクトディレクトリを選択
-- `pom.xml`がある場合、自動的にMavenプロジェクトとして認識されます
+VSCodeで作成したプロジェクトフォルダを開きます。
 
-#### アプリケーションの実行
-
-- メインクラス（`@SpringBootApplication`付き）を開く
-- `main`メソッドの上に表示される「Run」または「Debug」リンクをクリック
-- または、Spring Boot Dashboardから実行
-
-#### ショートカットキー（覚えると便利）
-
-| 操作 | Windows/Linux | macOS |
-|------|---------------|-------|
-| コマンドパレット | `Ctrl + Shift + P` | `⌘⇧P` |
-| ファイル検索 | `Ctrl + P` | `⌘P` |
-| シンボル検索 | `Ctrl + Shift + O` | `⌘⇧O` |
-| 実行 | `F5` | `F5` |
-| デバッグ | `F5` | `F5` |
-| コード補完 | `Ctrl + Space` | `⌃Space` |
-| コードフォーマット | `Shift + Alt + F` | `⇧⌥F` |
-| ターミナル表示 | ``Ctrl + ` `` | ``⌘` `` |
+**左下に「Java Projects」ペインが表示されていればOK**です。
 
 ---
 
-## 🌐 curlのインストール
+## ✅ ステップ4: 環境の最終確認
 
-### Windows
+すべてのツールが正しくインストールされているか、最終確認を行います。
 
-Windows 10/11には標準でcurlがインストールされています。
-
-#### 確認
-
-```powershell
-curl --version
-```
-
-インストールされていない場合：
-
-```powershell
-# Chocolatey経由
-choco install curl
-```
-
-### macOS
-
-macOSには標準でcurlがインストールされています。
+### 4-1. Javaの確認
 
 ```bash
-curl --version
-```
-
-### Linux
-
-ほとんどのディストリビューションに標準インストール済み。
-
-```bash
-# Ubuntu/Debianでインストールされていない場合
-sudo apt install curl -y
-
-# Fedora/RHEL/CentOS
-sudo dnf install curl -y
-```
-
----
-
-## 📦 Git（バージョン管理）のインストール（推奨）
-
-各ステップの成果をGitで管理することを推奨します。
-
-### Windows
-
-1. [Git公式サイト](https://git-scm.com/download/win)からダウンロード
-
-2. インストーラーを実行（デフォルト設定でOK）
-
-3. Git Bashも一緒にインストールされます
-
-### macOS
-
-```bash
-# Homebrew経由
-brew install git
-
-# またはXcode Command Line Tools
-xcode-select --install
-```
-
-### Linux
-
-```bash
-# Ubuntu/Debian
-sudo apt install git -y
-
-# Fedora/RHEL/CentOS
-sudo dnf install git -y
-```
-
-### 初期設定
-
-インストール後、以下の設定を行います：
-
-```bash
-git config --global user.name "あなたの名前"
-git config --global user.email "your.email@example.com"
-```
-
-### 確認
-
-```bash
-git --version
-```
-
-**期待される出力例**:
-```
-git version 2.x.x
-```
-
----
-
-## ✅ 環境確認チェックリスト
-
-すべてのツールが正しくインストールされているか確認しましょう。
-
-ターミナル/コマンドプロンプトで以下を順番に実行：
-
-```bash
-# Java確認
 java -version
-
-# Maven確認
-mvn -v
-
-# curl確認
-curl --version
-
-# Git確認（オプション）
-git --version
+javac -version
+echo $JAVA_HOME
 ```
 
-### チェックリスト
+すべてのコマンドでJava 21が表示されることを確認してください。
 
-- [ ] `java -version`が21.0.xを表示
-- [ ] `mvn -v`が正常に表示（Java version: 21.0.xも確認）
-- [ ] IDEが起動できる
-- [ ] `curl --version`が表示される
-- [ ] `git --version`が表示される（オプション）
+---
 
-**すべてチェックできたら準備完了です！** 🎉
+### 4-2. Mavenの確認（オプション）
+
+Mavenをインストールした場合：
+
+```bash
+mvn -version
+```
+
+Maven 3.9系が表示されることを確認してください。
+
+---
+
+### 4-3. VSCodeの確認
+
+VSCodeを起動し、以下を確認します：
+
+- [ ] 拡張機能タブで「Extension Pack for Java」がインストール済み
+- [ ] 拡張機能タブで「Spring Boot Extension Pack」がインストール済み
+- [ ] Java Projectsペインが表示される
+
+---
+
+### 4-4. Spring Bootプロジェクトのビルドと実行
+
+先ほど作成したテストプロジェクト（`demo`）で動作確認を行います。
+
+#### ターミナルでプロジェクトディレクトリに移動
+
+```bash
+cd /path/to/demo
+```
+
+#### ビルドの実行
+
+```bash
+./mvnw clean install
+```
+
+**期待される結果**:
+```
+[INFO] BUILD SUCCESS
+```
+
+> **💡 初回実行時**: 依存関係のダウンロードに時間がかかる場合があります（数分程度）。
+
+#### Spring Bootアプリケーションの起動
+
+```bash
+./mvnw spring-boot:run
+```
+
+**期待される結果**:
+```
+...
+2025-12-13T10:00:00.000+09:00  INFO 12345 --- [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2025-12-13T10:00:00.000+09:00  INFO 12345 --- [  restartedMain] com.example.demo.DemoApplication         : Started DemoApplication in 2.5 seconds
+```
+
+「Started DemoApplication」と表示されれば成功です！
+
+#### 動作確認
+
+別のターミナルウィンドウを開いて、以下のコマンドを実行：
+
+```bash
+curl http://localhost:8080
+```
+
+**期待される結果**:
+```json
+{"timestamp":"2025-12-13T01:00:00.000+00:00","status":404,"error":"Not Found","path":"/"}
+```
+
+エラーページが表示されますが、これは正常です。サーバーが起動していて、HTTPリクエストに応答していることが確認できました。
+
+#### アプリケーションの停止
+
+`Ctrl+C`でアプリケーションを停止します。
 
 ---
 
 ## 🐛 トラブルシューティング
 
-### Javaのバージョンが違う
+### エラー: `JAVA_HOME is not set`
 
-**症状**: `java -version`で21以外が表示される
-
-**原因**: 複数のJavaがインストールされている
+**原因**: 環境変数`JAVA_HOME`が設定されていない
 
 **解決策**:
 
-#### Windows
-1. 「システム環境変数の編集」を開く
-2. 「環境変数」ボタンをクリック
-3. システム環境変数の`JAVA_HOME`を確認
-4. OpenJDK 21のパスに設定（例: `C:\Program Files\Java\jdk-21`）
-5. `Path`の先頭に`%JAVA_HOME%\bin`があることを確認
-
-#### macOS/Linux
-`~/.bashrc`または`~/.zshrc`に以下を追加：
+#### macOSの場合:
 
 ```bash
-# Homebrewでインストールした場合
-export JAVA_HOME=$(/usr/libexec/java_home -v 21)
-
-# 手動でパスを指定する場合
-export JAVA_HOME=/path/to/jdk-21
-export PATH=$JAVA_HOME/bin:$PATH
+echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 21)' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-設定を反映：
+#### WSL2の場合:
+
 ```bash
-source ~/.bashrc  # または source ~/.zshrc
+echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-### Mavenが認識されない
+---
 
-**症状**: `mvn -v`で「コマンドが見つかりません」
+### エラー: `./mvnw: Permission denied`
 
-**原因**: 環境変数のPathが正しく設定されていない
-
-**解決策**: 上記の「Mavenのインストール」セクションを再確認
-
-### IDEでJDKが認識されない
-
-**症状**: VSCodeでプロジェクトを開いてもJDKエラーが出る
+**原因**: `mvnw`スクリプトに実行権限がない
 
 **解決策**:
 
-1. `Ctrl + ,`（macOSは`⌘,`）で設定を開く
-
-2. 検索ボックスに「java home」と入力
-
-3. `Java: Home`の設定で「Edit in settings.json」をクリック
-
-4. 以下を追加：
-
-```json
-{
-  "java.jdt.ls.java.home": "/path/to/jdk-21"
-}
+```bash
+chmod +x mvnw
 ```
 
-パスの例：
-- **Windows**: `C:\\Program Files\\Java\\jdk-21`
-- **macOS (Homebrew)**: `/opt/homebrew/opt/openjdk@21`
-- **Linux**: `/usr/lib/jvm/java-21-openjdk`
+---
 
-5. VSCodeを再起動
+### エラー: `Could not find or load main class`
+
+**原因**: プロジェクトが正しくビルドされていない
+
+**解決策**:
+
+```bash
+./mvnw clean install
+```
+
+ビルドが成功したら、再度実行してください。
 
 ---
 
-## 🎓 補足: 開発環境について
+### エラー: `Port 8080 is already in use`
 
-### なぜOpenJDK 21？
+**原因**: ポート8080が他のプロセスで使用されている
 
-- **長期サポート（LTS）版**: 2029年9月までサポート
-- **最新機能**: レコード、パターンマッチング、仮想スレッドなど
-- **Spring Boot 3.x対応**: 最小要件はJava 17ですが、21で最新機能を活用
+**解決策**:
 
-### Mavenとは？
+#### macOSの場合:
 
-**Maven（メイヴン）** は、Javaプロジェクトのビルド自動化ツールです。
+ポート8080を使用しているプロセスを確認：
 
-主な機能：
-- **依存関係管理**: ライブラリを自動ダウンロード・管理
-- **プロジェクト構造の標準化**: `src/main/java`などの決まった構造
-- **ビルドライフサイクル**: コンパイル、テスト、パッケージングを自動化
+```bash
+lsof -i :8080
+```
 
-**pom.xml**というファイルに設定を記述します。Spring Bootでは、必要なライブラリを`pom.xml`に書くだけで自動的にダウンロードされます。
+表示されたプロセスIDを使って停止：
 
-### VSCodeの利点
+```bash
+kill -9 <PID>
+```
 
-**Spring Boot開発に最適な理由**：
-- **軽量で高速**: 起動が速く、メモリ消費が少ない
-- **豊富な拡張機能**: Spring Boot専用の拡張機能が充実
-- **統合ターミナル**: IDE内でコマンド実行が可能
-- **Git統合**: バージョン管理がIDE内で完結
-- **クロスプラットフォーム**: Windows、macOS、Linux全てで同じ環境
-- **無料でオープンソース**: すべての機能が無料で利用可能
-- **コード補完**: IntelliCode によるAI支援コード補完
-- **デバッガ**: ブレークポイントを使った効率的なデバッグ
-- **Maven統合**: `pom.xml`の編集で自動的に依存関係をダウンロード
+#### WSL2の場合:
+
+```bash
+sudo lsof -i :8080
+sudo kill -9 <PID>
+```
 
 ---
 
-## 📚 参考リンク
+### エラー: `mvnw: No such file or directory`
 
-### 公式ドキュメント
+**原因**: プロジェクトのルートディレクトリにいない
 
-- [OpenJDK公式サイト](https://openjdk.org/)
-- [Maven公式サイト](https://maven.apache.org/)
-- [Visual Studio Code](https://code.visualstudio.com/)
-- [Spring Initializr](https://start.spring.io/)
+**解決策**:
 
-### インストールガイド
+プロジェクトのルートディレクトリ（`pom.xml`があるディレクトリ）に移動してから実行してください：
 
-- [Microsoft OpenJDK](https://learn.microsoft.com/ja-jp/java/openjdk/download)
-- [VSCode ドキュメント](https://code.visualstudio.com/docs)
-- [VSCode Java 拡張機能](https://code.visualstudio.com/docs/java/java-spring-boot)
-- [Maven入門ガイド](https://maven.apache.org/guides/getting-started/)
+```bash
+cd /path/to/your/project
+ls -la mvnw  # mvnwファイルが存在することを確認
+./mvnw spring-boot:run
+```
+
+---
+
+### VSCodeでJavaプロジェクトが認識されない
+
+**原因**: Java拡張機能が正しくインストールされていない、またはJavaランタイムが認識されていない
+
+**解決策**:
+
+1. VSCodeを再起動
+2. `Cmd+Shift+P` → `Java: Clean Java Language Server Workspace`を実行
+3. `settings.json`で`java.jdt.ls.java.home`が正しく設定されているか確認
+4. VSCodeを再度再起動
+
+---
+
+### Homebrewでインストールしたパッケージが見つからない
+
+**原因**: Homebrewのパスが環境変数に設定されていない（Apple Silicon Macの場合）
+
+**解決策**:
+
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Intel Macの場合は`/usr/local/bin/brew`を使用します。
+
+---
+
+## 📚 環境構築で学んだこと
+
+- ✅ Java 21 (OpenJDK) をインストールし、`JAVA_HOME`を設定した
+- ✅ Maven Wrapper（`mvnw`）の役割と使い方を理解した
+- ✅ VSCodeにJavaとSpring Boot開発に必要な拡張機能をインストールした
+- ✅ Spring Bootプロジェクトのビルドと実行ができることを確認した
+- ✅ 環境変数の設定方法（`.zshrc`、`.bashrc`）を理解した
 
 ---
 
 ## ➡️ 次のステップ
 
-環境構築が完了したら、いよいよSpring Bootの学習を開始しましょう！
+環境構築が完了しました！次は、Spring Bootで初めてのREST APIを作成しましょう。
 
-[Step 1: Hello World REST API](STEP_1.md)へ進む
+[Step 1: Hello World REST API](STEP_1.md)へ進みましょう！
 
-最初のSpring Bootアプリケーションを作成し、REST APIを動かしてみます。
+次のステップでは、以下を学びます：
+
+- Spring Bootプロジェクトの作成
+- `@RestController`を使った簡単なREST API
+- アプリケーションの起動とcurlでの動作確認
 
 ---
 
-**準備完了おめでとうございます！** 🚀
+## 💡 補足: よくある質問
 
-ここからが本当のスタートです。楽しんで学んでいきましょう！
+### Q1: Java 21ではなくJava 17を使っても良いですか？
+
+**A**: Spring Boot 3.5.8はJava 17もサポートしていますが、このカリキュラムではJava 21の機能（レコード型、パターンマッチングなど）を活用するため、Java 21を推奨します。
+
+---
+
+### Q2: IntelliJ IDEAやEclipseを使っても良いですか？
+
+**A**: 使用可能ですが、このカリキュラムはVSCodeを前提に記載されています。他のIDEを使う場合、一部の手順が異なる場合があります。
+
+---
+
+### Q3: Dockerを使ってJava環境を構築できますか？
+
+**A**: 可能ですが、Phase 2以降でMySQLをDockerで構築する際に混乱を避けるため、ローカルにJavaをインストールすることを推奨します。
+
+---
+
+### Q4: mvnwとmvnの違いは何ですか？
+
+**A**:
+
+| 項目 | `mvn` | `./mvnw` |
+|------|-------|----------|
+| インストール | システムにMavenをインストール必要 | プロジェクトに含まれる |
+| バージョン管理 | システムのMavenバージョンに依存 | プロジェクトごとに指定可能 |
+| チーム開発 | メンバー間でバージョンの統一が必要 | 自動的に統一される |
+
+---
+
+### Q5: WSL2でファイルの保存場所はどこが推奨ですか？
+
+**A**: WSL2のホームディレクトリ（`~/`）配下をおすすめします。Windowsのファイルシステム（`/mnt/c/`）ではファイルI/Oが遅くなる場合があります。
+
+**推奨**:
+```bash
+~/projects/spring-boot-curriculum/
+```
+
+**非推奨**:
+```bash
+/mnt/c/Users/YourName/Documents/spring-boot-curriculum/
+```
+
+---
+
+### Q6: macOSでIntel MacとApple Silicon（M1/M2/M3）の違いは？
+
+**A**: 主な違いはHomebrewのインストールパスです：
+
+| Mac種類 | Homebrewパス | JDKパス（例） |
+|---------|-------------|--------------|
+| Intel Mac | `/usr/local/` | `/usr/local/opt/openjdk@21/` |
+| Apple Silicon | `/opt/homebrew/` | `/opt/homebrew/opt/openjdk@21/` |
+
+このガイドではApple Siliconを基準に記載していますが、Intel Macの場合はパスを読み替えてください。
+
+---
+
+### Q7: Java 21で追加された新機能は使いますか？
+
+**A**: はい、カリキュラムの後半（Phase 4以降）で以下を活用します：
+
+- **レコード型（Records）**: DTOの簡潔な定義
+- **パターンマッチング**: `instanceof`の改善
+- **シーケンスコレクション**: Listの新しいメソッド
+
+---
+
+**最終更新**: 2025-12-13  
+**対象バージョン**: Spring Boot 3.5.8
