@@ -285,21 +285,63 @@
 
 ---
 
-### 🎯 Phase 8: 総合演習（最終プロジェクト）
+### 🎯 Phase 8: 総合演習（最終プロジェクト） (5ステップ)
 
-#### Step 34-38: ミニブログアプリケーション開発
-**目標**: これまでの知識を統合して実践的なアプリを作る
+Phase 1〜7で学んだすべての知識を統合し、実践的な「BlogHub」ミニブログアプリケーションを開発します。
 
-**機能要件**:
-- ユーザー登録・ログイン（JWT認証）
-- 記事の投稿・編集・削除（認可制御）
-- コメント機能（1対多リレーション）
-- 画像アップロード
-- ページネーション付き記事一覧
-- タグによる検索
-- ユニットテスト・統合テスト
+#### Step 34: プロジェクト概要と環境構築
+**目標**: 総合演習プロジェクトの全体像を理解し、データベース環境を構築
+- プロジェクト要件の理解（BlogHubの機能一覧）
+- ER図によるデータベース設計（User, Article, Comment, Tag, Article_Tag）
+- Docker ComposeでMySQL環境構築
+- エンティティクラスの作成（JPA関連アノテーション）
+- データベース初期化スクリプト（init.sql）
+- **成果物**: 5つのテーブルを持つデータベース環境
 
-**推奨期間**: 7日間（各ステップ1日）
+#### Step 35: 認証・認可機能の実装
+**目標**: Spring Security + JWT認証でユーザー管理を実装
+- JwtTokenProvider（トークン生成・検証）
+- JwtAuthenticationFilter（リクエストフィルター）
+- UserPrincipal（UserDetails実装）
+- SecurityConfig（SecurityFilterChain、CORS設定）
+- AuthService（signup, login, getCurrentUser）
+- AuthController（/api/auth/signup, /login, /me）
+- **成果物**: JWT認証付きユーザー登録・ログインAPI
+
+#### Step 36: 記事とコメント機能の実装
+**目標**: ブログのコア機能を実装
+- ArticleRepository（カスタムクエリ、ページネーション）
+- CommentRepository（記事に紐づくコメント取得）
+- TagRepository（タグ名検索）
+- ArticleService（CRUD、所有者チェック、キャッシュ）
+- CommentService（作成、削除、所有者チェック）
+- ArticleController（記事CRUD、タグ検索、キーワード検索）
+- CommentController（ネストルート /api/articles/{articleId}/comments）
+- **成果物**: 記事・コメントの完全なCRUD APIとタグ機能
+
+#### Step 37: 画像アップロードと検索機能
+**目標**: ファイル管理と高度な検索機能を実装
+- FileStorageService（ファイル保存、セキュリティチェック）
+- FileController（アップロード・ダウンロードエンドポイント）
+- UserService（プロフィール画像アップロード）
+- ArticleSearchMapper（MyBatisマッパーインターフェース）
+- ArticleSearchMapper.xml（動的SQL、複数条件検索）
+- ArticleSearchService（高度な検索ロジック）
+- セキュリティ対策（パストラバーサル防止、ファイルサイズ制限、拡張子チェック）
+- **成果物**: 画像アップロード機能と複雑な検索API
+
+#### Step 38: テストとデプロイ準備
+**目標**: テスト実装と本番環境設定
+- ユニットテスト（ArticleServiceTest、AuthServiceTest with Mockito）
+- 統合テスト（ArticleControllerIntegrationTest with MockMvc）
+- JaCoCoによるテストカバレッジ測定（70%基準）
+- application-prod.yml（本番環境設定）
+- Dockerfile（Javaアプリケーションのコンテナ化）
+- docker-compose-prod.yml（本番環境用Docker Compose）
+- 環境変数管理（.envファイル）
+- **成果物**: 本番デプロイ可能なテスト済みアプリケーション
+
+**推奨期間**: 5〜7日間（各ステップ1日）
 
 ---
 
