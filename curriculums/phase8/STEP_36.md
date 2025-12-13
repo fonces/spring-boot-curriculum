@@ -243,10 +243,11 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     Page<Article> findByTagName(@Param("tagName") String tagName, Pageable pageable);
     
     /**
-     * 記事とユーザー情報を一緒に取得（N+1問題回避）
-     * JOIN FETCHでユーザー情報を同時に取得
+     * 記事とユーザー情報、タグを一緒に取得（N+1問題回避）
+     * JOIN FETCHでユーザー情報とタグを同時に取得
+     * LEFT JOIN FETCHでタグがない記事も取得可能
      */
-    @Query("SELECT a FROM Article a JOIN FETCH a.user WHERE a.id = :id")
+    @Query("SELECT a FROM Article a JOIN FETCH a.user LEFT JOIN FETCH a.tags WHERE a.id = :id")
     Optional<Article> findByIdWithUser(@Param("id") Long id);
     
     /**

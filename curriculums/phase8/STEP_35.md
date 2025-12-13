@@ -573,6 +573,8 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/articles", "/api/articles/**").permitAll()
+                        .requestMatchers("/api/tags", "/api/tags/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
@@ -623,9 +625,15 @@ public class SecurityConfig {
 - **CSRF無効化**: REST APIではステートレスなため不要
 - **CORS設定**: フロントエンド（React等）からのアクセスを許可
 - **セッション管理**: `STATELESS`（セッションを使わない）
-- **認証不要パス**: `/api/auth/**`（サインアップ、ログイン）
+- **認証不要パス**: 
+  - `/api/auth/**`（サインアップ、ログイン、現在のユーザー情報取得）
+  - `/api/articles`, `/api/articles/**`（記事の閲覧・作成・更新・削除）
+  - `/api/tags`, `/api/tags/**`（タグ一覧取得）
+  - `/h2-console/**`（H2データベースコンソール）
 - **フィルター順序**: `JwtAuthenticationFilter`を`UsernamePasswordAuthenticationFilter`の前に配置
 - **パスワードエンコーダー**: BCryptで暗号化
+
+**注意**: 記事とタグのエンドポイントは認証なしでアクセス可能ですが、記事の作成・更新・削除はControllerで`Authentication`を要求するため、実質的には認証が必要です。
 
 ---
 

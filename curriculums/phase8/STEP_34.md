@@ -271,7 +271,11 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --default-authentication-plugin=mysql_native_password
+      - ./my.cnf:/etc/mysql/conf.d/my.cnf
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
@@ -293,6 +297,35 @@ volumes:
 
 #### `healthcheck`
 - MySQLが完全に起動するまで待機する設定
+
+### 2-3. MySQL設定ファイル（my.cnf）の作成
+
+**日本語の文字化けを防ぐため**、MySQL設定ファイルを作成します。
+
+**ファイルパス**: `bloghub/my.cnf`
+
+```ini
+[client]
+default-character-set=utf8mb4
+
+[mysql]
+default-character-set=utf8mb4
+
+[mysqld]
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+init-connect='SET NAMES utf8mb4'
+skip-character-set-client-handshake
+```
+
+#### 設定の解説
+
+- **`[client]`セクション**: MySQLクライアントのデフォルト文字セット
+- **`[mysql]`セクション**: mysqlコマンドラインツールの文字セット
+- **`[mysqld]`セクション**: MySQLサーバーの文字セット設定
+  - `skip-character-set-client-handshake`: クライアントの文字セット自動判別を無効化し、常にutf8mb4を使用
+
+これにより、**データベースへの接続時に文字化けが発生しない**ようになります。
 
 ---
 
@@ -434,7 +467,7 @@ spring:
     name: bloghub
 
   datasource:
-    url: jdbc:mysql://localhost:3307/bloghub?useSSL=false&serverTimezone=Asia/Tokyo&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3307/bloghub?useSSL=false&serverTimezone=Asia/Tokyo&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
     username: bloghub_user
     password: bloghub_password
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -470,6 +503,11 @@ logging:
 
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 ```
 
 ### 4-2. 設定の解説
@@ -481,6 +519,17 @@ server:
 - **none**: Hibernateによるスキーマ管理を無効化
 
 今回は`init.sql`でテーブルを作成するため、`validate`を使用します。
+
+#### `characterEncoding=UTF-8&useUnicode=true`
+- **characterEncoding=UTF-8**: JDBC接続時の文字エンコーディングをUTF-8に指定
+- **useUnicode=true**: Unicode文字の使用を有効化
+- これらのパラメータにより、日本語などのマルチバイト文字が正しく扱われます
+
+#### `server.servlet.encoding`
+- **charset: UTF-8**: HTTPリクエスト/レスポンスの文字エンコーディング
+- **enabled: true**: エンコーディングフィルタを有効化
+- **force: true**: すべてのリクエスト/レスポンスに強制適用
+- これにより、Webページで日本語が正しく表示されます
 
 #### `multipart`
 - ファイルアップロード機能で使用
@@ -573,10 +622,7 @@ public class User {
 package com.example.bloghub.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -588,7 +634,8 @@ import java.util.Set;
 
 @Entity
 @Table(name = "articles")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -631,7 +678,43 @@ public class Article {
     )
     @Builder.Default
     private Set<Tag> tags = new HashSet<>();
+    
+    // カスタムsetterでHibernateのコレクション置換を防ぐ
+    public void setTags(Set<Tag> tags) {
+        if (this.tags == null) {
+            this.tags = new HashSet<>();
+        }
+        this.tags.clear();
+        if (tags != null) {
+            this.tags.addAll(tags);
+        }
+    }
 }
+```
+
+#### Articleエンティティの解説
+
+##### `@Getter` と `@Setter` の使用理由
+
+**なぜ `@Data` ではなく `@Getter` + `@Setter` + カスタムsetterを使うのか**:
+
+`@Data`は便利ですが、Hibernateの遅延ロード機能と競合することがあります。特に`@ManyToMany`や`@OneToMany`のコレクション操作で`ConcurrentModificationException`が発生します。
+
+**カスタムsetterの利点**:
+- Hibernateのコレクション実装（`PersistentSet`）を保持
+- コレクションの内容だけを更新（置換しない）
+- 遅延ロードとの互換性を維持
+
+##### `@Builder.Default` の重要性
+
+コレクションフィールドに`@Builder.Default`を付けることで、Builderパターン使用時にデフォルト値が設定されます:
+
+```java
+Article article = Article.builder()
+    .title("タイトル")
+    .user(user)
+    // tagsを明示的に設定しなくても空のSetが生成される
+    .build();
 ```
 
 ### 5-4. Commentエンティティの作成
@@ -928,6 +1011,68 @@ Hibernate: validate the schema against the database
 **原因**: まだRepositoryを作成していない（次のステップで作成します）
 
 **解決策**: Step 35でRepositoryを作成するため、現時点では無視してOK
+
+### エラー: 日本語が文字化けする（"ã" などの文字が表示される）
+
+**原因**: MySQL、JDBC、またはTomcatの文字エンコーディング設定が不足している
+
+**解決策**:
+1. **my.cnf**が正しく作成され、docker-compose.ymlでマウントされているか確認
+2. **application.yml**のdatasource URLに`characterEncoding=UTF-8&useUnicode=true`があるか確認
+3. **server.servlet.encoding**が設定されているか確認
+4. **既にデータが入っている場合**: コンテナとボリュームを削除して再作成
+   ```bash
+   cd ~/workspace/bloghub
+   docker-compose down -v
+   docker-compose up -d
+   ```
+5. **文字セット確認**: MySQLコンソールで以下を実行
+   ```sql
+   SHOW VARIABLES LIKE 'char%';
+   ```
+   すべての項目が`utf8mb4`になっているべきです
+
+### ⚠️ 重要: Hibernate使用時のコレクション操作の注意
+
+**問題**: `@ManyToMany`や`@OneToMany`のコレクションで`ConcurrentModificationException`が発生
+
+**原因**: Lombokの`@Data`によって生成されるsetterがHibernateのコレクション管理と競合
+
+**解決策**: Articleエンティティで`@Data`を使わず、`@Getter`+`@Setter`を使用し、カスタムsetterを実装:
+
+```java
+@Entity
+@Table(name = "articles")
+@Getter
+@Setter  // @Dataの代わり
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Article {
+    // フィールド定義...
+    
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "article_tags", ...)
+    @Builder.Default
+    private Set<Tag> tags = new HashSet<>();
+    
+    // カスタムsetter
+    public void setTags(Set<Tag> tags) {
+        if (this.tags == null) {
+            this.tags = new HashSet<>();
+        }
+        this.tags.clear();
+        if (tags != null) {
+            this.tags.addAll(tags);
+        }
+    }
+}
+```
+
+**なぜ必要か**:
+- Hibernateは遅延ロード用に特別なコレクション実装（`PersistentSet`など）を使用
+- Lombokの`@Data`が生成するsetterは単純な代入（`this.tags = tags`）を行う
+- これによりHibernateのコレクション管理が破壊され、例外が発生
 
 ---
 

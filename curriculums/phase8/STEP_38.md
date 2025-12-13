@@ -343,8 +343,8 @@ public class WebController {
 
     @GetMapping("/")
     public String home(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(required = false) String tag,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "tag", required = false) String tag,
             Model model
     ) {
         Pageable pageable = PageRequest.of(page, 10);
@@ -509,6 +509,303 @@ public class WebController {
 
 ---
 
+### 3-3. タグ一覧ページの追加
+
+ナビゲーションバーの「タグ」リンクから遷移できるタグ一覧ページを追加します。
+
+#### WebControllerにメソッド追加
+
+**ファイルパス**: `src/main/java/com/example/bloghub/controller/WebController.java`
+
+`index`メソッドの後に以下を追加：
+
+```java
+@GetMapping("/tags")
+public String tags(Model model) {
+    List<TagResponse> allTags = tagRepository.findAll().stream()
+            .map(t -> TagResponse.builder().id(t.getId()).name(t.getName()).build())
+            .collect(Collectors.toList());
+    
+    model.addAttribute("tags", allTags);
+    return "tags";
+}
+```
+
+**必要なインポート**:
+```java
+import com.example.bloghub.dto.tag.TagResponse;
+import com.example.bloghub.repository.TagRepository;
+import java.util.List;
+import java.util.stream.Collectors;
+```
+
+**WebControllerのフィールドに追加**:
+```java
+private final TagRepository tagRepository;
+```
+
+#### tags.htmlの作成
+
+**ファイルパス**: `src/main/resources/templates/tags.html`
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{layout :: html(title='タグ一覧')}">
+<body>
+<div th:fragment="content">
+    <h1 class="mb-4">
+        <i class="bi bi-tags"></i> タグ一覧
+    </h1>
+
+    <div th:if="${tags.empty}" class="alert alert-info">
+        <i class="bi bi-info-circle"></i> タグがまだありません。
+    </div>
+
+    <div th:unless="${tags.empty}" class="row">
+        <div th:each="tag : ${tags}" class="col-md-3 mb-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-tag"></i>
+                        <a th:href="@{/(tag=${tag.name})}" 
+                           th:text="${tag.name}"
+                           class="text-decoration-none">
+                        </a>
+                    </h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a th:href="@{/}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> ホームに戻る
+        </a>
+    </div>
+</div>
+</body>
+</html>
+```
+
+**ポイント**:
+- タグをクリックすると`/?tag=タグ名`にリダイレクトされ、トップページでフィルタリング
+- `sec:authorize`でログイン状態に応じてナビゲーションを切り替え
+- Bootstrapの`col-md-3`で4列レイアウト
+
+---
+
+### 3-4. ユーザープロフィールページの追加
+
+記事一覧や記事詳細でユーザー名をクリックした際に遷移する、ユーザープロフィールページを実装します。
+
+#### WebControllerにメソッド追加
+
+**ファイルパス**: `src/main/java/com/example/bloghub/controller/WebController.java`
+
+**必要なインポートを追加**:
+```java
+import com.example.bloghub.dto.user.UserResponse;
+import com.example.bloghub.entity.User;
+import com.example.bloghub.repository.UserRepository;
+```
+
+**WebControllerのフィールドに追加**:
+```java
+private final UserRepository userRepository;
+```
+
+**メソッド追加**（`tags`メソッドの後に追加）:
+```java
+@GetMapping("/users/{username}")
+public String userProfile(
+        @PathVariable("username") String username,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "10") int size,
+        Model model) {
+
+    User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+
+    UserResponse userResponse = UserResponse.builder()
+            .id(user.getId())
+            .username(user.getUsername())
+            .email(user.getEmail())
+            .createdAt(user.getCreatedAt())
+            .build();
+
+    ArticleSearchCriteria criteria = ArticleSearchCriteria.builder()
+            .username(username)
+            .page(page)
+            .size(size)
+            .build();
+
+    ArticleSearchResponse searchResult = articleSearchService.searchArticles(criteria);
+
+    model.addAttribute("user", userResponse);
+    model.addAttribute("articles", searchResult.getArticles());
+    model.addAttribute("currentPage", page);
+    model.addAttribute("totalPages", searchResult.getTotalPages());
+    model.addAttribute("totalElements", searchResult.getTotalCount());
+
+    return "user-profile";
+}
+```
+
+**ポイント**:
+- `UserRepository.findByUsername()`でユーザー情報を取得
+- `ArticleSearchService`で該当ユーザーの記事を検索（`username`フィルタ使用）
+- ページネーション対応（`page`、`size`パラメータ）
+
+#### user-profile.htmlの作成
+
+**ファイルパス**: `src/main/resources/templates/user-profile.html`
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{layout :: html(title=${user.username} + ' のプロフィール')}">
+<body>
+<div th:fragment="content">
+    <!-- ユーザー情報 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <i class="bi bi-person-circle" style="font-size: 4rem;"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h2 class="mb-1" th:text="${user.username}">username</h2>
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-envelope"></i>
+                        <span th:text="${user.email}">email@example.com</span>
+                    </p>
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-calendar"></i>
+                        登録日: <span th:text="${#temporals.format(user.createdAt, 'yyyy年MM月dd日')}">2025年1月1日</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- 記事一覧 -->
+        <h3 class="mb-3">
+            <i class="bi bi-file-text"></i>
+            投稿記事 (<span th:text="${totalElements}">0</span>件)
+        </h3>
+
+        <div th:if="${articles.empty}" class="alert alert-info">
+            <i class="bi bi-info-circle"></i> まだ記事を投稿していません。
+        </div>
+
+        <div th:unless="${articles.empty}">
+            <div th:each="article : ${articles}" class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <a th:href="@{/articles/{id}(id=${article.id})}" 
+                           th:text="${article.title}"
+                           class="text-decoration-none">
+                        </a>
+                    </h5>
+                    <p class="card-text text-muted" th:text="${#strings.abbreviate(article.content, 200)}">
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span th:each="tag, iterStat : ${article.tags}" class="badge bg-secondary me-1">
+                                <a th:href="@{/(tag=${tag.name})}" 
+                                   th:text="${tag.name}"
+                                   class="text-white text-decoration-none">
+                                </a>
+                            </span>
+                        </div>
+                        <small class="text-muted">
+                            <i class="bi bi-clock"></i>
+                            <span th:text="${#temporals.format(article.createdAt, 'yyyy/MM/dd HH:mm')}"></span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ページネーション -->
+            <nav th:if="${totalPages > 1}" aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item" th:classappend="${currentPage == 0} ? 'disabled'">
+                        <a class="page-link" 
+                           th:href="@{/users/{username}(username=${user.username}, page=${currentPage - 1})}">
+                            前へ
+                        </a>
+                    </li>
+                    <li th:each="i : ${#numbers.sequence(0, totalPages - 1)}"
+                        class="page-item"
+                        th:classappend="${i == currentPage} ? 'active'">
+                        <a class="page-link" 
+                           th:href="@{/users/{username}(username=${user.username}, page=${i})}"
+                           th:text="${i + 1}">
+                        </a>
+                    </li>
+                    <li class="page-item" th:classappend="${currentPage + 1 >= totalPages} ? 'disabled'">
+                        <a class="page-link" 
+                           th:href="@{/users/{username}(username=${user.username}, page=${currentPage + 1})}">
+                            次へ
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+
+        <div class="mt-4">
+            <a th:href="@{/}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> ホームに戻る
+            </a>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
+
+**ポイント**:
+- ユーザー情報カードでプロフィール表示
+- そのユーザーが投稿した記事一覧を表示
+- ページネーション対応
+- 記事カードはトップページと同じデザイン
+- タグクリックでトップページにフィルタ付きで遷移
+
+#### ログインユーザー自身のプロフィールページ
+
+ナビゲーションバーなどから自分のプロフィールにアクセスできるように、`/profile`エンドポイントを追加します。
+
+**WebControllerに追加**:
+```java
+@GetMapping("/profile")
+public String myProfile(
+        Authentication auth,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "10") int size,
+        Model model) {
+
+    if (auth == null) {
+        return "redirect:/login";
+    }
+
+    String username = auth.getName();
+    return userProfile(username, page, size, model);
+}
+```
+
+**ポイント**:
+- ログインしていない場合は`/login`にリダイレクト
+- ログイン中のユーザー名を取得して`userProfile()`メソッドを再利用
+- 同じテンプレート（`user-profile.html`）を使用
+- `layout.html`を使用して共通レイアウト（ナビゲーションバー、フッター）を適用
+
+**重要**: `tags.html`と`user-profile.html`は`layout.html`を使用してコードの重複を避けます。
+
+---
+
 ## 🚀 ステップ4: 記事詳細ページの実装
 
 ### 4-1. WebControllerにメソッド追加
@@ -517,23 +814,65 @@ public class WebController {
 
 ```java
 @GetMapping("/articles/{id}")
-public String articleDetail(@PathVariable Long id, Model model) {
+public String articleDetail(@PathVariable("id") Long id, Authentication auth, Model model) {
     ArticleResponse article = articleService.getArticleById(id);
     List<CommentResponse> comments = commentService.getCommentsByArticleId(id);
     
-    model.addAttribute("title", article.getTitle());
-    model.addAttribute("content", "articles/detail :: content");
+    boolean isOwner = auth != null && auth.getName().equals(article.getUser().getUsername());
+    
     model.addAttribute("article", article);
     model.addAttribute("comments", comments);
-    model.addAttribute("commentRequest", new CommentCreateRequest());
+    model.addAttribute("isOwner", isOwner);
     
-    return "layouts/layout";
+    return "article-detail";
+}
+
+@PostMapping("/articles/{id}/comments")
+public String createComment(@PathVariable("id") Long id, @RequestParam("content") String content, Authentication auth) {
+    CommentCreateRequest request = CommentCreateRequest.builder()
+            .content(content)
+            .build();
+    commentService.createComment(id, request, auth.getName());
+    return "redirect:/articles/" + id;
+}
+
+@PostMapping("/comments/{id}/delete")
+public String deleteComment(@PathVariable("id") Long id, Authentication auth) {
+    Long articleId = commentService.deleteComment(id, auth.getName());
+    return "redirect:/articles/" + articleId;
 }
 ```
 
-### 4-2. articles/detail.htmlの作成
+**ポイント**:
+- `articleDetail`: 記事詳細と全コメントを取得、所有者判定
+- `createComment`: コメント投稿後、記事詳細ページにリダイレクト
+- `deleteComment`: コメント削除後、元の記事ページにリダイレクト（`CommentService`から`articleId`を返す）
 
-**ファイルパス**: `src/main/resources/templates/articles/detail.html`
+### 4-2. CommentServiceの修正
+
+コメント削除時に元の記事IDを返すように変更します。
+
+**ファイルパス**: `src/main/java/com/example/bloghub/service/CommentService.java`
+
+```java
+@Transactional
+public Long deleteComment(Long commentId, String username) {
+    Comment comment = commentRepository.findById(commentId)
+            .orElseThrow(() -> new ResourceNotFoundException("コメントが見つかりません"));
+
+    if (!comment.getUser().getUsername().equals(username)) {
+        throw new UnauthorizedException("このコメントを削除する権限がありません");
+    }
+
+    Long articleId = comment.getArticle().getId();
+    commentRepository.delete(comment);
+    return articleId;  // 削除後のリダイレクト先として使用
+}
+```
+
+### 4-3. article-detail.htmlの作成
+
+**ファイルパス**: `src/main/resources/templates/article-detail.html`
 
 ```html
 <!DOCTYPE html>
@@ -698,7 +1037,7 @@ public String createArticle(
 }
 
 @GetMapping("/articles/{id}/edit")
-public String editArticleForm(@PathVariable Long id, Authentication authentication, Model model) {
+public String editArticleForm(@PathVariable("id") Long id, Authentication authentication, Model model) {
     ArticleResponse article = articleService.getArticleById(id);
     
     // 所有者チェック
@@ -722,7 +1061,7 @@ public String editArticleForm(@PathVariable Long id, Authentication authenticati
 
 @PostMapping("/articles/{id}/edit")
 public String updateArticle(
-        @PathVariable Long id,
+        @PathVariable("id") Long id,
         @Valid @ModelAttribute("articleRequest") ArticleUpdateRequest request,
         BindingResult result,
         Authentication authentication,
@@ -746,7 +1085,7 @@ public String updateArticle(
 
 @PostMapping("/articles/{id}/delete")
 public String deleteArticle(
-        @PathVariable Long id,
+        @PathVariable("id") Long id,
         Authentication authentication,
         RedirectAttributes redirectAttributes
 ) {
@@ -1226,6 +1565,20 @@ cd ~/git/spring-boot-curriculum/workspace/bloghub
    - 確認ダイアログが表示されること
    - 削除後、トップページにリダイレクト
 
+9. **タグ一覧ページ**: ナビゲーションバーの「タグ」をクリック (`http://localhost:8080/tags`)
+   - すべてのタグが一覧表示されること
+   - タグをクリックするとトップページでフィルタリングされること
+
+10. **ユーザープロフィールページ**: 記事一覧でユーザー名をクリック (`http://localhost:8080/users/{username}`)
+    - ユーザー情報（ユーザー名、メール、登録日）が表示されること
+    - そのユーザーが投稿した記事一覧が表示されること
+    - ページネーションが動作すること
+
+11. **自分のプロフィールページ**: ログイン後に`/profile`にアクセス (`http://localhost:8080/profile`)
+    - 自分のプロフィール情報が表示されること
+    - 自分が投稿した記事一覧が表示されること
+    - ログインしていない場合は`/login`にリダイレクトされること
+
 ---
 
 ## 🐛 トラブルシューティング
@@ -1358,6 +1711,98 @@ pkill -f "spring-boot"
 ./mvnw spring-boot:run
 ```
 
+### エラー: {"status":400,"message":null} または @PathVariableが機能しない
+
+**原因**: メソッドパラメータ名がバイトコードに保持されていない
+
+**解決策**: `pom.xml`の`<build>`セクションに以下を追加:
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <parameters>true</parameters>
+            </configuration>
+        </plugin>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+    </plugins>
+</build>
+```
+
+または、すべての`@PathVariable`と`@RequestParam`にパラメータ名を明示:
+
+```java
+// ❌ パラメータ名が失われる可能性
+@GetMapping("/articles/{id}")
+public String articleDetail(@PathVariable Long id, Model model)
+
+// ✅ 明示的に指定（推奨）
+@GetMapping("/articles/{id}")
+public String articleDetail(@PathVariable("id") Long id, Model model)
+```
+
+### エラー: java.util.ConcurrentModificationException
+
+**原因**: Hibernate遅延ロード中にコレクションが変更されている
+
+**解決策1**: エンティティの`@Data`を`@Getter`+`@Setter`に変更し、カスタムsetterを実装:
+
+```java
+@Entity
+@Table(name = "articles")
+@Getter
+@Setter  // @Dataの代わり
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Article {
+    // ... フィールド定義
+    
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "article_tags", ...)
+    @Builder.Default
+    private Set<Tag> tags = new HashSet<>();
+    
+    // カスタムsetter
+    public void setTags(Set<Tag> tags) {
+        if (this.tags == null) {
+            this.tags = new HashSet<>();
+        }
+        this.tags.clear();
+        if (tags != null) {
+            this.tags.addAll(tags);
+        }
+    }
+}
+```
+
+**解決策2**: Repositoryで`JOIN FETCH`を使用:
+
+```java
+@Query("SELECT a FROM Article a JOIN FETCH a.user LEFT JOIN FETCH a.tags WHERE a.id = :id")
+Optional<Article> findByIdWithUser(@Param("id") Long id);
+```
+
+### エラー: Instantiation of new objects and access to static classes is forbidden
+
+**原因**: Thymeleafテンプレート内で`T(java.lang.System)`などの静的メソッドを呼び出している
+
+**解決策**: HTMLエンティティや組み込みユーティリティを使用:
+
+```html
+<!-- ❌ 悪い例 -->
+<div th:utext="${#strings.replace(article.content, T(java.lang.System).lineSeparator(), '<br>')}"></div>
+
+<!-- ✅ 良い例 -->
+<div th:utext="${#strings.replace(#strings.replace(article.content, '&#10;', '<br>'), '&#13;', '')}"></div>
+```
+
 ---
 
 ## 🎨 チャレンジ課題
@@ -1421,6 +1866,10 @@ const toggleDarkMode = () => {
 - ✅ フォームログインとJWT認証の併用
 - ✅ 日時フォーマットや文字列操作などのThymeleafユーティリティ
 - ✅ BootstrapとFont Awesomeを使ったモダンなUIデザイン
+- ✅ タグ一覧ページの実装とフィルタリング機能
+- ✅ ユーザープロフィールページの実装と記事検索連携
+- ✅ @PathVariableと@RequestParamのパラメータ名明示の重要性
+- ✅ HibernateのPersistentSetとLombokの@Dataの互換性問題への対処
 
 ---
 
