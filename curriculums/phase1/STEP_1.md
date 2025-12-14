@@ -73,8 +73,11 @@ Spring Initializrの画面で、以下の項目を設定します：
 画面右側の「ADD DEPENDENCIES」ボタンをクリックし、以下の依存関係を追加します：
 
 - **Spring Web**: REST APIを構築するための基本機能
+- **Spring Boot DevTools**: 開発時の自動リスタート・ホットリロード機能
 
 > **💡 なぜSpring Webだけ？**: このステップではREST APIの基本を学ぶため、最小限の依存関係から始めます。データベースやセキュリティなどの機能は、後のステップで追加していきます。
+
+> **💡 DevToolsとは？**: Spring Boot DevToolsは開発効率を向上させるツールです。コードを変更すると自動でアプリケーションを再起動してくれるため、毎回手動で再起動する手間が省けます。
 
 ### 1-4. プロジェクトを生成してダウンロード
 
@@ -196,6 +199,14 @@ cat pom.xml
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- 開発用ツール (Hot Module Replacement) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Spring Boot Test: テストツール一式 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -224,10 +235,34 @@ cat pom.xml
 
 2. **`<dependencies>`**: 必要なライブラリを宣言
    - `spring-boot-starter-web`: REST APIに必要な全ての依存関係を含む「スターター」
+   - `spring-boot-devtools`: 開発時の自動リスタート・LiveReload機能を提供
    - バージョン番号がない（親プロジェクトで管理されている）
 
 3. **`spring-boot-maven-plugin`**: Spring Boot実行可能Jarを作成するプラグイン
    - `./mvnw spring-boot:run`でアプリケーションを起動できる
+
+#### 📄 DevToolsの設定を追加（オプション）
+
+DevToolsの動作をカスタマイズしたい場合は、`src/main/resources/application.properties`に以下を追加します：
+
+```properties
+# DevTools設定
+spring.devtools.restart.enabled=true
+spring.devtools.livereload.enabled=true
+```
+
+または、`application.yml`形式で記述する場合：
+
+```yaml
+spring:
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+```
+
+> **💡 ヒント**: DevToolsはデフォルトで有効なので、この設定は省略可能です。設定ファイルの詳細はStep 4で学びます。
 
 #### 📄 `HelloSpringBootApplication.java` の中身を確認
 
