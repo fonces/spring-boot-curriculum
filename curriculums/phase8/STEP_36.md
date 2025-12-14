@@ -57,981 +57,466 @@ curl http://localhost:8080/actuator/health
 
 ## 📝 実装手順
 
-### 手順1: 例外クラスの作成
+> **📌 このステップの実装方針**
+> 
+> このステップでは、**あなた自身が設計・実装**することで、実践力を身につけます。
+> 各セクションには「機能要件」「実装ヒント」を記載していますので、それを参考に自分で考えながらコードを書いてください。
+> 
+> 困ったときは、Step 17（例外ハンドリング）、Step 19（DTOとEntityの分離）、Step 31（ページネーション）などの過去のステップを振り返りましょう。
 
-まず、エラーハンドリングのための例外クラスを作成します。
+---
 
-#### 1.1 ResourceNotFoundExceptionの作成
+### 手順1: 例外クラスの作成 【自分で実装】
 
-`src/main/java/com/example/bloghub/exception/ResourceNotFoundException.java`:
+エラーハンドリングのための例外クラスを作成します。Step 17で学んだ内容を活用しましょう。
 
-```java
-package com.example.bloghub.exception;
+#### 1.1 ResourceNotFoundException
 
-public class ResourceNotFoundException extends RuntimeException {
-    
-    public ResourceNotFoundException(String message) {
-        super(message);
-    }
-    
-    public ResourceNotFoundException(String resourceName, Long id) {
-        super(String.format("%s not found with id: %d", resourceName, id));
-    }
-    
-    public ResourceNotFoundException(String resourceName, String fieldName, Object fieldValue) {
-        super(String.format("%s not found with %s: %s", resourceName, fieldName, fieldValue));
-    }
-}
-```
+**ファイルパス**: `src/main/java/com/example/bloghub/exception/ResourceNotFoundException.java`
 
-#### 1.2 UnauthorizedExceptionの作成
+**機能要件**:
+- `RuntimeException`を継承したカスタム例外クラス
+- リソースが見つからない場合にスローする
+- 複数のコンストラクタで柔軟なメッセージ生成
 
-`src/main/java/com/example/bloghub/exception/UnauthorizedException.java`:
+**必要なコンストラクタ**:
 
-```java
-package com.example.bloghub.exception;
+| コンストラクタ | 用途 |
+|---------------|------|
+| `ResourceNotFoundException(String message)` | カスタムメッセージ |
+| `ResourceNotFoundException(String resourceName, Long id)` | 「{resourceName} not found with id: {id}」形式 |
+| `ResourceNotFoundException(String resourceName, String fieldName, Object fieldValue)` | 「{resourceName} not found with {fieldName}: {fieldValue}」形式 |
 
-public class UnauthorizedException extends RuntimeException {
-    
-    public UnauthorizedException(String message) {
-        super(message);
-    }
-    
-    public UnauthorizedException() {
-        super("You are not authorized to perform this action");
-    }
-}
-```
+**実装のポイント**:
+- `String.format()`を使ってメッセージを組み立てる
+- `super(message)`で親クラスにメッセージを渡す
 
-#### 1.3 ErrorResponseの作成
+---
 
-`src/main/java/com/example/bloghub/dto/ErrorResponse.java`:
+#### 1.2 UnauthorizedException
 
-```java
-package com.example.bloghub.dto;
+**ファイルパス**: `src/main/java/com/example/bloghub/exception/UnauthorizedException.java`
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import java.time.LocalDateTime;
+**機能要件**:
+- `RuntimeException`を継承
+- 権限がない操作を試みた場合にスロー
+- デフォルトメッセージ: 「You are not authorized to perform this action」
 
-@Data
-@AllArgsConstructor
-public class ErrorResponse {
-    private int status;
-    private String message;
-    private LocalDateTime timestamp;
-    private String path;
-}
-```
+**必要なコンストラクタ**:
 
-#### 1.4 GlobalExceptionHandlerの作成
+| コンストラクタ | 用途 |
+|---------------|------|
+| `UnauthorizedException(String message)` | カスタムメッセージ |
+| `UnauthorizedException()` | デフォルトメッセージ |
 
-`src/main/java/com/example/bloghub/exception/GlobalExceptionHandler.java`:
+---
 
-```java
-package com.example.bloghub.exception;
+#### 1.3 ErrorResponse
 
-import com.example.bloghub.dto.ErrorResponse;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.WebRequest;
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/ErrorResponse.java`
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+**機能要件**:
+- APIエラーレスポンスの統一フォーマット
+- Lombokを使ってシンプルに
 
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-    
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
-            ResourceNotFoundException ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.NOT_FOUND.value(),
-                ex.getMessage(),
-                LocalDateTime.now(),
-                request.getDescription(false).replace("uri=", "")
-        );
-        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
-    }
-    
-    @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<ErrorResponse> handleUnauthorizedException(
-            UnauthorizedException ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.FORBIDDEN.value(),
-                ex.getMessage(),
-                LocalDateTime.now(),
-                request.getDescription(false).replace("uri=", "")
-        );
-        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
-    }
-    
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidationExceptions(
-            MethodArgumentNotValidException ex, WebRequest request) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", HttpStatus.BAD_REQUEST.value());
-        response.put("message", "Validation failed");
-        response.put("errors", errors);
-        response.put("timestamp", LocalDateTime.now());
-        response.put("path", request.getDescription(false).replace("uri=", ""));
-        
-        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(
-            Exception ex, WebRequest request) {
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "An unexpected error occurred: " + ex.getMessage(),
-                LocalDateTime.now(),
-                request.getDescription(false).replace("uri=", "")
-        );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+**必要なフィールド**:
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `status` | `int` | HTTPステータスコード |
+| `message` | `String` | エラーメッセージ |
+| `timestamp` | `LocalDateTime` | 発生日時 |
+| `path` | `String` | リクエストパス |
+
+**実装のポイント**:
+- `@Data`と`@AllArgsConstructor`を使用
+- `java.time.LocalDateTime`をインポート
+
+---
+
+#### 1.4 GlobalExceptionHandler
+
+**ファイルパス**: `src/main/java/com/example/bloghub/exception/GlobalExceptionHandler.java`
+
+**機能要件**:
+- `@RestControllerAdvice`で全コントローラーの例外を一元管理
+- 例外の種類に応じて適切なHTTPステータスコードを返す
+- `WebRequest`からリクエストパスを取得
+
+**ハンドリングする例外**:
+
+| 例外 | HTTPステータス | 説明 |
+|------|---------------|------|
+| `ResourceNotFoundException` | 404 Not Found | リソースが存在しない |
+| `UnauthorizedException` | 403 Forbidden | 権限がない |
+| `MethodArgumentNotValidException` | 400 Bad Request | バリデーションエラー |
+| `Exception` | 500 Internal Server Error | その他のエラー |
+
+**実装のポイント**:
+- `@ExceptionHandler`でハンドリング対象を指定
+- `request.getDescription(false).replace("uri=", "")`でパスを取得
+- バリデーションエラーは`errors`フィールドにフィールド名とエラーメッセージのMapを返す
+
+**バリデーションエラーのレスポンス例**:
+```json
+{
+  "status": 400,
+  "message": "Validation failed",
+  "errors": {
+    "title": "Title is required",
+    "content": "Content is required"
+  },
+  "timestamp": "2025-12-13T10:00:00",
+  "path": "/api/articles"
 }
 ```
 
 ---
 
-### 手順2: Repository層の実装
+### 手順2: Repository層の実装 【自分で実装】
 
-#### 2.1 ArticleRepositoryの作成
+#### 2.1 ArticleRepository
 
-`src/main/java/com/example/bloghub/repository/ArticleRepository.java`:
+**ファイルパス**: `src/main/java/com/example/bloghub/repository/ArticleRepository.java`
 
+**機能要件**:
+- `JpaRepository<Article, Long>`を継承
+- ページネーション対応の記事一覧取得
+- タグによる記事検索
+- N+1問題を回避した記事詳細取得
+
+**必要なメソッド**:
+
+| メソッド | 戻り値 | 説明 |
+|---------|--------|------|
+| `findByUserIdOrderByCreatedAtDesc` | `Page<Article>` | ユーザーの記事一覧（新しい順） |
+| `findByTagName` | `Page<Article>` | タグ名で記事検索（@Queryで実装） |
+| `findByIdWithUser` | `Optional<Article>` | JOIN FETCHでユーザー・タグも取得 |
+| `findAllByOrderByCreatedAtDesc` | `Page<Article>` | 全記事を新しい順で取得 |
+
+**実装のポイント**:
+- `@Query`でJPQLを記述
+- `JOIN FETCH`でN+1問題を回避
+- `Page<Article>`と`Pageable`でページネーション
+- `DISTINCT`で重複を防ぐ（タグ検索時）
+- `LEFT JOIN FETCH`でタグがない記事も取得
+
+**JPQLサンプル（タグ検索）**:
 ```java
-package com.example.bloghub.repository;
-
-import com.example.bloghub.entity.Article;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-
-@Repository
-public interface ArticleRepository extends JpaRepository<Article, Long> {
-    
-    /**
-     * ユーザーの記事一覧をページネーションで取得
-     * 新しい順にソート
-     */
-    Page<Article> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
-    
-    /**
-     * タグで記事を検索
-     * 同じタグが複数回紐づいていても重複しないようDISTINCTを使用
-     */
-    @Query("SELECT DISTINCT a FROM Article a JOIN a.tags t WHERE t.name = :tagName ORDER BY a.createdAt DESC")
-    Page<Article> findByTagName(@Param("tagName") String tagName, Pageable pageable);
-    
-    /**
-     * 記事とユーザー情報、タグを一緒に取得（N+1問題回避）
-     * JOIN FETCHでユーザー情報とタグを同時に取得
-     * LEFT JOIN FETCHでタグがない記事も取得可能
-     */
-    @Query("SELECT a FROM Article a JOIN FETCH a.user LEFT JOIN FETCH a.tags WHERE a.id = :id")
-    Optional<Article> findByIdWithUser(@Param("id") Long id);
-    
-    /**
-     * すべての記事を新しい順で取得
-     */
-    Page<Article> findAllByOrderByCreatedAtDesc(Pageable pageable);
-}
-```
-
-#### 2.2 CommentRepositoryの作成
-
-`src/main/java/com/example/bloghub/repository/CommentRepository.java`:
-
-```java
-package com.example.bloghub.repository;
-
-import com.example.bloghub.entity.Comment;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface CommentRepository extends JpaRepository<Comment, Long> {
-    
-    /**
-     * 記事のコメント一覧を取得
-     * 古い順にソート（会話の流れを保つため）
-     */
-    List<Comment> findByArticleIdOrderByCreatedAtAsc(Long articleId);
-    
-    /**
-     * 記事のコメント数をカウント
-     */
-    long countByArticleId(Long articleId);
-}
-```
-
-#### 2.3 TagRepositoryの作成
-
-`src/main/java/com/example/bloghub/repository/TagRepository.java`:
-
-```java
-package com.example.bloghub.repository;
-
-import com.example.bloghub.entity.Tag;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-
-@Repository
-public interface TagRepository extends JpaRepository<Tag, Long> {
-    
-    /**
-     * タグ名で検索
-     */
-    Optional<Tag> findByName(String name);
-    
-    /**
-     * タグ名が存在するかチェック
-     */
-    boolean existsByName(String name);
-}
+@Query("SELECT DISTINCT a FROM Article a JOIN a.tags t WHERE t.name = :tagName ORDER BY a.createdAt DESC")
+Page<Article> findByTagName(@Param("tagName") String tagName, Pageable pageable);
 ```
 
 ---
 
-### 手順3: DTO層の実装
+#### 2.2 CommentRepository
 
-#### 3.1 記事関連DTOの作成
+**ファイルパス**: `src/main/java/com/example/bloghub/repository/CommentRepository.java`
 
-**ArticleCreateRequest** (`src/main/java/com/example/bloghub/dto/article/ArticleCreateRequest.java`):
+**機能要件**:
+- `JpaRepository<Comment, Long>`を継承
+- 記事に紐づくコメント一覧を取得
+- コメント数をカウント
 
-```java
-package com.example.bloghub.dto.article;
+**必要なメソッド**:
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-import lombok.Data;
+| メソッド | 戻り値 | 説明 |
+|---------|--------|------|
+| `findByArticleIdOrderByCreatedAtAsc` | `List<Comment>` | 記事のコメント一覧（古い順） |
+| `countByArticleId` | `long` | 記事のコメント数 |
 
-import java.util.HashSet;
-import java.util.Set;
-
-@Data
-public class ArticleCreateRequest {
-    
-    @NotBlank(message = "Title is required")
-    @Size(min = 1, max = 200, message = "Title must be between 1 and 200 characters")
-    private String title;
-    
-    @NotBlank(message = "Content is required")
-    @Size(min = 1, max = 10000, message = "Content must be between 1 and 10000 characters")
-    private String content;
-    
-    private Set<String> tags = new HashSet<>();
-}
-```
-
-**ArticleUpdateRequest** (`src/main/java/com/example/bloghub/dto/article/ArticleUpdateRequest.java`):
-
-```java
-package com.example.bloghub.dto.article;
-
-import jakarta.validation.constraints.Size;
-import lombok.Data;
-
-import java.util.HashSet;
-import java.util.Set;
-
-@Data
-public class ArticleUpdateRequest {
-    
-    @Size(min = 1, max = 200, message = "Title must be between 1 and 200 characters")
-    private String title;
-    
-    @Size(min = 1, max = 10000, message = "Content must be between 1 and 10000 characters")
-    private String content;
-    
-    private Set<String> tags = new HashSet<>();
-}
-```
-
-**ArticleResponse** (`src/main/java/com/example/bloghub/dto/article/ArticleResponse.java`):
-
-```java
-package com.example.bloghub.dto.article;
-
-import com.example.bloghub.dto.user.UserResponse;
-import lombok.Data;
-
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
-
-@Data
-public class ArticleResponse {
-    private Long id;
-    private String title;
-    private String content;
-    private Set<String> tags = new HashSet<>();
-    private UserResponse user;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private Long commentCount;
-}
-```
-
-**ArticleSummaryResponse** (`src/main/java/com/example/bloghub/dto/article/ArticleSummaryResponse.java`):
-
-```java
-package com.example.bloghub.dto.article;
-
-import lombok.Data;
-
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
-
-@Data
-public class ArticleSummaryResponse {
-    private Long id;
-    private String title;
-    private String username;
-    private Set<String> tags = new HashSet<>();
-    private LocalDateTime createdAt;
-    private Long commentCount;
-}
-```
-
-#### 3.2 コメント関連DTOの作成
-
-**CommentCreateRequest** (`src/main/java/com/example/bloghub/dto/comment/CommentCreateRequest.java`):
-
-```java
-package com.example.bloghub.dto.comment;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-import lombok.Data;
-
-@Data
-public class CommentCreateRequest {
-    
-    @NotBlank(message = "Content is required")
-    @Size(min = 1, max = 1000, message = "Content must be between 1 and 1000 characters")
-    private String content;
-}
-```
-
-**CommentResponse** (`src/main/java/com/example/bloghub/dto/comment/CommentResponse.java`):
-
-```java
-package com.example.bloghub.dto.comment;
-
-import com.example.bloghub.dto.user.UserResponse;
-import lombok.Data;
-
-import java.time.LocalDateTime;
-
-@Data
-public class CommentResponse {
-    private Long id;
-    private String content;
-    private UserResponse user;
-    private LocalDateTime createdAt;
-}
-```
+**実装のポイント**:
+- メソッド名規則でSpring Dataが自動実装
+- コメントは会話の流れを保つため古い順（Asc）でソート
 
 ---
 
-### 手順4: Service層の実装
+#### 2.3 TagRepository
 
-#### 4.1 TagServiceの作成
+**ファイルパス**: `src/main/java/com/example/bloghub/repository/TagRepository.java`
 
-まず、タグの管理を行うサービスを作成します。
+**機能要件**:
+- `JpaRepository<Tag, Long>`を継承
+- タグ名での検索・存在チェック
 
-`src/main/java/com/example/bloghub/service/TagService.java`:
+**必要なメソッド**:
 
-```java
-package com.example.bloghub.service;
-
-import com.example.bloghub.entity.Tag;
-import com.example.bloghub.repository.TagRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class TagService {
-    
-    private final TagRepository tagRepository;
-    
-    /**
-     * タグ名から取得または新規作成
-     */
-    @Transactional
-    public Tag findOrCreateTag(String name) {
-        return tagRepository.findByName(name)
-                .orElseGet(() -> {
-                    Tag newTag = new Tag();
-                    newTag.setName(name);
-                    return tagRepository.save(newTag);
-                });
-    }
-    
-    /**
-     * すべてのタグを取得
-     */
-    public List<Tag> getAllTags() {
-        return tagRepository.findAll();
-    }
-}
-```
-
-#### 4.2 ArticleServiceの作成
-
-`src/main/java/com/example/bloghub/service/ArticleService.java`:
-
-```java
-package com.example.bloghub.service;
-
-import com.example.bloghub.dto.article.*;
-import com.example.bloghub.dto.user.UserResponse;
-import com.example.bloghub.entity.Article;
-import com.example.bloghub.entity.Tag;
-import com.example.bloghub.entity.User;
-import com.example.bloghub.exception.ResourceNotFoundException;
-import com.example.bloghub.exception.UnauthorizedException;
-import com.example.bloghub.repository.ArticleRepository;
-import com.example.bloghub.repository.CommentRepository;
-import com.example.bloghub.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.HashSet;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class ArticleService {
-    
-    private final ArticleRepository articleRepository;
-    private final UserRepository userRepository;
-    private final CommentRepository commentRepository;
-    private final TagService tagService;
-    
-    /**
-     * 記事を作成
-     */
-    @Transactional
-    public ArticleResponse createArticle(ArticleCreateRequest request, String username) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
-        
-        Article article = new Article();
-        article.setTitle(request.getTitle());
-        article.setContent(request.getContent());
-        article.setUser(user);
-        
-        // タグの処理
-        Set<Tag> tags = processTags(request.getTags());
-        article.setTags(tags);
-        
-        Article savedArticle = articleRepository.save(article);
-        return convertToResponse(savedArticle);
-    }
-    
-    /**
-     * 記事を更新
-     */
-    @Transactional
-    public ArticleResponse updateArticle(Long id, ArticleUpdateRequest request, String username) {
-        Article article = articleRepository.findByIdWithUser(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
-        
-        // 所有者チェック
-        if (!article.getUser().getUsername().equals(username)) {
-            throw new UnauthorizedException("You can only update your own articles");
-        }
-        
-        // 更新
-        if (request.getTitle() != null) {
-            article.setTitle(request.getTitle());
-        }
-        if (request.getContent() != null) {
-            article.setContent(request.getContent());
-        }
-        if (request.getTags() != null) {
-            Set<Tag> tags = processTags(request.getTags());
-            article.setTags(tags);
-        }
-        
-        Article updatedArticle = articleRepository.save(article);
-        return convertToResponse(updatedArticle);
-    }
-    
-    /**
-     * 記事を削除
-     */
-    @Transactional
-    public void deleteArticle(Long id, String username) {
-        Article article = articleRepository.findByIdWithUser(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
-        
-        // 所有者チェック
-        if (!article.getUser().getUsername().equals(username)) {
-            throw new UnauthorizedException("You can only delete your own articles");
-        }
-        
-        articleRepository.delete(article);
-    }
-    
-    /**
-     * 記事詳細を取得
-     */
-    public ArticleResponse getArticleById(Long id) {
-        Article article = articleRepository.findByIdWithUser(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
-        return convertToResponse(article);
-    }
-    
-    /**
-     * すべての記事を取得（ページネーション）
-     */
-    public Page<ArticleSummaryResponse> getAllArticles(Pageable pageable) {
-        Page<Article> articles = articleRepository.findAllByOrderByCreatedAtDesc(pageable);
-        return articles.map(this::convertToSummaryResponse);
-    }
-    
-    /**
-     * タグで記事を検索
-     */
-    public Page<ArticleSummaryResponse> getArticlesByTag(String tagName, Pageable pageable) {
-        Page<Article> articles = articleRepository.findByTagName(tagName, pageable);
-        return articles.map(this::convertToSummaryResponse);
-    }
-    
-    /**
-     * 自分の記事一覧を取得
-     */
-    public Page<ArticleSummaryResponse> getMyArticles(String username, Pageable pageable) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
-        
-        Page<Article> articles = articleRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), pageable);
-        return articles.map(this::convertToSummaryResponse);
-    }
-    
-    /**
-     * タグ名のセットからTagエンティティのセットを作成
-     */
-    private Set<Tag> processTags(Set<String> tagNames) {
-        if (tagNames == null || tagNames.isEmpty()) {
-            return new HashSet<>();
-        }
-        
-        return tagNames.stream()
-                .filter(name -> name != null && !name.trim().isEmpty())
-                .map(tagService::findOrCreateTag)
-                .collect(Collectors.toSet());
-    }
-    
-    /**
-     * ArticleエンティティをArticleResponseに変換
-     */
-    private ArticleResponse convertToResponse(Article article) {
-        ArticleResponse response = new ArticleResponse();
-        response.setId(article.getId());
-        response.setTitle(article.getTitle());
-        response.setContent(article.getContent());
-        response.setTags(article.getTags().stream()
-                .map(Tag::getName)
-                .collect(Collectors.toSet()));
-        
-        UserResponse userResponse = new UserResponse();
-        userResponse.setId(article.getUser().getId());
-        userResponse.setUsername(article.getUser().getUsername());
-        userResponse.setEmail(article.getUser().getEmail());
-        userResponse.setCreatedAt(article.getUser().getCreatedAt());
-        response.setUser(userResponse);
-        
-        response.setCreatedAt(article.getCreatedAt());
-        response.setUpdatedAt(article.getUpdatedAt());
-        
-        // コメント数を取得
-        long commentCount = commentRepository.countByArticleId(article.getId());
-        response.setCommentCount(commentCount);
-        
-        return response;
-    }
-    
-    /**
-     * ArticleエンティティをArticleSummaryResponseに変換
-     */
-    private ArticleSummaryResponse convertToSummaryResponse(Article article) {
-        ArticleSummaryResponse response = new ArticleSummaryResponse();
-        response.setId(article.getId());
-        response.setTitle(article.getTitle());
-        response.setUsername(article.getUser().getUsername());
-        response.setTags(article.getTags().stream()
-                .map(Tag::getName)
-                .collect(Collectors.toSet()));
-        response.setCreatedAt(article.getCreatedAt());
-        
-        // コメント数を取得
-        long commentCount = commentRepository.countByArticleId(article.getId());
-        response.setCommentCount(commentCount);
-        
-        return response;
-    }
-}
-```
-
-#### 4.3 CommentServiceの作成
-
-`src/main/java/com/example/bloghub/service/CommentService.java`:
-
-```java
-package com.example.bloghub.service;
-
-import com.example.bloghub.dto.comment.CommentCreateRequest;
-import com.example.bloghub.dto.comment.CommentResponse;
-import com.example.bloghub.dto.user.UserResponse;
-import com.example.bloghub.entity.Article;
-import com.example.bloghub.entity.Comment;
-import com.example.bloghub.entity.User;
-import com.example.bloghub.exception.ResourceNotFoundException;
-import com.example.bloghub.exception.UnauthorizedException;
-import com.example.bloghub.repository.ArticleRepository;
-import com.example.bloghub.repository.CommentRepository;
-import com.example.bloghub.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.stream.Collectors;
-
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class CommentService {
-    
-    private final CommentRepository commentRepository;
-    private final ArticleRepository articleRepository;
-    private final UserRepository userRepository;
-    
-    /**
-     * コメントを作成
-     */
-    @Transactional
-    public CommentResponse createComment(Long articleId, CommentCreateRequest request, String username) {
-        Article article = articleRepository.findById(articleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Article", articleId));
-        
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
-        
-        Comment comment = new Comment();
-        comment.setContent(request.getContent());
-        comment.setArticle(article);
-        comment.setUser(user);
-        
-        Comment savedComment = commentRepository.save(comment);
-        return convertToResponse(savedComment);
-    }
-    
-    /**
-     * コメントを削除
-     */
-    @Transactional
-    public void deleteComment(Long commentId, String username) {
-        Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Comment", commentId));
-        
-        // 所有者チェック
-        if (!comment.getUser().getUsername().equals(username)) {
-            throw new UnauthorizedException("You can only delete your own comments");
-        }
-        
-        commentRepository.delete(comment);
-    }
-    
-    /**
-     * 記事のコメント一覧を取得
-     */
-    public List<CommentResponse> getCommentsByArticleId(Long articleId) {
-        // 記事の存在確認
-        if (!articleRepository.existsById(articleId)) {
-            throw new ResourceNotFoundException("Article", articleId);
-        }
-        
-        List<Comment> comments = commentRepository.findByArticleIdOrderByCreatedAtAsc(articleId);
-        return comments.stream()
-                .map(this::convertToResponse)
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * CommentエンティティをCommentResponseに変換
-     */
-    private CommentResponse convertToResponse(Comment comment) {
-        CommentResponse response = new CommentResponse();
-        response.setId(comment.getId());
-        response.setContent(comment.getContent());
-        
-        UserResponse userResponse = new UserResponse();
-        userResponse.setId(comment.getUser().getId());
-        userResponse.setUsername(comment.getUser().getUsername());
-        userResponse.setEmail(comment.getUser().getEmail());
-        userResponse.setCreatedAt(comment.getUser().getCreatedAt());
-        response.setUser(userResponse);
-        
-        response.setCreatedAt(comment.getCreatedAt());
-        
-        return response;
-    }
-}
-```
+| メソッド | 戻り値 | 説明 |
+|---------|--------|------|
+| `findByName` | `Optional<Tag>` | タグ名で検索 |
+| `existsByName` | `boolean` | タグ名の存在チェック |
 
 ---
 
-### 手順5: Controller層の実装
+### 手順3: DTO層の実装 【自分で実装】
 
-#### 5.1 ArticleControllerの作成
+#### 3.1 記事関連DTO
 
-`src/main/java/com/example/bloghub/controller/ArticleController.java`:
+**ArticleCreateRequest**
 
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/article/ArticleCreateRequest.java`
+
+| フィールド | 型 | バリデーション |
+|-----------|-----|---------------|
+| `title` | `String` | `@NotBlank`, `@Size(min=1, max=200)` |
+| `content` | `String` | `@NotBlank`, `@Size(min=1, max=10000)` |
+| `tags` | `Set<String>` | 任意（デフォルトは空のHashSet） |
+
+---
+
+**ArticleUpdateRequest**
+
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/article/ArticleUpdateRequest.java`
+
+| フィールド | 型 | バリデーション |
+|-----------|-----|---------------|
+| `title` | `String` | `@Size(min=1, max=200)`（任意） |
+| `content` | `String` | `@Size(min=1, max=10000)`（任意） |
+| `tags` | `Set<String>` | 任意 |
+
+**ポイント**: 更新時はnullのフィールドは更新しない（部分更新対応）
+
+---
+
+**ArticleResponse**
+
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/article/ArticleResponse.java`
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `id` | `Long` | 記事ID |
+| `title` | `String` | タイトル |
+| `content` | `String` | 本文 |
+| `tags` | `Set<String>` | タグ名のセット |
+| `user` | `UserResponse` | 投稿者情報 |
+| `createdAt` | `LocalDateTime` | 作成日時 |
+| `updatedAt` | `LocalDateTime` | 更新日時 |
+| `commentCount` | `Long` | コメント数 |
+
+---
+
+**ArticleSummaryResponse**
+
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/article/ArticleSummaryResponse.java`
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `id` | `Long` | 記事ID |
+| `title` | `String` | タイトル |
+| `username` | `String` | 投稿者名 |
+| `tags` | `Set<String>` | タグ名のセット |
+| `createdAt` | `LocalDateTime` | 作成日時 |
+| `commentCount` | `Long` | コメント数 |
+
+**ポイント**: 一覧表示用のため、`content`は含めない（軽量化）
+
+---
+
+#### 3.2 コメント関連DTO
+
+**CommentCreateRequest**
+
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/comment/CommentCreateRequest.java`
+
+| フィールド | 型 | バリデーション |
+|-----------|-----|---------------|
+| `content` | `String` | `@NotBlank`, `@Size(min=1, max=1000)` |
+
+---
+
+**CommentResponse**
+
+**ファイルパス**: `src/main/java/com/example/bloghub/dto/comment/CommentResponse.java`
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `id` | `Long` | コメントID |
+| `content` | `String` | 本文 |
+| `user` | `UserResponse` | 投稿者情報 |
+| `createdAt` | `LocalDateTime` | 作成日時 |
+
+---
+
+### 手順4: Service層の実装 【自分で実装】
+
+#### 4.1 TagService
+
+**ファイルパス**: `src/main/java/com/example/bloghub/service/TagService.java`
+
+**機能要件**:
+- タグの「findOrCreate」パターン実装
+- 既存タグがあれば取得、なければ新規作成
+
+**必要なメソッド**:
+
+| メソッド | 処理 |
+|---------|------|
+| `findOrCreateTag(String name)` | タグを検索、存在しなければ新規作成して返す |
+| `getAllTags()` | 全タグを取得 |
+
+**実装のポイント**:
+- `@Transactional`で書き込みメソッドを保護
+- `@Transactional(readOnly = true)`をクラスレベルに、書き込みメソッドには`@Transactional`を付与
+- `orElseGet()`でLazy評価（存在する場合は新規作成しない）
+
+---
+
+#### 4.2 ArticleService
+
+**ファイルパス**: `src/main/java/com/example/bloghub/service/ArticleService.java`
+
+**機能要件**:
+- 記事のCRUD操作
+- 所有者チェックによる権限制御
+- タグの自動作成・関連付け
+- Entity→DTOの変換
+
+**依存関係**:
+- `ArticleRepository`
+- `UserRepository`
+- `CommentRepository`
+- `TagService`
+
+**メソッド別処理フロー**:
+
+| メソッド | 処理フロー |
+|---------|-----------|
+| `createArticle(request, username)` | ユーザー取得 → Article作成 → タグ処理 → 保存 → レスポンス変換 |
+| `updateArticle(id, request, username)` | 記事取得 → **所有者チェック** → フィールド更新 → 保存 |
+| `deleteArticle(id, username)` | 記事取得 → **所有者チェック** → 削除 |
+| `getArticleById(id)` | JOIN FETCHで取得 → レスポンス変換 |
+| `getAllArticles(pageable)` | ページネーション取得 → Summary変換 |
+| `getArticlesByTag(tagName, pageable)` | タグ検索 → Summary変換 |
+| `getMyArticles(username, pageable)` | ユーザーID取得 → 記事検索 → Summary変換 |
+
+**所有者チェックの実装**:
 ```java
-package com.example.bloghub.controller;
-
-import com.example.bloghub.dto.article.ArticleCreateRequest;
-import com.example.bloghub.dto.article.ArticleResponse;
-import com.example.bloghub.dto.article.ArticleSummaryResponse;
-import com.example.bloghub.dto.article.ArticleUpdateRequest;
-import com.example.bloghub.service.ArticleService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-
-@RestController
-@RequestMapping("/api/articles")
-@RequiredArgsConstructor
-public class ArticleController {
-    
-    private final ArticleService articleService;
-    
-    /**
-     * 記事を作成
-     */
-    @PostMapping
-    public ResponseEntity<ArticleResponse> createArticle(
-            @Valid @RequestBody ArticleCreateRequest request,
-            Authentication authentication) {
-        String username = authentication.getName();
-        ArticleResponse response = articleService.createArticle(request, username);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-    
-    /**
-     * 記事一覧を取得（ページネーション、タグフィルター対応）
-     */
-    @GetMapping
-    public ResponseEntity<Page<ArticleSummaryResponse>> getArticles(
-            @RequestParam(required = false) String tag,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ArticleSummaryResponse> articles;
-        
-        if (tag != null && !tag.trim().isEmpty()) {
-            articles = articleService.getArticlesByTag(tag, pageable);
-        } else {
-            articles = articleService.getAllArticles(pageable);
-        }
-        
-        return ResponseEntity.ok(articles);
-    }
-    
-    /**
-     * 記事詳細を取得
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<ArticleResponse> getArticle(@PathVariable Long id) {
-        ArticleResponse response = articleService.getArticleById(id);
-        return ResponseEntity.ok(response);
-    }
-    
-    /**
-     * 記事を更新
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<ArticleResponse> updateArticle(
-            @PathVariable Long id,
-            @Valid @RequestBody ArticleUpdateRequest request,
-            Authentication authentication) {
-        String username = authentication.getName();
-        ArticleResponse response = articleService.updateArticle(id, request, username);
-        return ResponseEntity.ok(response);
-    }
-    
-    /**
-     * 記事を削除
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteArticle(
-            @PathVariable Long id,
-            Authentication authentication) {
-        String username = authentication.getName();
-        articleService.deleteArticle(id, username);
-        return ResponseEntity.noContent().build();
-    }
-    
-    /**
-     * 自分の記事一覧を取得
-     */
-    @GetMapping("/my")
-    public ResponseEntity<Page<ArticleSummaryResponse>> getMyArticles(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            Authentication authentication) {
-        String username = authentication.getName();
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ArticleSummaryResponse> articles = articleService.getMyArticles(username, pageable);
-        return ResponseEntity.ok(articles);
-    }
+// 記事の所有者と認証ユーザーを比較
+if (!article.getUser().getUsername().equals(username)) {
+    throw new UnauthorizedException("You can only update your own articles");
 }
 ```
 
-#### 5.2 CommentControllerの作成
-
-`src/main/java/com/example/bloghub/controller/CommentController.java`:
-
+**タグ処理ヘルパーメソッド**:
 ```java
-package com.example.bloghub.controller;
-
-import com.example.bloghub.dto.comment.CommentCreateRequest;
-import com.example.bloghub.dto.comment.CommentResponse;
-import com.example.bloghub.service.CommentService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequiredArgsConstructor
-public class CommentController {
-    
-    private final CommentService commentService;
-    
-    /**
-     * コメントを作成
-     */
-    @PostMapping("/api/articles/{articleId}/comments")
-    public ResponseEntity<CommentResponse> createComment(
-            @PathVariable Long articleId,
-            @Valid @RequestBody CommentCreateRequest request,
-            Authentication authentication) {
-        String username = authentication.getName();
-        CommentResponse response = commentService.createComment(articleId, request, username);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+private Set<Tag> processTags(Set<String> tagNames) {
+    if (tagNames == null || tagNames.isEmpty()) {
+        return new HashSet<>();
     }
-    
-    /**
-     * 記事のコメント一覧を取得
-     */
-    @GetMapping("/api/articles/{articleId}/comments")
-    public ResponseEntity<List<CommentResponse>> getComments(@PathVariable Long articleId) {
-        List<CommentResponse> comments = commentService.getCommentsByArticleId(articleId);
-        return ResponseEntity.ok(comments);
-    }
-    
-    /**
-     * コメントを削除
-     */
-    @DeleteMapping("/api/comments/{id}")
-    public ResponseEntity<Void> deleteComment(
-            @PathVariable Long id,
-            Authentication authentication) {
-        String username = authentication.getName();
-        commentService.deleteComment(id, username);
-        return ResponseEntity.noContent().build();
-    }
+    return tagNames.stream()
+            .filter(name -> name != null && !name.trim().isEmpty())
+            .map(tagService::findOrCreateTag)
+            .collect(Collectors.toSet());
 }
 ```
 
-#### 5.3 TagControllerの作成
+**Entity→DTO変換のポイント**:
+- `ArticleResponse`には全情報を含める
+- `ArticleSummaryResponse`には一覧表示に必要な情報のみ
+- コメント数は`commentRepository.countByArticleId()`で取得
+- タグ名は`article.getTags().stream().map(Tag::getName).collect(Collectors.toSet())`
 
-`src/main/java/com/example/bloghub/controller/TagController.java`:
+---
 
-```java
-package com.example.bloghub.controller;
+#### 4.3 CommentService
 
-import com.example.bloghub.entity.Tag;
-import com.example.bloghub.service.TagService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+**ファイルパス**: `src/main/java/com/example/bloghub/service/CommentService.java`
 
-import java.util.List;
-import java.util.stream.Collectors;
+**機能要件**:
+- コメントのCRUD操作
+- 所有者チェックによる削除権限制御
+- 記事の存在確認
 
-@RestController
-@RequestMapping("/api/tags")
-@RequiredArgsConstructor
-public class TagController {
-    
-    private final TagService tagService;
-    
-    /**
-     * すべてのタグを取得
-     */
-    @GetMapping
-    public ResponseEntity<List<String>> getAllTags() {
-        List<String> tags = tagService.getAllTags().stream()
-                .map(Tag::getName)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(tags);
-    }
-}
-```
+**依存関係**:
+- `CommentRepository`
+- `ArticleRepository`
+- `UserRepository`
+
+**メソッド別処理フロー**:
+
+| メソッド | 処理フロー |
+|---------|-----------|
+| `createComment(articleId, request, username)` | 記事存在確認 → ユーザー取得 → Comment作成 → 保存 |
+| `deleteComment(commentId, username)` | コメント取得 → **所有者チェック** → 削除 |
+| `getCommentsByArticleId(articleId)` | 記事存在確認 → コメント一覧取得 → 変換 |
+
+**実装のポイント**:
+- コメント作成時は`article`と`user`の両方を設定
+- コメント一覧は古い順（会話の流れを保持）
+- 記事が存在しない場合は`ResourceNotFoundException`
+
+---
+
+### 手順5: Controller層の実装 【自分で実装】
+
+#### 5.1 ArticleController
+
+**ファイルパス**: `src/main/java/com/example/bloghub/controller/ArticleController.java`
+
+**ベースパス**: `/api/articles`
+
+**エンドポイント一覧**:
+
+| メソッド | パス | 認証 | 説明 |
+|---------|------|------|------|
+| `POST` | `/api/articles` | 必要 | 記事作成 |
+| `GET` | `/api/articles` | 不要 | 記事一覧（ページネーション、タグフィルター対応） |
+| `GET` | `/api/articles/{id}` | 不要 | 記事詳細 |
+| `PUT` | `/api/articles/{id}` | 必要 | 記事更新 |
+| `DELETE` | `/api/articles/{id}` | 必要 | 記事削除 |
+| `GET` | `/api/articles/my` | 必要 | 自分の記事一覧 |
+
+**実装のポイント**:
+- `Authentication authentication`から`authentication.getName()`でユーザー名取得
+- `@Valid`でリクエストボディをバリデーション
+- `@RequestParam`でクエリパラメータを受け取る（`page`, `size`, `tag`）
+- 記事一覧はタグパラメータがあればタグ検索、なければ全件取得
+- 作成時は`HttpStatus.CREATED`、削除時は`HttpStatus.NO_CONTENT`
+
+**クエリパラメータ**:
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `page` | 0 | ページ番号（0始まり） |
+| `size` | 10 | 1ページあたりの件数 |
+| `tag` | null | タグでフィルタリング |
+
+---
+
+#### 5.2 CommentController
+
+**ファイルパス**: `src/main/java/com/example/bloghub/controller/CommentController.java`
+
+**エンドポイント一覧**:
+
+| メソッド | パス | 認証 | 説明 |
+|---------|------|------|------|
+| `POST` | `/api/articles/{articleId}/comments` | 必要 | コメント作成 |
+| `GET` | `/api/articles/{articleId}/comments` | 不要 | コメント一覧 |
+| `DELETE` | `/api/comments/{id}` | 必要 | コメント削除 |
+
+**実装のポイント**:
+- ネストされたRESTfulルート: `/api/articles/{articleId}/comments`
+- コメント削除は単独リソースとして: `/api/comments/{id}`
+- `@PathVariable`で`articleId`を取得
+
+---
+
+#### 5.3 TagController
+
+**ファイルパス**: `src/main/java/com/example/bloghub/controller/TagController.java`
+
+**ベースパス**: `/api/tags`
+
+**エンドポイント一覧**:
+
+| メソッド | パス | 認証 | 説明 |
+|---------|------|------|------|
+| `GET` | `/api/tags` | 不要 | 全タグ一覧（名前のリスト） |
+
+**実装のポイント**:
+- タグエンティティを`List<String>`（タグ名のリスト）に変換して返す
+- `Tag::getName`でタグ名を抽出
 
 ---
 

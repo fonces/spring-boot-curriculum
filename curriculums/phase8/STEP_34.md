@@ -537,9 +537,13 @@ server:
 
 ---
 
-## 🚀 ステップ5: エンティティクラスの作成
+## 🚀 ステップ5: エンティティクラスの実装 【自分で実装】
 
-### 5-1. パッケージ構成
+ここからは、これまで学んだ知識を活かして**自分でエンティティクラスを実装**してください。
+
+### 📁 パッケージ構成
+
+以下のパッケージ構成でエンティティクラスを作成します：
 
 ```
 com.example.bloghub/
@@ -551,320 +555,195 @@ com.example.bloghub/
     └── Tag.java
 ```
 
-### 5-2. Userエンティティの作成
+---
+
+### 📋 実装要件
+
+### 5-1. Userエンティティ
 
 **ファイルパス**: `src/main/java/com/example/bloghub/entity/User.java`
 
-```java
-package com.example.bloghub.entity;
+**機能要件**:
+- テーブル名: `users`
+- ユーザーの基本情報（ID、ユーザー名、メール、パスワード、プロフィール画像）を管理
+- 作成日時・更新日時を自動設定
+- リレーション: 1対多でArticleとCommentを持つ
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+**カラム制約**:
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+| フィールド | 型 | 制約 |
+|-----------|-----|------|
+| id | Long | 主キー、自動採番 |
+| username | String | nullable=false, unique=true, length=50 |
+| email | String | nullable=false, unique=true, length=100 |
+| password | String | nullable=false |
+| profileImage | String | カラム名は`profile_image`（nullable） |
+| createdAt | LocalDateTime | 自動設定、更新不可 |
+| updatedAt | LocalDateTime | 自動更新 |
+| articles | List\<Article\> | 1対多（mappedBy="user"）、cascade=ALL, orphanRemoval=true |
+| comments | List\<Comment\> | 1対多（mappedBy="user"）、cascade=ALL, orphanRemoval=true |
 
-@Entity
-@Table(name = "users")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class User {
+**実装ヒント**:
+- `@Entity`, `@Table(name = "users")` を使用
+- `@Id`, `@GeneratedValue(strategy = GenerationType.IDENTITY)` でID自動生成
+- `@Column` で制約を設定
+- `@CreationTimestamp`, `@UpdateTimestamp` で日時を自動設定
+- `@OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)` でリレーション定義
+- Lombokの `@Data`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder` を使用
+- コレクションフィールドには `@Builder.Default` を付けて `new ArrayList<>()` で初期化
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+---
 
-    @Column(nullable = false, unique = true, length = 50)
-    private String username;
-
-    @Column(nullable = false, unique = true, length = 100)
-    private String email;
-
-    @Column(nullable = false)
-    private String password;
-
-    @Column(name = "profile_image")
-    private String profileImage;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    // 1対多のリレーション: ユーザーは複数の記事を持つ
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Article> articles = new ArrayList<>();
-
-    // 1対多のリレーション: ユーザーは複数のコメントを持つ
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Comment> comments = new ArrayList<>();
-}
-```
-
-### 5-3. Articleエンティティの作成
+### 5-2. Articleエンティティ
 
 **ファイルパス**: `src/main/java/com/example/bloghub/entity/Article.java`
 
+**機能要件**:
+- テーブル名: `articles`
+- 記事の情報（ID、タイトル、本文）を管理
+- 作成日時・更新日時を自動設定
+- リレーション:
+  - 多対1でUserに属する
+  - 1対多でCommentを持つ
+  - 多対多でTagを持つ（中間テーブル: `article_tags`）
+
+**カラム制約**:
+
+| フィールド | 型 | 制約 |
+|-----------|-----|------|
+| id | Long | 主キー、自動採番 |
+| title | String | nullable=false, length=200 |
+| content | String | nullable=false, columnDefinition="TEXT" |
+| user | User | 多対1、外部キー`user_id`、nullable=false、LAZY |
+| createdAt | LocalDateTime | 自動設定、更新不可 |
+| updatedAt | LocalDateTime | 自動更新 |
+| comments | List\<Comment\> | 1対多（mappedBy="article"）、cascade=ALL, orphanRemoval=true |
+| tags | Set\<Tag\> | 多対多、中間テーブル`article_tags`、LAZY |
+
+**実装ヒント**:
+- `@ManyToOne(fetch = FetchType.LAZY)` と `@JoinColumn(name = "user_id", nullable = false)` でUser関連
+- `@ManyToMany` と `@JoinTable` で多対多リレーション定義
+- タグのコレクションは `Set<Tag>` を使用（重複防止）
+
+**⚠️ 重要: Hibernateとの互換性**
+
+Articleエンティティでは、`@Data` の代わりに `@Getter` + `@Setter` を使用し、`tags`フィールドにはカスタムsetterを実装してください：
+
 ```java
-package com.example.bloghub.entity;
-
-import jakarta.persistence.*;
-import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
-@Entity
-@Table(name = "articles")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Article {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 200)
-    private String title;
-
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
-
-    // 多対1のリレーション: 記事は1人のユーザーに属する
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    // 1対多のリレーション: 記事は複数のコメントを持つ
-    @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Comment> comments = new ArrayList<>();
-
-    // 多対多のリレーション: 記事は複数のタグを持つ
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "article_tags",
-        joinColumns = @JoinColumn(name = "article_id"),
-        inverseJoinColumns = @JoinColumn(name = "tag_id")
-    )
-    @Builder.Default
-    private Set<Tag> tags = new HashSet<>();
-    
-    // カスタムsetterでHibernateのコレクション置換を防ぐ
-    public void setTags(Set<Tag> tags) {
-        if (this.tags == null) {
-            this.tags = new HashSet<>();
-        }
-        this.tags.clear();
-        if (tags != null) {
-            this.tags.addAll(tags);
-        }
+// カスタムsetterでHibernateのコレクション置換を防ぐ
+public void setTags(Set<Tag> tags) {
+    if (this.tags == null) {
+        this.tags = new HashSet<>();
+    }
+    this.tags.clear();
+    if (tags != null) {
+        this.tags.addAll(tags);
     }
 }
 ```
 
-#### Articleエンティティの解説
+**理由**: `@Data`が生成するsetterは単純な代入（`this.tags = tags`）を行うため、Hibernateの遅延ロード用コレクション（`PersistentSet`）が破壊され、`ConcurrentModificationException`が発生することがあります。
 
-##### `@Getter` と `@Setter` の使用理由
+---
 
-**なぜ `@Data` ではなく `@Getter` + `@Setter` + カスタムsetterを使うのか**:
-
-`@Data`は便利ですが、Hibernateの遅延ロード機能と競合することがあります。特に`@ManyToMany`や`@OneToMany`のコレクション操作で`ConcurrentModificationException`が発生します。
-
-**カスタムsetterの利点**:
-- Hibernateのコレクション実装（`PersistentSet`）を保持
-- コレクションの内容だけを更新（置換しない）
-- 遅延ロードとの互換性を維持
-
-##### `@Builder.Default` の重要性
-
-コレクションフィールドに`@Builder.Default`を付けることで、Builderパターン使用時にデフォルト値が設定されます:
-
-```java
-Article article = Article.builder()
-    .title("タイトル")
-    .user(user)
-    // tagsを明示的に設定しなくても空のSetが生成される
-    .build();
-```
-
-### 5-4. Commentエンティティの作成
+### 5-3. Commentエンティティ
 
 **ファイルパス**: `src/main/java/com/example/bloghub/entity/Comment.java`
 
-```java
-package com.example.bloghub.entity;
+**機能要件**:
+- テーブル名: `comments`
+- コメントの情報（ID、内容）を管理
+- 作成日時を自動設定（更新日時は不要）
+- リレーション:
+  - 多対1でArticleに属する
+  - 多対1でUserに属する
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
+**カラム制約**:
 
-import java.time.LocalDateTime;
+| フィールド | 型 | 制約 |
+|-----------|-----|------|
+| id | Long | 主キー、自動採番 |
+| content | String | nullable=false, columnDefinition="TEXT" |
+| article | Article | 多対1、外部キー`article_id`、nullable=false、LAZY |
+| user | User | 多対1、外部キー`user_id`、nullable=false、LAZY |
+| createdAt | LocalDateTime | 自動設定、更新不可 |
 
-@Entity
-@Table(name = "comments")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Comment {
+**実装ヒント**:
+- Userと同様に`@Data`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`を使用
+- `@ManyToOne(fetch = FetchType.LAZY)` で遅延ロード
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+---
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
-
-    // 多対1のリレーション: コメントは1つの記事に属する
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "article_id", nullable = false)
-    private Article article;
-
-    // 多対1のリレーション: コメントは1人のユーザーに属する
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-}
-```
-
-### 5-5. Tagエンティティの作成
+### 5-4. Tagエンティティ
 
 **ファイルパス**: `src/main/java/com/example/bloghub/entity/Tag.java`
 
-```java
-package com.example.bloghub.entity;
+**機能要件**:
+- テーブル名: `tags`
+- タグの情報（ID、名前）を管理
+- 作成日時を自動設定
+- リレーション: 多対多でArticleを持つ（逆側）
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
+**カラム制約**:
 
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+| フィールド | 型 | 制約 |
+|-----------|-----|------|
+| id | Long | 主キー、自動採番 |
+| name | String | nullable=false, unique=true, length=50 |
+| createdAt | LocalDateTime | 自動設定、更新不可 |
+| articles | Set\<Article\> | 多対多（mappedBy="tags"）|
 
-@Entity
-@Table(name = "tags")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Tag {
+**実装ヒント**:
+- `@ManyToMany(mappedBy = "tags")` でリレーションの逆側を定義
+- `Set<Article>`を使用
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+---
 
-    @Column(nullable = false, unique = true, length = 50)
-    private String name;
+### 📖 リファレンス: JPAアノテーション早見表
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+実装時に参考にしてください：
 
-    // 多対多のリレーション: タグは複数の記事を持つ
-    @ManyToMany(mappedBy = "tags")
-    @Builder.Default
-    private Set<Article> articles = new HashSet<>();
-}
-```
+| アノテーション | 用途 |
+|--------------|------|
+| `@Entity` | エンティティクラスとしてマーク |
+| `@Table(name = "xxx")` | マッピングするテーブル名を指定 |
+| `@Id` | 主キーフィールドとしてマーク |
+| `@GeneratedValue(strategy = GenerationType.IDENTITY)` | 自動採番 |
+| `@Column(nullable = false, unique = true, length = 50)` | カラム制約 |
+| `@Column(columnDefinition = "TEXT")` | TEXT型を指定 |
+| `@CreationTimestamp` | 作成日時を自動設定（Hibernate拡張） |
+| `@UpdateTimestamp` | 更新日時を自動設定（Hibernate拡張） |
+| `@ManyToOne(fetch = FetchType.LAZY)` | 多対1リレーション |
+| `@OneToMany(mappedBy = "xxx", cascade = CascadeType.ALL, orphanRemoval = true)` | 1対多リレーション |
+| `@ManyToMany` | 多対多リレーション |
+| `@JoinColumn(name = "xxx_id")` | 外部キーカラム名を指定 |
+| `@JoinTable(name = "xxx", joinColumns = ..., inverseJoinColumns = ...)` | 中間テーブルを指定 |
 
-### 5-6. エンティティの解説
+### 📖 リファレンス: Lombokアノテーション早見表
 
-#### `@ManyToOne` vs `@OneToMany`
+| アノテーション | 用途 |
+|--------------|------|
+| `@Data` | getter, setter, toString, equals, hashCode を自動生成 |
+| `@Getter` | getterのみ自動生成 |
+| `@Setter` | setterのみ自動生成 |
+| `@NoArgsConstructor` | 引数なしコンストラクタを生成 |
+| `@AllArgsConstructor` | 全フィールドのコンストラクタを生成 |
+| `@Builder` | Builderパターンを生成 |
+| `@Builder.Default` | Builderパターン使用時のデフォルト値を指定 |
 
-```java
-// Article側（多側）
-@ManyToOne(fetch = FetchType.LAZY)
-@JoinColumn(name = "user_id")
-private User user;
+---
 
-// User側（1側）
-@OneToMany(mappedBy = "user")
-private List<Article> articles;
-```
+### ✅ 実装チェックリスト
 
-- **`mappedBy`**: リレーションの所有者を示す（外部キーを持つのはArticle側）
-- **`FetchType.LAZY`**: 必要になるまでデータを取得しない（N+1問題を防ぐ）
+すべてのエンティティを実装したら、以下をチェックしてください：
 
-#### `@ManyToMany`
-
-```java
-@ManyToMany
-@JoinTable(
-    name = "article_tags",
-    joinColumns = @JoinColumn(name = "article_id"),
-    inverseJoinColumns = @JoinColumn(name = "tag_id")
-)
-private Set<Tag> tags;
-```
-
-- 中間テーブル`article_tags`を自動生成（今回はinit.sqlで手動作成）
-- `Set`を使うことで重複を防ぐ
-
-#### `cascade` と `orphanRemoval`
-
-```java
-@OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
-private List<Comment> comments;
-```
-
-- **`cascade = CascadeType.ALL`**: 親エンティティの操作（保存、削除）を子にも適用
-- **`orphanRemoval = true`**: 親から切り離された子エンティティを自動削除
-
-#### `@CreationTimestamp` と `@UpdateTimestamp`
-
-```java
-@CreationTimestamp
-@Column(name = "created_at", updatable = false)
-private LocalDateTime createdAt;
-
-@UpdateTimestamp
-@Column(name = "updated_at")
-private LocalDateTime updatedAt;
-```
-
-- Hibernateが自動的にタイムスタンプを設定
-- `updatable = false`で作成日時の上書きを防ぐ
+- [ ] **User.java**: 全フィールド、リレーション（articles, comments）を定義
+- [ ] **Article.java**: 全フィールド、3つのリレーション（user, comments, tags）を定義
+- [ ] **Article.java**: `@Getter`+`@Setter`を使用し、`setTags`カスタムsetterを実装
+- [ ] **Comment.java**: 全フィールド、2つのリレーション（article, user）を定義
+- [ ] **Tag.java**: 全フィールド、リレーション（articles）を定義
+- [ ] すべてのエンティティにLombokアノテーション（`@Data`または`@Getter/@Setter`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`）を付与
+- [ ] コレクションフィールドに`@Builder.Default`を付与し、初期化
 
 ---
 
