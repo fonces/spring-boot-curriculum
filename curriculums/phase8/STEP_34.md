@@ -82,7 +82,7 @@ java -version
 
 ### ER図
 
-```
+```sh
 ┌─────────────────┐
 │      User       │
 ├─────────────────┤
@@ -222,7 +222,7 @@ cd bloghub
 
 ### 1-3. プロジェクト構造の確認
 
-```
+```sh
 bloghub/
 ├── src/
 │   ├── main/
@@ -545,7 +545,7 @@ server:
 
 以下のパッケージ構成でエンティティクラスを作成します：
 
-```
+```sh
 com.example.bloghub/
 ├── BloghubApplication.java
 └── entity/
@@ -757,7 +757,7 @@ docker-compose up -d
 ```
 
 **期待される結果**:
-```
+```sh
 [+] Running 2/2
  ✔ Network bloghub_default      Created
  ✔ Container bloghub-mysql      Started
@@ -776,7 +776,7 @@ SHOW TABLES;
 ```
 
 **期待される結果**:
-```
+```sh
 +-------------------+
 | Tables_in_bloghub |
 +-------------------+
@@ -796,7 +796,7 @@ SELECT username, email FROM users;
 ```
 
 **期待される結果**:
-```
+```sh
 +----------+-------------------+
 | username | email             |
 +----------+-------------------+
@@ -820,7 +820,7 @@ EXIT;
 ```
 
 **期待される結果**:
-```
+```sh
   .   ____          _            __ _ _
  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
 ( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
@@ -839,7 +839,7 @@ Started BloghubApplication in 3.456 seconds
 
 起動ログに以下のようなメッセージが表示されれば、エンティティとテーブルの定義が一致しています：
 
-```
+```sh
 Hibernate: validate the schema against the database
 ```
 

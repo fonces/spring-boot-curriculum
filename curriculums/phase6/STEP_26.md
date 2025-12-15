@@ -62,7 +62,7 @@ curl -H "Authorization: Bearer eyJhbGci..." http://localhost:8080/api/users
 
 ### JWTの構造
 
-```
+```sh
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGVzIjpbIlJPTEVfQURNSU4iXX0.signature
 │        Header (Base64)        │       Payload (Base64)        │ Signature │
 ```
@@ -85,7 +85,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGVzIjpbIlJPTEVfQUR
 ```
 
 **Signature**: 改ざん防止
-```
+```sh
 HMACSHA256(
   base64UrlEncode(header) + "." + base64UrlEncode(payload),
   secret

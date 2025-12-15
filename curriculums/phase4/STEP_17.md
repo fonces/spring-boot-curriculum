@@ -868,7 +868,7 @@ curl -i http://localhost:8080/api/users/999
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 404 
 Content-Type: application/json
 
@@ -896,7 +896,7 @@ curl -i -X POST http://localhost:8080/api/users \
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 400 
 Content-Type: application/json
 
@@ -934,7 +934,7 @@ curl -i -X POST http://localhost:8080/api/users \
 ```
 
 **期待される結果（2回目）**:
-```
+```sh
 HTTP/1.1 409 
 Content-Type: application/json
 
@@ -956,7 +956,7 @@ curl -i -X DELETE http://localhost:8080/api/users/999
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 404 
 Content-Type: application/json
 
@@ -1110,7 +1110,7 @@ public ResponseEntity<ErrorResponse> handleUnauthorizedException(
 ### エラー 1: "No qualifying bean of type 'ErrorResponse'"
 
 **エラーメッセージ**:
-```
+```sh
 No qualifying bean of type 'com.example.hellospringboot.dto.ErrorResponse' available
 ```
 
@@ -1353,7 +1353,7 @@ throw new InvalidRequestException("Age must be positive. Provided: " + user.getA
 
 Spring Bootは以下の順序で例外ハンドラーを探します：
 
-```
+```sh
 1. Controller内の@ExceptionHandler
    ↓（見つからなければ）
 2. @ControllerAdvice内の@ExceptionHandler

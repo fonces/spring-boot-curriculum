@@ -26,7 +26,7 @@
 
 **MyBatis** は、SQLを直接記述できるJavaの永続化フレームワークです。
 
-```
+```sh
 ┌─────────────────────────────────────────┐
 │  Spring Data JPA (Hibernate)            │
 │  ・メソッド名でクエリ自動生成             │
@@ -316,7 +316,7 @@ INSERT時に自動生成されたIDを取得します。
 
 ### 5-1. ディレクトリ構成
 
-```
+```sh
 src/main/resources/
 └── mapper/
     └── UserMapper.xml

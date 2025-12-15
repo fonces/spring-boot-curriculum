@@ -162,7 +162,7 @@ explorer.exe target/site/jacoco/index.html
 
 #### 全体サマリー
 
-```
+```sh
 Element         Missed Instructions    Cov.    Missed Branches    Cov.    Missed    Cxty    Missed    Lines    Missed    Methods    Missed    Classes
 com.example     120 of 600             80%     10 of 50           80%     5         25      60        300      3         15         1         10
 ```
@@ -187,7 +187,7 @@ com.example     120 of 600             80%     10 of 50           80%     5     
 
 レポートで`UserService`のカバレッジを確認：
 
-```
+```sh
 UserService
 Lines: 15/20 (75%)
 Branches: 6/10 (60%)
@@ -248,7 +248,7 @@ open target/site/jacoco/index.html
 ```
 
 **結果**:
-```
+```sh
 UserService
 Lines: 20/20 (100%) ✅
 Branches: 10/10 (100%) ✅
@@ -333,7 +333,7 @@ Branches: 10/10 (100%) ✅
 ```
 
 **カバレッジ不足の場合**:
-```
+```sh
 [ERROR] Rule violated for package com.example.hellospringboot.services:
 lines covered ratio is 0.65, but expected minimum is 0.80
 ```
@@ -349,7 +349,7 @@ lines covered ratio is 0.65, but expected minimum is 0.80
 ```
 
 **期待される結果**:
-```
+```sh
 [INFO] --- jacoco-maven-plugin:0.8.11:report (report) @ hello-spring-boot ---
 [INFO] Loading execution data file target/jacoco.exec
 [INFO] Analyzed bundle 'hello-spring-boot' with 15 classes
@@ -368,7 +368,7 @@ open target/site/jacoco/index.html
 ```
 
 **成功時**:
-```
+```sh
 [INFO] All coverage checks have been met.
 [INFO] BUILD SUCCESS
 ```

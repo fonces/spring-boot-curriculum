@@ -72,7 +72,7 @@ mkdir -p src/main/resources/static/{css,js,images}
 
 ### 1-2. ディレクトリ構成
 
-```
+```sh
 src/main/resources/
 ├── templates/
 │   ├── layouts/

@@ -672,7 +672,7 @@ real    0m0.050s  ← すぐ返る
 ```
 
 **ログ出力**:
-```
+```sh
 Async email request received for: test@example.com
 Async email request completed in 5 ms
 Sending email to test@example.com asynchronously on thread: async-1
@@ -736,7 +736,7 @@ real    0m2.100s
 
 ログを見ると、非同期処理が異なるスレッドで実行されていることがわかります：
 
-```
+```sh
 Sending email to user1@example.com on thread: async-1
 Sending email to user2@example.com on thread: async-2
 Sending email to user3@example.com on thread: async-3
@@ -849,7 +849,7 @@ public class UserService {
 
 **原因**: スレッドプールの容量を超えた
 
-```
+```sh
 org.springframework.core.task.TaskRejectedException: Executor [taskExecutor] did not accept task
 ```
 

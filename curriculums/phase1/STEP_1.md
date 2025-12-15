@@ -32,7 +32,7 @@ java -version
 ```
 
 **期待される結果**:
-```
+```sh
 openjdk version "21.0.x" 2024-xx-xx
 OpenJDK Runtime Environment (build 21.0.x+xx)
 OpenJDK 64-Bit Server VM (build 21.0.x+xx, mixed mode, sharing)
@@ -111,7 +111,7 @@ tree -L 3 -I 'target'
 ```
 
 **期待される結果**:
-```
+```sh
 .
 ├── HELP.md
 ├── mvnw
@@ -404,7 +404,7 @@ public String hello() {
 
 以下のようなログが表示されれば成功です：
 
-```
+```sh
   .   ____          _            __ _ _
  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
 ( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
@@ -444,7 +444,7 @@ curl http://localhost:8080/hello
 ```
 
 **期待される結果**:
-```
+```sh
 Hello, Spring Boot!
 ```
 
@@ -465,7 +465,7 @@ curl -v http://localhost:8080/hello
 ```
 
 **期待される結果**:
-```
+```sh
 *   Trying 127.0.0.1:8080...
 * Connected to localhost (127.0.0.1) port 8080 (#0)
 > GET /hello HTTP/1.1
@@ -519,7 +519,7 @@ Hello, Spring Boot!
 
 `@SpringBootApplication`に含まれる`@EnableAutoConfiguration`が、クラスパス上の依存関係を検出し、適切な設定を自動的に適用します：
 
-```
+```sh
 spring-boot-starter-webがある
   ↓
 Spring MVCを有効化
@@ -533,7 +533,7 @@ Spring MVCを有効化
 
 `@SpringBootApplication`のあるパッケージ配下を自動スキャンし、`@RestController`などのアノテーションを見つけると、自動的にSpringコンテナに登録します：
 
-```
+```sh
 HelloSpringBootApplication.java（エントリーポイント）
   ↓
 com.example.hellospringbootパッケージをスキャン
@@ -579,7 +579,7 @@ curl http://localhost:8080/goodbye
 ```
 
 **期待される結果**:
-```
+```sh
 Goodbye, Spring Boot!
 ```
 
@@ -604,7 +604,7 @@ curl http://localhost:8080/time
 ```
 
 **期待される結果（例）**:
-```
+```sh
 2024-12-13T10:30:45.123456
 ```
 
@@ -634,7 +634,7 @@ curl http://localhost:8080/
 ### エラー: "Port 8080 was already in use"
 
 **エラーメッセージ**:
-```
+```sh
 ***************************
 APPLICATION FAILED TO START
 ***************************
@@ -676,7 +676,7 @@ server.port=8081
 ### エラー: "Could not find or load main class"
 
 **エラーメッセージ**:
-```
+```sh
 Error: Could not find or load main class com.example.hellospringboot.HelloSpringBootApplication
 ```
 
@@ -695,7 +695,7 @@ Error: Could not find or load main class com.example.hellospringboot.HelloSpring
 ### エラー: "/hello にアクセスしても404 Not Found"
 
 **エラーメッセージ（curlの場合）**:
-```
+```sh
 {"timestamp":"2024-12-13T01:00:00.000+00:00","status":404,"error":"Not Found","path":"/hello"}
 ```
 
@@ -714,7 +714,7 @@ Error: Could not find or load main class com.example.hellospringboot.HelloSpring
 ### エラー: "java: invalid source release: 21"
 
 **エラーメッセージ**:
-```
+```sh
 [ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.0:compile (default-compile) on project hello-spring-boot: Fatal error compiling: error: invalid source release: 21
 ```
 

@@ -25,7 +25,7 @@
 
 **Repository（リポジトリ）**は、データアクセスロジックをカプセル化するデザインパターンです。
 
-```
+```sh
 ┌──────────────────────────────────────┐
 │         Controller                   │
 │  (HTTPリクエストを受け取る)            │
@@ -233,7 +233,7 @@ ResponseEntity.status(HttpStatus.CREATED).body(saved)  // 201 Created
 
 コンソールに以下のようなログが出力されればOKです：
 
-```
+```sh
 Started HelloSpringBootApplication in 2.345 seconds
 ```
 
@@ -354,7 +354,7 @@ curl -i http://localhost:8080/api/products/999
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 404 
 Content-Length: 0
 ```
@@ -371,7 +371,7 @@ docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e 
 
 **期待される結果**:
 
-```
+```sh
 +----+------------+---------------------------+--------+----------------------------+----------------------------+
 | id | name       | description               | price  | created_at                 | updated_at                 |
 +----+------------+---------------------------+--------+----------------------------+----------------------------+
@@ -655,7 +655,7 @@ DESC users;
 
 **期待される結果**:
 
-```
+```sh
 +------------+--------------+------+-----+---------+----------------+
 | Field      | Type         | Null | Key | Default | Extra          |
 +------------+--------------+------+-----+---------+----------------+

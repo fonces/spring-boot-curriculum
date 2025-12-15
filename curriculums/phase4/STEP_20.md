@@ -72,7 +72,7 @@ public class UserService {
 ```
 
 **出力例**:
-```
+```sh
 2025-01-15 15:00:00.123 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService : Creating user with email: alice@example.com
 2025-01-15 15:00:00.456 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService : User created successfully. ID: 1, Name: Alice
 ```
@@ -525,7 +525,7 @@ curl -X POST http://localhost:8080/api/users \
 
 **期待されるログ出力**:
 
-```
+```sh
 2025-01-15 15:30:00.123 INFO  [http-nio-8080-exec-1] c.e.h.config.LoggingInterceptor         : Request Start: POST /api/users
 2025-01-15 15:30:00.125 INFO  [http-nio-8080-exec-1] c.e.h.services.UserService              : Creating new user with email: alice@example.com
 2025-01-15 15:30:00.250 DEBUG [http-nio-8080-exec-1] org.hibernate.SQL                       : insert into users (name, email, age) values (?, ?, ?)
@@ -545,7 +545,7 @@ curl http://localhost:8080/api/users/999
 
 **期待されるログ出力**:
 
-```
+```sh
 2025-01-15 15:32:00.100 INFO  [http-nio-8080-exec-2] c.e.h.config.LoggingInterceptor         : Request Start: GET /api/users/999
 2025-01-15 15:32:00.102 DEBUG [http-nio-8080-exec-2] c.e.h.services.UserService              : Fetching user with ID: 999
 2025-01-15 15:32:00.120 WARN  [http-nio-8080-exec-2] c.e.h.services.UserService              : User not found with ID: 999

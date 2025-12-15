@@ -516,7 +516,7 @@ curl http://localhost:8080/api/users/1
 ```
 
 **ログ出力**:
-```
+```sh
 Fetching user by id: 1 from database (not cached)
 Hibernate: select ... from users where id=?
 ```
@@ -529,7 +529,7 @@ curl http://localhost:8080/api/users/1
 ```
 
 **ログ出力**:
-```
+```sh
 （ログなし = キャッシュから返している）
 ```
 

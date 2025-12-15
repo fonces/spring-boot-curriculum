@@ -150,7 +150,7 @@ public class User {
 
 Lombokは**アノテーションプロセッサ（Annotation Processor）**として動作します。
 
-```
+```sh
 [ソースコード]
    ↓
 [Lombokがアノテーションを検出]
@@ -307,7 +307,7 @@ Spring BootのJARファイルを作成する際に、Lombokを含めないよう
 ```
 
 **期待される出力**:
-```
+```sh
 [INFO] BUILD SUCCESS
 ```
 
@@ -452,7 +452,7 @@ public User(Long id, String name, String email, Integer age) {
 ```
 
 **期待される出力**:
-```
+```sh
 [INFO] BUILD SUCCESS
 ```
 
@@ -749,7 +749,7 @@ public class User {
 
 デフォルトでは、すべてのフィールドが含まれます：
 
-```
+```sh
 User(id=1, name=山田太郎, password=secret123)
 ```
 
@@ -765,7 +765,7 @@ public class User {
 ```
 
 結果：
-```
+```sh
 User(id=1, name=山田太郎)
 ```
 
@@ -944,7 +944,7 @@ public class UserController {
 ```
 
 **期待されるログ出力**:
-```
+```sh
 INFO  c.e.h.UserController - GET /api/users - すべてのユーザーを取得
 INFO  c.e.h.UserController - POST /api/users - ユーザーを作成: 山田太郎
 ```

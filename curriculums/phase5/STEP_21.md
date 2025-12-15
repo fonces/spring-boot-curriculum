@@ -492,7 +492,7 @@ public String userDetail(@PathVariable Long id, Model model) {
 ### 2. Hello画面の確認
 
 ブラウザで以下にアクセス:
-```
+```sh
 http://localhost:8080/views/hello
 http://localhost:8080/views/hello?name=Taro
 ```
@@ -504,7 +504,7 @@ http://localhost:8080/views/hello?name=Taro
 
 ### 3. ユーザー一覧画面の確認
 
-```
+```sh
 http://localhost:8080/views/users
 ```
 
@@ -515,7 +515,7 @@ http://localhost:8080/views/users
 ### 4. ユーザー詳細画面の確認
 
 一覧画面から任意のユーザー名をクリック:
-```
+```sh
 http://localhost:8080/views/users/1
 ```
 

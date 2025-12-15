@@ -103,7 +103,7 @@ public class ProductController {
 
 `save()`メソッドは以下のロジックで動作します：
 
-```
+```sh
 IDが設定されていない → INSERT
 IDが設定されている → UPDATE（既存レコードを更新）
 ```
@@ -247,7 +247,7 @@ curl -i -X DELETE http://localhost:8080/api/products/1
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 204 
 Date: Fri, 13 Dec 2025 11:10:00 GMT
 ```
@@ -262,7 +262,7 @@ curl -i http://localhost:8080/api/products/1
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 404 
 Content-Length: 0
 ```
@@ -283,7 +283,7 @@ curl -i -X PUT http://localhost:8080/api/products/999 \
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 404 
 Content-Length: 0
 ```
@@ -296,7 +296,7 @@ curl -i -X DELETE http://localhost:8080/api/products/999
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 404 
 Content-Length: 0
 ```

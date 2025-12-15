@@ -142,7 +142,7 @@ cd workspace/hello-spring-boot
 ```
 
 **期待される出力**:
-```
+```sh
 [INFO] |  +- org.hibernate.validator:hibernate-validator:jar:8.0.1.Final:compile
 [INFO] |  |  +- jakarta.validation:jakarta.validation-api:jar:3.0.2:compile
 ```
@@ -758,7 +758,7 @@ curl -i -X POST http://localhost:8080/api/users \
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 201 
 Content-Type: application/json
 
@@ -787,7 +787,7 @@ curl -i -X POST http://localhost:8080/api/users \
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 400 
 Content-Type: application/json
 
@@ -1195,7 +1195,7 @@ public class ConditionalValidator implements ConstraintValidator<ConditionalVali
 ### エラー 1: "jakarta.validation.ValidationException: HV000030: No validator could be found"
 
 **エラーメッセージ**:
-```
+```sh
 jakarta.validation.ValidationException: HV000030: No validator could be found for constraint 'jakarta.validation.constraints.Email'
 ```
 

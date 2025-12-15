@@ -120,7 +120,7 @@ curl http://localhost:8080/api/users
 Spring Securityは起動時にランダムなパスワードを生成します。
 
 **ログから確認**:
-```
+```sh
 Using generated security password: 8e557245-73e2-4286-969a-ff57fe326d53
 ```
 

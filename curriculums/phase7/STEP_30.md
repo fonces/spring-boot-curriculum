@@ -641,7 +641,7 @@ cat a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt
 ```
 
 **期待される結果**:
-```
+```sh
 test file content
 ```
 

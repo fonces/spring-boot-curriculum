@@ -42,7 +42,7 @@ brew --version
 ```
 
 **期待される結果**:
-```
+```sh
 Homebrew 4.x.x
 ```
 
@@ -156,7 +156,7 @@ java -version
 ```
 
 **期待される結果**:
-```
+```sh
 openjdk version "21.0.x" 2024-xx-xx
 OpenJDK Runtime Environment (build 21.0.x+xx)
 OpenJDK 64-Bit Server VM (build 21.0.x+xx, mixed mode, sharing)
@@ -171,7 +171,7 @@ javac -version
 ```
 
 **期待される結果**:
-```
+```sh
 javac 21.0.x
 ```
 
@@ -182,12 +182,12 @@ echo $JAVA_HOME
 ```
 
 **期待される結果（macOSの例）**:
-```
+```sh
 /Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home
 ```
 
 **期待される結果（WSL2の例）**:
-```
+```sh
 /usr/lib/jvm/java-21-openjdk-amd64
 ```
 
@@ -207,7 +207,7 @@ echo $JAVA_HOME
 
 このカリキュラムでは、**Maven Wrapper**（`mvnw`）を使用します。
 
-```
+```sh
 📁 プロジェクトのルートディレクトリ
 ├── mvnw          # Unix/Linux/macOS用の実行スクリプト
 ├── mvnw.cmd      # Windows用（WSL2では使用しません）
@@ -254,7 +254,7 @@ mvn -version
 ```
 
 **期待される結果**:
-```
+```sh
 Apache Maven 3.9.x (xxxxx)
 Maven home: /usr/share/maven
 Java version: 21.0.x, vendor: Oracle Corporation
@@ -454,7 +454,7 @@ cd /path/to/demo
 ```
 
 **期待される結果**:
-```
+```sh
 [INFO] BUILD SUCCESS
 ```
 
@@ -467,7 +467,7 @@ cd /path/to/demo
 ```
 
 **期待される結果**:
-```
+```sh
 ...
 2025-12-13T10:00:00.000+09:00  INFO 12345 --- [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
 2025-12-13T10:00:00.000+09:00  INFO 12345 --- [  restartedMain] com.example.demo.DemoApplication         : Started DemoApplication in 2.5 seconds

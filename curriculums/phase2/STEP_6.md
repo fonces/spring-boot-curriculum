@@ -25,7 +25,7 @@
 
 **JPA（Java Persistence API）** は、Javaオブジェクトとデータベースのテーブルを対応付ける仕組みです。
 
-```
+```sh
 ┌─────────────────────────────────┐
 │      Javaアプリケーション         │
 │                                 │
@@ -354,7 +354,7 @@ docker compose ps
 
 **期待される結果**:
 
-```
+```sh
 NAME                 IMAGE       STATUS         PORTS
 spring-boot-mysql    mysql:8.0   Up 10 minutes  0.0.0.0:3306->3306/tcp
 ```
@@ -384,7 +384,7 @@ cd /path/to/hello-spring-boot
 
 **コンソール出力を確認**:
 
-```
+```sh
 Hibernate: create table products (
     id bigint not null auto_increment,
     created_at datetime(6) not null,
@@ -418,7 +418,7 @@ SHOW TABLES;
 
 **期待される結果**:
 
-```
+```sh
 +---------------------------+
 | Tables_in_hello_spring_boot  |
 +---------------------------+
@@ -434,7 +434,7 @@ DESCRIBE products;
 
 **期待される結果**:
 
-```
+```sh
 +-------------+--------------+------+-----+---------+----------------+
 | Field       | Type         | Null | Key | Default | Extra          |
 +-------------+--------------+------+-----+---------+----------------+
@@ -488,7 +488,7 @@ SELECT * FROM products;
 
 **期待される結果**:
 
-```
+```sh
 +----+------------+---------------------------+--------+----------------------------+----------------------------+
 | id | name       | description               | price  | created_at                 | updated_at                 |
 +----+------------+---------------------------+--------+----------------------------+----------------------------+
@@ -629,7 +629,7 @@ private ProductStatus status = ProductStatus.AVAILABLE;
 
 **エラーメッセージ**:
 
-```
+```sh
 Caused by: com.mysql.cj.exceptions.UnableToConnectException: Public Key Retrieval is not allowed
 ```
 
@@ -653,7 +653,7 @@ spring:
 
 **エラーメッセージ**:
 
-```
+```sh
 com.mysql.cj.jdbc.exceptions.CommunicationsException: Communications link failure
 ```
 
@@ -749,7 +749,7 @@ CREATE DATABASE hello_spring_boot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_
 
 **エラーメッセージ**:
 
-```
+```sh
 Access denied for user 'springuser'@'%' to database 'hello_spring_boot'
 ```
 
@@ -779,7 +779,7 @@ SHOW GRANTS FOR 'springuser'@'%';
 
 **期待される結果**:
 
-```
+```sh
 GRANT USAGE ON *.* TO `springuser`@`%`
 GRANT ALL PRIVILEGES ON `hello_spring_boot`.* TO `springuser`@`%`
 ```

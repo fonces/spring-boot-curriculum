@@ -46,7 +46,7 @@
 
 ### 解決策: フラグメントとレイアウト
 
-```
+```sh
 layouts/
 ├── base.html          # 基本レイアウト
 └── fragments/
@@ -612,7 +612,7 @@ CSS追加:
 ### 1. レイアウトの適用確認
 
 ブラウザで以下にアクセス:
-```
+```sh
 http://localhost:8080/views/users
 ```
 
@@ -625,7 +625,7 @@ http://localhost:8080/views/users
 ### 2. フラグメントの再利用確認
 
 複数のページ（一覧、詳細、フォーム）にアクセス:
-```
+```sh
 http://localhost:8080/views/users
 http://localhost:8080/views/users/1
 http://localhost:8080/views/users/new
@@ -755,7 +755,7 @@ th:fragment="layout-with-sidebar(title, main, sidebar)"
 
 ### ディレクトリ構成
 
-```
+```sh
 templates/
 ├── layouts/
 │   ├── base.html              # 基本レイアウト

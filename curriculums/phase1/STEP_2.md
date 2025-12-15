@@ -37,7 +37,7 @@ curl http://localhost:8080/hello
 ```
 
 **期待される結果**:
-```
+```sh
 Hello, Spring Boot!
 ```
 
@@ -486,7 +486,7 @@ curl http://localhost:8080/users/123
 ```
 
 **期待される結果**:
-```
+```sh
 User ID: 123
 ```
 
@@ -496,7 +496,7 @@ curl http://localhost:8080/users/1/posts/456
 ```
 
 **期待される結果**:
-```
+```sh
 User ID: 1, Post ID: 456
 ```
 
@@ -508,7 +508,7 @@ curl http://localhost:8080/search?keyword=spring
 ```
 
 **期待される結果**:
-```
+```sh
 Search keyword: spring
 ```
 
@@ -518,7 +518,7 @@ curl http://localhost:8080/greet?name=Taro
 ```
 
 **期待される結果**:
-```
+```sh
 Hello, Taro!
 ```
 
@@ -528,7 +528,7 @@ curl http://localhost:8080/greet
 ```
 
 **期待される結果**:
-```
+```sh
 Hello, Guest!
 ```
 
@@ -540,7 +540,7 @@ curl http://localhost:8080/page
 ```
 
 **期待される結果**:
-```
+```sh
 Page: 1, Size: 10
 ```
 
@@ -550,7 +550,7 @@ curl "http://localhost:8080/page?page=3&size=20"
 ```
 
 **期待される結果**:
-```
+```sh
 Page: 3, Size: 20
 ```
 
@@ -564,7 +564,7 @@ curl http://localhost:8080/users/5/posts
 ```
 
 **期待される結果**:
-```
+```sh
 User ID: 5, Page: 1, Size: 10
 ```
 
@@ -574,7 +574,7 @@ curl "http://localhost:8080/users/5/posts?page=2&size=25"
 ```
 
 **期待される結果**:
-```
+```sh
 User ID: 5, Page: 2, Size: 25
 ```
 
@@ -586,7 +586,7 @@ curl "http://localhost:8080/products/search?keyword=laptop&category=electronics&
 ```
 
 **期待される結果**:
-```
+```sh
 Search - Keyword: laptop, Category: electronics, Limit: 5
 ```
 
@@ -596,7 +596,7 @@ curl "http://localhost:8080/products/search?keyword=laptop&limit=20"
 ```
 
 **期待される結果**:
-```
+```sh
 Search - Keyword: laptop, Limit: 20
 ```
 
@@ -606,7 +606,7 @@ curl "http://localhost:8080/products/search?keyword=laptop"
 ```
 
 **期待される結果**:
-```
+```sh
 Search - Keyword: laptop, Limit: 10
 ```
 

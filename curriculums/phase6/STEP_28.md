@@ -709,7 +709,7 @@ class UserControllerTest {
 
 ### テストピラミッド
 
-```
+```sh
        /\
       /E2E\       少ない（UIテスト）
      /------\

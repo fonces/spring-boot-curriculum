@@ -24,7 +24,7 @@
 ### サーバーサイドレンダリング（SSR）の限界
 
 **従来のThymeleafのみの実装**:
-```
+```sh
 ユーザー操作 → フォーム送信 → サーバー処理 → ページ全体リロード
 ```
 
@@ -46,7 +46,7 @@
 - リッチなUI
 
 **組み合わせ**:
-```
+```sh
 初期表示: Thymeleafで高速レンダリング
 動的操作: JavaScriptでREST API呼び出し
 ```
@@ -326,7 +326,7 @@ Thymeleaf 3.xでは、セキュリティ上の理由から`th:onclick`内で変�
 ```
 
 **エラーメッセージ**:
-```
+```sh
 TemplateProcessingException: Only variable expressions returning numbers or booleans 
 are allowed in this context
 ```

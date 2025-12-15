@@ -37,7 +37,7 @@ curl http://localhost:8080/hello
 ```
 
 **期待される結果**:
-```
+```sh
 Hello, Spring Boot!
 ```
 
@@ -461,7 +461,7 @@ logging:
 
 ### 4-3. 設定ファイルの命名規則
 
-```
+```sh
 application.yml               # ベース設定（すべての環境で有効）
 application-{profile}.yml    # プロファイル別設定
 ```
@@ -565,7 +565,7 @@ curl http://localhost:8080/app-info
 ```
 
 **期待される結果**:
-```
+```sh
 Application: Hello Spring Boot Application (Version: 1.0.0)
 Environment: unknown
 Message: ${app.welcome-message}
@@ -589,7 +589,7 @@ curl http://localhost:8080/app-info
 ```
 
 **期待される結果**:
-```
+```sh
 Application: Hello Spring Boot Application (Version: 1.0.0)
 Environment: development
 Message: [DEV] Welcome to Development Environment!
@@ -635,7 +635,7 @@ curl http://localhost:8081/app-info
 ```
 
 **期待される結果**:
-```
+```sh
 Application: Hello Spring Boot Application (Version: 1.0.0)
 Environment: production
 Message: [PROD] Welcome to Production Environment!
@@ -652,7 +652,7 @@ Description: This is a production environment. Please use carefully.
 
 起動ログに以下のような詳細なDEBUGメッセージが表示されます：
 
-```
+```sh
 2024-12-13 12:00:00.123  INFO 12345 --- [           main] c.e.h.HelloSpringBootApplication         : Starting HelloSpringBootApplication
 2024-12-13 12:00:00.456 DEBUG 12345 --- [           main] c.e.h.HelloController                    : HelloController initialized
 ...
@@ -709,7 +709,7 @@ private String dbHost;
 新しいエンドポイント`/admin-info`を作成し、管理者情報を返してください。
 
 **期待される結果**:
-```
+```sh
 Admin: admin (admin@example.com)
 Database: localhost:3306/mydb
 ```
@@ -841,7 +841,7 @@ public void setAllowedOrigins(List<String> allowedOrigins) {
 ```
 
 **期待される結果**:
-```
+```sh
 Allowed Origins: [http://localhost:3000, http://localhost:4200, https://example.com]
 ```
 
@@ -888,7 +888,7 @@ spring:
 1. コマンドを確認: `-Dspring-boot.run.profiles=dev`
 2. ファイル名を確認: `application-dev.yml`（ハイフンが必要）
 3. 起動ログで以下のメッセージを確認:
-   ```
+```sh
    The following profiles are active: dev
    ```
 
@@ -941,7 +941,7 @@ Spring Bootは、以下の順序で設定ファイルを読み込みます（下
 この仕組みにより、本番環境では**jarファイルの外部に設定ファイルを配置**して、コードを変更せずに設定を上書きできます。
 
 **本番環境での配置例**:
-```
+```sh
 /opt/myapp/
   ├── myapp.jar
   └── config/

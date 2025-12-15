@@ -29,7 +29,7 @@
 - **カテゴリ**は複数の**商品**を持つ
 - **商品**は1つの**カテゴリ**に属する
 
-```
+```sh
 ┌──────────────────┐         ┌──────────────────┐
 │   Category       │         │    Product       │
 │  （カテゴリ）     │    1    │   （商品）        │
@@ -453,7 +453,7 @@ private Category category;
 
 `@JsonManagedReference`とペアで使い、JSON変換時の循環参照を防ぎます。
 
-```
+```sh
 Category → products → category → products → ... (無限ループ)
 ```
 
@@ -1060,7 +1060,7 @@ docker compose exec mysql mysql -u springuser -pspringpass hello_spring_boot -e 
 
 **期待される結果**（posts）:
 
-```
+```sh
 +----+-------------------------+----------------------------------------------+---------+----------------------------+----------------------------+
 | id | title                   | content                                      | user_id | created_at                 | updated_at                 |
 +----+-------------------------+----------------------------------------------+---------+----------------------------+----------------------------+
@@ -1310,7 +1310,7 @@ Category findByIdWithProducts(@Param("id") Long id);
 
 **エラーメッセージ**:
 
-```
+```sh
 com.fasterxml.jackson.databind.exc.InvalidDefinitionException: 
 No serializer found for class org.hibernate.proxy.pojo.bytebuddy.ByteBuddyInterceptor
 ```

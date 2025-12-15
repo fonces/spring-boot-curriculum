@@ -483,7 +483,7 @@ SPRING_PROFILES_ACTIVE=prod
 
 ### 7-2. .gitignoreへの追加
 
-```
+```sh
 # 環境変数ファイル
 .env
 ```

@@ -60,7 +60,7 @@ docker-compose ps
 
 ### BlogHubの認証フロー
 
-```
+```sh
 ┌─────────┐                        ┌──────────┐
 │ Client  │                        │  Server  │
 └────┬────┘                        └─────┬────┘
@@ -1051,7 +1051,7 @@ curl http://localhost:8080/api/auth/me
 ```
 
 **期待される結果**:
-```
+```sh
 HTTP/1.1 403 Forbidden
 ```
 
@@ -1064,7 +1064,7 @@ mysql> SELECT id, username, email, created_at FROM users;
 ```
 
 **期待される結果**:
-```
+```sh
 +----+----------+-------------------+---------------------+
 | id | username | email             | created_at          |
 +----+----------+-------------------+---------------------+
@@ -1214,7 +1214,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 ### エラー5: CORS エラー（ブラウザから）
 
 **症状**: ブラウザのコンソールに以下のエラー
-```
+```sh
 Access to XMLHttpRequest at 'http://localhost:8080/api/auth/login' 
 from origin 'http://localhost:3000' has been blocked by CORS policy
 ```

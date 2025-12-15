@@ -27,7 +27,7 @@
 
 Phase 1から3まで、私たちは以下のようなパッケージ構成でコードを書いてきました：
 
-```
+```sh
 com.example.hellospringboot/
 ├── HelloSpringBootApplication.java
 ├── User.java
@@ -56,7 +56,7 @@ com.example.hellospringboot/
 
 **レイヤー化アーキテクチャ（Layered Architecture）** は、アプリケーションを責務ごとに分離し、階層構造で整理する設計手法です。
 
-```
+```sh
 ┌─────────────────────────────────────┐
 │    Presentation Layer (表示層)      │  ← @RestController, @Controller
 │  - HTTPリクエスト/レスポンス処理     │     UserController, ProductController
@@ -95,7 +95,7 @@ com.example.hellospringboot/
 
 Phase 4からは、以下のようなディレクトリ構造でコードを整理します：
 
-```
+```sh
 com.example.hellospringboot/
 ├── HelloSpringBootApplication.java    # メインクラス
 │
@@ -1225,7 +1225,7 @@ cd /path/to/workspace/hello-spring-boot
 ```
 
 **期待される結果**:
-```
+```sh
 [INFO] BUILD SUCCESS
 ```
 
@@ -1243,7 +1243,7 @@ cd /path/to/workspace/hello-spring-boot
 ```
 
 **期待される結果**:
-```
+```sh
 Started HelloSpringBootApplication in X.XXX seconds
 ```
 
@@ -1392,7 +1392,7 @@ public class ResourceNotFoundException extends RuntimeException {
 リファクタリング後のパッケージ構成を図にしてみましょう（テキストで構いません）。
 
 **ヒント**:
-```
+```sh
 com.example.hellospringboot/
 ├── controllers/ (表示層)
 ├── services/ (業務層)
@@ -1698,7 +1698,7 @@ public class UserController {
 | **MyBatis** | `mappers/` | インターフェース + XML（SQLを記述） |
 
 **両方を使う場合**:
-```
+```sh
 com.example.hellospringboot/
 ├── repositories/     # JPA用
 │   ├── ProductRepository.java
@@ -1716,7 +1716,7 @@ com.example.hellospringboot/
 
 ### ヘキサゴナルアーキテクチャ（Ports and Adapters）
 
-```
+```sh
 ┌─────────────────────────────────────┐
 │        Domain Layer (Core)          │
 │   - ビジネスロジックとドメインモデル │
@@ -1738,7 +1738,7 @@ com.example.hellospringboot/
 
 ### クリーンアーキテクチャ
 
-```
+```sh
 ┌─────────────────────────────────────┐
 │         Entities (Core)             │
 └─────────────────────────────────────┘

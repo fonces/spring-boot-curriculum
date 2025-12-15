@@ -27,7 +27,7 @@ Phase 2では、Spring BootアプリケーションとMySQLデータベースを
 
 **Docker** は、アプリケーションとその実行環境を**コンテナ**という単位でパッケージ化する技術です。
 
-```
+```sh
 ┌──────────────────────────────────┐
 │   ホストマシン（あなたのPC）        │
 │                                  │
@@ -85,7 +85,7 @@ docker compose version
 
 **期待される結果**:
 
-```
+```sh
 Docker version 24.0.x, build xxxxxx
 Docker Compose version v2.23.x
 ```
@@ -120,7 +120,7 @@ docker compose version
 
 **期待される結果**:
 
-```
+```sh
 Docker version 24.0.x, build xxxxxx
 Docker Compose version v2.23.x
 ```
@@ -273,7 +273,7 @@ docker compose up -d
 
 **初回実行時の出力例**:
 
-```
+```sh
 [+] Running 8/8
  ⠿ mysql Pulled
  ⠿ Container spring-boot-mysql  Started
@@ -281,7 +281,7 @@ docker compose up -d
 
 **2回目以降の出力例**:
 
-```
+```sh
 [+] Running 1/1
  ⠿ Container spring-boot-mysql  Started
 ```
@@ -294,7 +294,7 @@ docker compose ps
 
 **期待される結果**:
 
-```
+```sh
 NAME                 IMAGE       COMMAND                  SERVICE   CREATED         STATUS         PORTS
 spring-boot-mysql    mysql:8.0   "docker-entrypoint.s…"   mysql     2 minutes ago   Up 2 minutes   0.0.0.0:3306->3306/tcp, 33060/tcp
 ```
@@ -309,7 +309,7 @@ docker compose logs mysql
 
 以下のようなログが出力されていれば起動成功です:
 
-```
+```sh
 mysql  | 2025-12-13T10:00:00.000000Z 0 [System] [MY-010931] [Server] /usr/sbin/mysqld: ready for connections.
 ```
 
@@ -331,7 +331,7 @@ docker compose exec mysql mysql -u springuser -p
 
 **期待される結果**:
 
-```
+```sh
 Welcome to the MySQL monitor.  Commands end with ; or \g.
 Your MySQL connection id is 8
 Server version: 8.0.35 MySQL Community Server - GPL
@@ -349,7 +349,7 @@ SHOW DATABASES;
 
 **期待される結果**:
 
-```
+```sh
 +--------------------+
 | Database           |
 +--------------------+
@@ -369,7 +369,7 @@ USE hello_spring_boot;
 
 **期待される結果**:
 
-```
+```sh
 Database changed
 ```
 
@@ -381,7 +381,7 @@ SHOW TABLES;
 
 **期待される結果**（まだテーブルがない状態）:
 
-```
+```sh
 Empty set (0.00 sec)
 ```
 
@@ -510,7 +510,7 @@ docker ps
 
 **エラーメッセージ**:
 
-```
+```sh
 Error response from daemon: driver failed programming external connectivity on endpoint spring-boot-mysql: 
 Bind for 0.0.0.0:3306 failed: port is already allocated.
 ```
@@ -650,7 +650,7 @@ docker volume ls
 
 **期待される結果**:
 
-```
+```sh
 DRIVER    VOLUME NAME
 local     hello-spring-boot_mysql_data
 ```

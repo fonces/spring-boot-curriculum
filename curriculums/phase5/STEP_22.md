@@ -22,7 +22,7 @@
 
 ### GETとPOSTの役割分担
 
-```
+```sh
 1. GET /views/users/new  → フォーム表示（空のフォーム）
 2. POST /views/users     → フォーム送信（データ登録）
 3. GET /views/users/{id} → リダイレクト後の詳細表示
@@ -532,7 +532,7 @@ public String updateUser(
 ### 1. 新規作成フォームの表示
 
 ブラウザで以下にアクセス:
-```
+```sh
 http://localhost:8080/views/users/new
 ```
 
@@ -567,7 +567,7 @@ http://localhost:8080/views/users/new
 ### 4. 編集機能の確認
 
 詳細画面から「編集」をクリック:
-```
+```sh
 http://localhost:8080/views/users/1/edit
 ```
 
@@ -689,7 +689,7 @@ return "redirect:/views/users/" + id;  // OK
 **原因**: テンプレートで`${isEdit}`を参照しているが、Controllerで設定していない
 
 **エラー例**:
-```
+```sh
 Exception evaluating SpringEL expression: "isEdit ? 'ユーザー編集' : 'ユーザー新規登録'"
 org.springframework.expression.spel.SpelEvaluationException: EL1001E: Type conversion problem, cannot convert from null to boolean
 ```
@@ -730,7 +730,7 @@ public String editUserForm(@PathVariable Long id, Model model) {
 
 Thymeleafのフォームは、Spring MVCのデータバインディング機能を活用しています:
 
-```
+```sh
 1. フォーム表示時
    Controller → UserForm（空） → Model → Thymeleaf → HTML
 

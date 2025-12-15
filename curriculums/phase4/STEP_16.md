@@ -98,7 +98,7 @@ public class UserController {
 
 **IoC (Inversion of Control)** = 制御の反転
 
-```
+```sh
 ┌───────────────────────────────────────────┐
 │    従来の制御フロー（制御が開発者側）         │
 │                                           │
@@ -122,7 +122,7 @@ public class UserController {
 
 ### Springコンテナの役割
 
-```
+```sh
 ┌─────────────────────────────────────────┐
 │       Spring IoC Container              │
 │                                         │
@@ -856,7 +856,7 @@ public class CacheService {
 
 **ライフサイクルの流れ**:
 
-```
+```sh
 1. コンストラクタ呼び出し
    ↓
 2. 依存性注入（@Autowiredなど）
@@ -1214,7 +1214,7 @@ public class ServiceB {
 ```
 
 **エラーメッセージ**:
-```
+```sh
 The dependencies of some of the beans in the application context form a cycle:
    serviceA defined in file [.../ServiceA.class]
    ↓
@@ -1265,7 +1265,7 @@ public class ServiceB {
 ### エラー 1: "required a single bean, but 2 were found"
 
 **エラーメッセージ**:
-```
+```sh
 Field notificationService in NotificationController required a single bean, but 2 were found:
 	- emailNotificationService: defined in file [...]
 	- smsNotificationService: defined in file [...]
@@ -1283,7 +1283,7 @@ Field notificationService in NotificationController required a single bean, but 
 ### エラー 2: "The dependencies of some of the beans form a cycle"
 
 **エラーメッセージ**:
-```
+```sh
 The dependencies of some of the beans in the application context form a cycle:
    serviceA
    ↓
@@ -1314,7 +1314,7 @@ public class ServiceA {
 ### エラー 3: "No qualifying bean of type 'UserRepository'"
 
 **エラーメッセージ**:
-```
+```sh
 No qualifying bean of type 'com.example.hellospringboot.repositories.UserRepository' available
 ```
 
@@ -1346,7 +1346,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 ### エラー 4: "Field injection is not recommended"
 
 **警告メッセージ**（IntelliJ IDEA）:
-```
+```sh
 Field injection is not recommended
 ```
 
@@ -1377,7 +1377,7 @@ public class UserService {
 ### エラー 5: "Cannot resolve symbol 'RequiredArgsConstructor'"
 
 **エラーメッセージ**:
-```
+```sh
 Cannot resolve symbol 'RequiredArgsConstructor'
 ```
 
@@ -1513,7 +1513,7 @@ public class HelloSpringBootApplication {
 
 **3. 依存関係を解決してBean登録**:
 
-```
+```sh
 1. @Service, @Repository, @RestController をスキャン
    ↓
 2. 各クラスのコンストラクタを確認
@@ -1531,7 +1531,7 @@ public class HelloSpringBootApplication {
 
 **問題**:
 
-```
+```sh
 com.example.hellospringboot/  ← メインクラス
 com.external.library/         ← スキャン対象外！
 ```

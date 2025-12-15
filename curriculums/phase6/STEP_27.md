@@ -118,7 +118,7 @@ class UserServiceTest {
 ```
 
 **期待される結果**:
-```
+```sh
 [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
 ```
 
@@ -489,7 +489,7 @@ void create_WithAssertJ() {
 ```
 
 **レポート場所**:
-```
+```sh
 target/site/jacoco/index.html
 ```
 
@@ -506,7 +506,7 @@ target/site/jacoco/index.html
 ```
 
 **期待される結果**:
-```
+```sh
 [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS

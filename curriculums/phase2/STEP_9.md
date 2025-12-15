@@ -25,7 +25,7 @@
 
 **トランザクション**とは、複数のデータベース操作を**1つのまとまり**として扱う仕組みです。
 
-```
+```sh
 ┌────────────────────────────────────┐
 │   トランザクション開始               │
 ├────────────────────────────────────┤
@@ -87,7 +87,7 @@ public void transferMoney(Long fromId, Long toId, Integer amount) {
 
 **レイヤー化アーキテクチャ**:
 
-```
+```sh
 ┌────────────────────────────────────┐
 │  Controller (HTTPの入出力)          │
 │  - リクエストの受け取り              │
@@ -636,7 +636,7 @@ public class ProductService {
 
 **エラーメッセージ**:
 
-```
+```sh
 org.hibernate.LazyInitializationException: could not initialize proxy
 ```
 

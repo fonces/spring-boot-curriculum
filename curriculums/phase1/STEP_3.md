@@ -37,7 +37,7 @@ curl http://localhost:8080/users/123
 ```
 
 **期待される結果**:
-```
+```sh
 User ID: 123
 ```
 
@@ -407,7 +407,7 @@ cd ~/workspace/hello-spring-boot
 
 起動ログに以下のようなメッセージが表示されればOKです：
 
-```
+```sh
 Started HelloSpringBootApplication in X.XXX seconds
 ```
 
@@ -453,7 +453,7 @@ curl -X POST http://localhost:8080/api/users \
 
 **期待される結果**:
 
-```
+```sh
 HTTP/1.1 201 
 Content-Type: application/json
 ...
@@ -503,7 +503,7 @@ curl -X POST http://localhost:8080/api/users \
 ```
 
 **期待される結果**:
-```
+```sh
 {"timestamp":"2025-12-13T...","status":415,"error":"Unsupported Media Type",...}
 ```
 

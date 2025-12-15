@@ -669,7 +669,7 @@ public class UserController {
 
 ### 3-1. シナリオ: 複数のユーザーを一括取得
 
-```
+```sh
 GET /api/users/batch?ids=1,2,3
 ```
 
